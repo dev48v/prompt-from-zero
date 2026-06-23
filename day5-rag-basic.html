@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 5 — RAG Basics</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .chunk { transition: all .25s; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back to PromptFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 5</div>
+      <h1 class="text-xl font-bold">📎 RAG Basics — Retrieve, then Answer</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOOK -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A tiny RAG pipeline you can watch</h2>
+      <p class="text-slate-500 text-center mb-6">Pick a question. Watch the system <b>retrieve</b> the most relevant chunks, <b>stuff</b> them into a prompt, then <b>answer</b> using only those.</p>
+
+      <div class="flex flex-wrap gap-2 justify-center mb-6" id="questions"></div>
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <!-- knowledge base -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">1 · Knowledge base (chunks)</div>
+          <div id="kb" class="space-y-2 text-xs"></div>
+        </div>
+        <!-- prompt -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">2 · Prompt sent to the LLM</div>
+          <pre id="prompt" class="text-[11px]">Pick a question above →</pre>
+        </div>
+        <!-- answer -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">3 · Grounded answer</div>
+          <div id="answer" class="text-sm text-slate-400 italic">…</div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ Retrieval here uses simple word overlap. Real RAG uses embeddings + a vector DB (see TechFromZero Day 45 · pgvector) — same shape, smarter matching.</p>
+    </div>
+  </div>
+</section>
+
+<!-- UNDERSTAND -->
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">RAG step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="sprev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="snext" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div>
+        <div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step on the left →</div></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div>
+        <div id="why" class="text-slate-700">—</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div>
+        <pre id="code"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">RAG in four moves. The retrieval half is TechFromZero Day 45 (pgvector); this is the prompt half.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Chunk your documents</h3></div>
+        <p class="text-sm text-slate-600">Split docs into ~200–500 token pieces. Too big = noisy context; too small = lost meaning. Embed each chunk and store the vector (Day 45).</p>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Retrieve top-k for the question</h3></div>
+<pre>const hits = await search(question, { k: 3 });   // vector similarity</pre>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Stuff them into a grounded prompt</h3></div>
+<pre>const prompt = `Answer using ONLY the context below.
+If the answer isn't there, say "I don't know."
+
+Context:
+${hits.map(h =&gt; "- " + h.text).join("\n")}
+
+Question: ${question}`;</pre>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Cite + refuse</h3></div>
+        <p class="text-sm text-slate-600">Ask the model to quote which chunk it used, and to say "I don't know" when the context is empty. That single instruction is what kills most hallucinations.</p>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center">
+      <h3 class="font-bold text-lg text-violet-900">🎉 Day 5 of PromptFromZero done.</h3>
+      <p class="text-sm text-violet-700 mt-2">Tomorrow: Tree of Thoughts (explore + vote).</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// =========== RAG PLAYGROUND ===========
+const KB = [
+  "The Eiffel Tower is 330 metres tall and was completed in 1889 for the World's Fair in Paris.",
+  "Honey never spoils; archaeologists have found edible honey in ancient Egyptian tombs over 3000 years old.",
+  "Octopuses have three hearts: two pump blood to the gills, one to the rest of the body.",
+  "The Great Wall of China is over 21,000 km long and was built across many dynasties.",
+  "Bananas are berries, but strawberries are not, by the botanical definition of a berry.",
+  "Light from the Sun takes about 8 minutes and 20 seconds to reach the Earth.",
+];
+const ANSWERS = {
+  0: "The Eiffel Tower is 330 metres tall. (from chunk 1)",
+  1: "No — honey doesn't spoil; 3000-year-old edible honey has been found in Egyptian tombs. (from chunk 2)",
+  2: "An octopus has three hearts. (from chunk 3)",
+  5: "About 8 minutes and 20 seconds. (from chunk 6)",
+};
+const QUESTIONS = [
+  { q:"How tall is the Eiffel Tower?", key:0 },
+  { q:"Does honey go bad?", key:1 },
+  { q:"How many hearts does an octopus have?", key:2 },
+  { q:"How long does sunlight take to reach Earth?", key:5 },
+];
+const STOP = new Set("the a an of to is are how does do many in for and over by not but its it about long tall reach".split(" "));
+function tokens(s){ return s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(w=>w && !STOP.has(w)); }
+function score(q, doc){ const d=new Set(tokens(doc)); return tokens(q).reduce((n,w)=>n+(d.has(w)?1:0),0); }
+
+const kbEl = document.getElementById("kb");
+const promptEl = document.getElementById("prompt");
+const answerEl = document.getElementById("answer");
+const qWrap = document.getElementById("questions");
+
+function renderKB(hits){
+  kbEl.innerHTML = KB.map((c,i)=>{
+    const hit = hits.includes(i);
+    return `<div class="chunk p-2 rounded border ${hit?'border-violet-400 bg-violet-50':'border-slate-100 bg-slate-50 opacity-60'}">
+      <span class="font-mono text-[10px] ${hit?'text-violet-600':'text-slate-400'}">chunk ${i+1}${hit?' ✓ retrieved':''}</span>
+      <div class="${hit?'text-slate-700':'text-slate-400'}">${c}</div>
+    </div>`;
+  }).join("");
+}
+function run(item){
+  // retrieve top-3 by word overlap
+  const ranked = KB.map((c,i)=>({i,s:score(item.q,c)})).sort((a,b)=>b.s-a.s);
+  const hits = ranked.filter(r=>r.s>0).slice(0,3).map(r=>r.i);
+  renderKB(hits);
+  const context = hits.map(i=>"- "+KB[i]).join("\n");
+  promptEl.textContent = `Answer using ONLY the context below.\nIf the answer isn't there, say "I don't know."\n\nContext:\n${context || "(nothing retrieved)"}\n\nQuestion: ${item.q}`;
+  answerEl.classList.remove("italic","text-slate-400");
+  answerEl.classList.add("fade-in");
+  answerEl.textContent = ANSWERS[item.key] || "I don't know — that isn't in the provided context.";
+}
+QUESTIONS.forEach(item=>{
+  const b=document.createElement("button");
+  b.className="text-sm px-3 py-1.5 rounded-full bg-white border border-slate-200 hover:border-violet-400 hover:text-violet-600";
+  b.textContent=item.q; b.onclick=()=>run(item);
+  qWrap.appendChild(b);
+});
+renderKB([]);
+
+// UNDERSTAND
+const STEPS = [
+  { title:"1. Why LLMs need RAG", why:"An LLM only knows what it saw in training. It doesn't know your company wiki, last week's news, or this PDF. RAG (Retrieval-Augmented Generation) fixes that: fetch the relevant facts at question time and hand them to the model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1">
+    <div class="text-red-600">LLM alone: "I don't have access to that document."</div>
+    <div class="text-violet-700">LLM + RAG: "According to section 3, the limit is 5GB."</div>
+  </div>`, code:`// Without RAG the model guesses or refuses.
+// With RAG you give it the source text to read.` },
+  { title:"2. Retrieve before you generate", why:"The 'R' comes first. Embed the question, find the closest document chunks (vector search — TechFromZero Day 45), and grab the top few. You're not asking the model to remember; you're handing it the page to read.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono space-y-1 w-full">
+    <div>question → embed → vector</div>
+    <div>vector → nearest chunks (top-k)</div>
+    <div class="text-violet-700">→ these become the context</div>
+  </div>`, code:`const hits = await search(question, { k: 3 });
+// hits = the 3 most relevant chunks` },
+  { title:"3. The grounded prompt", why:"This single prompt template is 80% of RAG quality: tell the model to use ONLY the supplied context, and to admit when the answer isn't there. Without 'only the context', the model blends its own (possibly wrong) memory back in.", concept:`<div class="bg-violet-50 border border-violet-200 p-4 rounded text-xs font-mono space-y-1 w-full">
+    <div>Answer using ONLY the context below.</div>
+    <div>If it's not there, say "I don't know."</div>
+    <div>Context: {chunks}</div>
+    <div>Question: {q}</div>
+  </div>`, code:`const prompt = \`Answer using ONLY the context below.
+If the answer isn't there, say "I don't know."
+
+Context:
+\${hits.map(h => "- " + h.text).join("\\n")}
+
+Question: \${question}\`;` },
+  { title:"4. Top-k and chunk size are the knobs", why:"k too small → you miss the answer. k too big → you bury it in noise and pay for tokens. Chunks too big → irrelevant text rides along. Start with k=3 and ~300-token chunks, then tune on real questions.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1">
+    <div>k = 1 → may miss the answer</div>
+    <div class="text-violet-700">k = 3 → usual sweet spot</div>
+    <div>k = 20 → noisy, expensive, worse</div>
+  </div>`, code:`search(question, { k: 3 });   // tune this
+// chunk size ~300 tokens is a good default` },
+  { title:"5. Make it refuse + cite", why:"Hallucinations mostly happen when the context doesn't contain the answer but the model answers anyway. Telling it to say 'I don't know' and to quote the chunk it used turns it from a guesser into a librarian.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1">
+    <div class="text-violet-700">"(from chunk 2)"  ← citation builds trust</div>
+    <div class="text-violet-700">"I don't know"     ← refusal kills hallucination</div>
+  </div>`, code:`// add to the prompt:
+// "Quote the chunk you used.
+//  If the context lacks the answer,
+//  reply exactly: I don't know."` },
+  { title:"6. Done!", why:"RAG = retrieve (vector search) + augment (stuff into prompt) + generate (LLM answers). Pair this prompt half with the pgvector retrieval half from TechFromZero Day 45 and you have a working 'chat with your docs'.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Retrieve → Augment → Generate.</p></div>`, code:`// retrieval:  TechFromZero Day 45 (pgvector)
+// generation: this grounded prompt
+// together:   chat with your documents` },
+];
+const stepsEl = document.getElementById("steps");
+const prev = document.getElementById("sprev");
+const next = document.getElementById("snext");
+const auto = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  b.innerHTML = `<div class="font-semibold">${s.title}</div>`;
+  b.onclick = () => show(i);
+  stepsEl.appendChild(b);
+});
+function show(i) {
+  cur = i;
+  const s = STEPS[i];
+  document.getElementById("concept").innerHTML = `<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML = `<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent = s.code;
+  stepsEl.querySelectorAll("button").forEach((b, idx) => {
+    b.className = idx === i
+      ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+      : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  });
+}
+prev.onclick = () => show(Math.max(0, cur - 1));
+next.onclick = () => show(Math.min(STEPS.length - 1, cur + 1));
+let timer = null;
+auto.onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; auto.textContent = "▶ Auto-play"; return; }
+  auto.textContent = "⏸ Pause";
+  show(0);
+  timer = setInterval(() => {
+    if (cur >= STEPS.length - 1) { clearInterval(timer); timer = null; auto.textContent = "▶ Replay"; return; }
+    show(cur + 1);
+  }, 2800);
+};
+show(0);
+</script>
+</body>
+</html>

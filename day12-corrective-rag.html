@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 12 — Corrective RAG (CRAG)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 12</div>
+      <h1 class="text-xl font-bold">🔧 Corrective RAG (CRAG) — Grade the Retrieval, Then Fix It</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">If the retrieved docs are wrong, don't answer from them — correct course.</h2>
+      <p class="text-slate-500 text-center mb-5">CRAG adds a <b>self-grading step after retrieval</b>: a retrieval evaluator scores every candidate doc. <b>Correct</b> → use the docs. <b>Incorrect</b> → discard them + run a web search for fresh knowledge. <b>Ambiguous</b> → combine both. Then a <b>knowledge-refinement</b> step strips the irrelevant lines before generating. Pick a question:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+      <div id="pipeline" class="space-y-3"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Corrective RAG works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add CRAG to your pipeline</h2>
+    <p class="text-slate-500 mb-8">Wrap your normal retrieve-and-generate with a grader and three corrective branches.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Retrieve candidate docs as usual</h3></div><pre>const docs = await vectorStore.search(q, { k: 4 });
+// these are CANDIDATES — we don't trust them yet.</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Grade each doc with an evaluator</h3></div><pre>// a small LLM or a fine-tuned classifier returns a 0..1 score
+async function gradeDoc(q, d) {
+  const out = await llm(`Score 0.0-1.0 how RELEVANT this passage is
+to the question. Reply with just the number.
+Q: ${q}
+PASSAGE: ${d}`);
+  return parseFloat(out);                 // e.g. 0.91
+}
+const scored = await Promise.all(docs.map(async d =&gt; ({ d, s: await gradeDoc(q, d) })));</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Pick a verdict from the scores</h3></div><pre>const top = Math.max(...scored.map(x =&gt; x.s));
+const verdict =
+  top &gt;= 0.75 ? "CORRECT"   :   // at least one strong doc
+  top &lt;  0.40 ? "INCORRECT" :   // nothing is relevant
+                "AMBIGUOUS";    // weak / partial — unsure</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Branch: correct course per verdict</h3></div><pre>let knowledge = [];
+if (verdict === "CORRECT")   knowledge = scored.filter(x =&gt; x.s &gt;= 0.5).map(x =&gt; x.d);
+if (verdict === "INCORRECT") knowledge = await webSearch(q);         // discard + search
+if (verdict === "AMBIGUOUS") knowledge = [                            // combine both
+  ...scored.filter(x =&gt; x.s &gt;= 0.5).map(x =&gt; x.d),
+  ...await webSearch(q),
+];</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Refine: decompose → filter → recompose</h3></div><pre>// split each doc into strips, keep only the relevant strips
+function refine(q, doc) {
+  const strips = doc.split(/(?&lt;=[.!?])\s+/);                 // sentence strips
+  return strips.filter(s =&gt; gradeStrip(q, s) &gt; 0.5).join(" ");
+}
+knowledge = knowledge.map(d =&gt; refine(q, d)).filter(Boolean);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Generate from the corrected knowledge</h3></div><pre>const answer = await llm(`Answer using ONLY this knowledge:
+${knowledge.join("\n---\n")}
+
+Question: ${q}`);
+return answer;   // grounded in corrected, refined context</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 12 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Adaptive RAG — route each query to the cheapest strategy that can answer it.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== CRAG demo =====
+// Each query carries a tiny corpus of CANDIDATE docs (with a relevance score the
+// evaluator assigns), a verdict, a simulated web-search result, and a final answer.
+const QUERIES = [
+  { q:"What is our company refund policy?",
+    verdict:"CORRECT",
+    docs:[
+      { t:"Refunds are available within 30 days of purchase. Items must be unused. Refunded to the original payment method.", s:0.93, keep:["Refunds are available within 30 days of purchase.","Items must be unused.","Refunded to the original payment method."], drop:["Our warehouse is in Pune."] },
+      { t:"Store credit can be issued instead of a refund on request.", s:0.71, keep:["Store credit can be issued instead of a refund on request."], drop:[] },
+      { t:"The office canteen serves lunch at 1pm.", s:0.06, keep:[], drop:["The office canteen serves lunch at 1pm."] },
+    ],
+    web:null,
+    answer:"Refunds are available within 30 days of purchase for unused items, returned to the original payment method. Store credit can be issued instead on request." },
+
+  { q:"Who won the cricket match yesterday?",
+    verdict:"INCORRECT",
+    docs:[
+      { t:"The 2019 World Cup final was played at Lord's.", s:0.22, keep:[], drop:["The 2019 World Cup final was played at Lord's."] },
+      { t:"Cricket pitches are 22 yards long.", s:0.09, keep:[], drop:["Cricket pitches are 22 yards long."] },
+      { t:"Our internal sports club meets on Fridays.", s:0.04, keep:[], drop:["Our internal sports club meets on Fridays."] },
+    ],
+    web:{ t:"[web] Yesterday: India beat Australia by 5 wickets in the T20 series decider. Scorecard updated 21 Jun.", s:0.88, keep:["India beat Australia by 5 wickets in the T20 series decider."], drop:["Scorecard updated 21 Jun."] },
+    answer:"India beat Australia by 5 wickets in yesterday's T20 series decider." },
+
+  { q:"What is our parental-leave allowance?",
+    verdict:"AMBIGUOUS",
+    docs:[
+      { t:"Employees are entitled to paid parental leave. The HR portal lists current entitlements.", s:0.58, keep:["Employees are entitled to paid parental leave."], drop:["The HR portal lists current entitlements."] },
+      { t:"Annual leave is 24 days per year.", s:0.18, keep:[], drop:["Annual leave is 24 days per year."] },
+      { t:"Leave requests are approved by your line manager.", s:0.31, keep:[], drop:["Leave requests are approved by your line manager."] },
+    ],
+    web:{ t:"[web] Latest policy doc (v2026): 26 weeks paid parental leave for the primary caregiver, 4 weeks for the secondary caregiver.", s:0.82, keep:["26 weeks paid parental leave for the primary caregiver, 4 weeks for the secondary caregiver."], drop:["Latest policy doc (v2026)."] },
+    answer:"Employees are entitled to paid parental leave: 26 weeks for the primary caregiver and 4 weeks for the secondary caregiver." },
+];
+
+const NODE_NAMES = ["Retrieve","Grade","Verdict","Correct/Web/Combine","Refine","Generate"];
+const qsEl=document.getElementById("qs"), pipe=document.getElementById("pipeline"), nodesEl=document.getElementById("nodes");
+const tok=(label,val,good)=>`<span class="tok inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${good?'bg-emerald-100 text-emerald-700':'bg-rose-100 text-rose-700'}">${label}: ${val}</span>`;
+const scoreBadge=(s)=>{ const good=s>=0.75, mid=s>=0.40; const cls=good?'bg-emerald-100 text-emerald-700':mid?'bg-amber-100 text-amber-700':'bg-rose-100 text-rose-700'; return `<span class="tok rounded-full px-2 py-0.5 text-xs font-bold ${cls}">${s.toFixed(2)}</span>`; };
+const verdictBadge=(v)=>{ const cls=v==="CORRECT"?'bg-emerald-100 text-emerald-700':v==="INCORRECT"?'bg-rose-100 text-rose-700':'bg-amber-100 text-amber-700'; return `<span class="tok rounded-full px-3 py-1 text-sm font-bold ${cls}">${v}</span>`; };
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUERIES[qi]; pipe.innerHTML=""; drawNodes(-1);
+  const myToken = ++runToken;
+  const card=(h)=>{ if(myToken!==runToken) return; const d=document.createElement("div"); d.className="bg-white rounded-2xl border border-slate-200 p-4 fade-in"; d.innerHTML=h; pipe.appendChild(d); };
+  let delay=0; const step=(node,h)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); card(h); }, delay); delay+=750; };
+
+  const kept = []; // accumulate refined relevant strips for the final knowledge
+
+  // ① Retrieve
+  step(0, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">① Retrieve — candidate docs from the corpus</div>`+
+    Q.docs.map(d=>`<div class="text-xs text-slate-600 py-1 flex items-start gap-2"><span class="text-slate-300">•</span><span>${d.t}</span></div>`).join("")+
+    `<div class="text-xs text-violet-600 mt-2">These are candidates — not trusted yet.</div>`);
+
+  // ② Grade each doc
+  step(1, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">② Retrieval evaluator — score each doc 0.00–1.00</div>`+
+    Q.docs.map(d=>`<div class="flex items-start gap-2 py-1"><span class="mt-0.5">${scoreBadge(d.s)}</span><span class="text-xs text-slate-600">${d.t}</span></div>`).join("")+
+    `<div class="text-xs text-slate-400 mt-2">Thresholds: ≥0.75 strong · 0.40–0.74 weak · &lt;0.40 irrelevant</div>`);
+
+  // ③ Verdict
+  const top = Math.max(...Q.docs.map(d=>d.s));
+  step(2, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">③ Verdict — from the best score (${top.toFixed(2)})</div><div>${verdictBadge(Q.verdict)}</div><div class="text-xs text-slate-500 mt-2">${Q.verdict==="CORRECT"?"At least one strongly relevant doc → trust the retrieved docs.":Q.verdict==="INCORRECT"?"Nothing is relevant → the docs are wrong. Discard them.":"Only weak/partial docs → unsure, so reinforce with a web search."}</div>`);
+
+  // ④ Corrective action
+  if (Q.verdict==="CORRECT"){
+    Q.docs.forEach(d=>d.keep.forEach(s=>kept.push(s)));
+    step(3, `<div class="text-xs font-bold uppercase text-emerald-600 mb-2">④ Correct → use the retrieved docs</div>${tok("Action","KEEP DOCS",true)}<div class="text-xs text-slate-500 mt-2">No web search needed — proceed straight to refinement.</div>`);
+  } else if (Q.verdict==="INCORRECT"){
+    Q.web.keep.forEach(s=>kept.push(s));
+    step(3, `<div class="text-xs font-bold uppercase text-rose-600 mb-2">④ Incorrect → discard docs + 🌐 web search</div>${tok("Action","DISCARD + WEB",false)}<div class="text-xs text-slate-600 mt-2 bg-slate-50 rounded-lg p-2">${Q.web.t} ${scoreBadge(Q.web.s)}</div>`);
+  } else {
+    Q.docs.forEach(d=>d.keep.forEach(s=>kept.push(s)));
+    Q.web.keep.forEach(s=>kept.push(s));
+    step(3, `<div class="text-xs font-bold uppercase text-amber-600 mb-2">④ Ambiguous → combine docs + 🌐 web search</div>${tok("Action","DOCS + WEB",false)}<div class="text-xs text-slate-600 mt-2 bg-slate-50 rounded-lg p-2">${Q.web.t} ${scoreBadge(Q.web.s)}</div>`);
+  }
+
+  // ⑤ Knowledge refinement — decompose then filter
+  const allStrips = [];
+  Q.docs.forEach(d=>{ d.keep.forEach(s=>allStrips.push({s,keep:true})); d.drop.forEach(s=>allStrips.push({s,keep:false})); });
+  if (Q.web){ Q.web.keep.forEach(s=>allStrips.push({s,keep:true})); Q.web.drop.forEach(s=>allStrips.push({s,keep:false})); }
+  step(4, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">⑤ Knowledge refinement — split into strips, keep relevant</div>`+
+    allStrips.map(x=>`<div class="flex items-start gap-2 py-0.5"><span class="mt-0.5">${tok("Strip", x.keep?"keep":"drop", x.keep)}</span><span class="text-xs ${x.keep?'text-slate-700':'line-through text-slate-400'}">${x.s}</span></div>`).join("")+
+    `<div class="text-xs text-violet-600 mt-2">→ irrelevant strips removed; only clean knowledge reaches the generator.</div>`);
+
+  // ⑥ Generate
+  step(5, `<div class="text-xs font-bold uppercase text-violet-600 mb-1">⑥ Generate — grounded in corrected knowledge</div><div class="text-sm text-slate-800">${Q.answer}</div>`);
+}
+
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. The RAG problem: garbage in → garbage out", why:"Plain RAG retrieves a few documents and immediately stuffs them into the prompt to answer. But the retriever is not perfect — sometimes it pulls back docs that are off-topic, outdated, or only keyword-matched. The model then answers confidently from that bad context. Garbage retrieval produces a garbage answer, and nothing in the pipeline notices the docs were wrong.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">query → retrieve (maybe wrong docs) → answer anyway 😬</div>`, code:`// naive RAG: trust whatever the retriever returned. no check.` },
+  { title:"2. What CRAG adds: a retrieval evaluator", why:"Corrective RAG inserts one new component between retrieval and generation — a retrieval evaluator. It looks at each candidate document and scores how relevant it actually is to the question, usually a number from 0 to 1. This single self-grading step is the whole idea: before answering, CRAG asks 'are these docs any good?' and acts on the answer. It turns blind retrieval into checked retrieval.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">retrieve → <b class="text-violet-700">EVALUATE (score each doc)</b> → branch → answer</div>`, code:`const score = await gradeDoc(q, doc); // 0.0 .. 1.0 relevance` },
+  { title:"3. The three grades: Correct / Incorrect / Ambiguous", why:"From the document scores, CRAG picks one of three verdicts for the retrieval as a whole. Correct means at least one doc is clearly relevant — the retrieval succeeded. Incorrect means nothing is relevant — the retrieval failed completely. Ambiguous means the docs are weak or only partially relevant — the evaluator is unsure. Each verdict triggers a different corrective action, so the pipeline adapts to retrieval quality.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-emerald-700">CORRECT — a strong doc exists</div><div class="text-rose-700">INCORRECT — nothing relevant</div><div class="text-amber-700">AMBIGUOUS — weak / partial</div></div>`, code:`const v = top>=0.75 ? "CORRECT" : top<0.40 ? "INCORRECT" : "AMBIGUOUS";` },
+  { title:"4. Corrective actions, one per grade", why:"This is where CRAG corrects course. On Correct, it simply uses the retrieved docs — they are good. On Incorrect, it throws the docs away entirely and runs a web search to find fresh, relevant knowledge instead. On Ambiguous, it hedges by combining both: keep the partial docs and also add web results. The verdict decides the source of truth so the generator never answers from context that was already judged wrong.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-emerald-700">CORRECT → use docs</div><div class="text-rose-700">INCORRECT → discard + web search</div><div class="text-amber-700">AMBIGUOUS → docs + web search</div></div>`, code:`if (v==="INCORRECT") knowledge = await webSearch(q);  // course correction` },
+  { title:"5. Web search as the fallback knowledge source", why:"The web search is CRAG's safety net for when your own corpus simply does not contain the answer — recent events, things outside your indexed documents, or topics you never stored. Instead of hallucinating from irrelevant chunks, CRAG reaches outside to a fresh source. In production this is any external search API; the point is that a failed internal retrieval triggers an external lookup rather than a confident wrong answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">internal docs all irrelevant → 🌐 web search → fresh knowledge</div>`, code:`const fresh = await webSearch(q); // external API when corpus fails` },
+  { title:"6. Knowledge refinement: decompose, then filter", why:"Even a relevant document usually contains noise — one useful sentence buried among several irrelevant ones. CRAG refines the knowledge by decomposing each doc into small strips (sentences or short spans), scoring each strip, and keeping only the relevant ones. The irrelevant strips are discarded and the survivors are recomposed. The generator then sees tight, clean context instead of padded paragraphs, which sharpens the final answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">doc → split into strips → drop noisy strips → keep clean ones</div>`, code:`const clean = strips.filter(s => gradeStrip(q,s) > 0.5).join(" ");` },
+  { title:"7. How CRAG differs from Self-RAG", why:"Self-RAG (yesterday) trains the model to emit reflection tokens and decide for itself whether to retrieve and whether its answer is supported — the judgement lives inside one model. CRAG keeps the model simpler and bolts a separate, lightweight retrieval evaluator on the outside, focused specifically on grading retrieval quality and correcting it with a web-search fallback. Self-RAG asks 'should I retrieve and is my answer grounded?'; CRAG asks 'were the retrieved docs good, and if not, where else can I look?'", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>Self-RAG → model grades ITSELF (reflection tokens)</div><div class="text-violet-700">CRAG → external evaluator grades the RETRIEVAL + web fallback</div></div>`, code:`// Self-RAG: judgement inside model.  CRAG: judgement + web fix outside.` },
+  { title:"8. When to use CRAG", why:"Reach for CRAG when your retriever is unreliable or your corpus is incomplete and you would rather correct course than answer from bad context. It shines for open-domain questions, fast-moving topics where the index goes stale, and any case where a confident wrong answer is costly. If your corpus is small, clean, and fully covers every query, the extra grading and web search are overkill — plain RAG is fine. Use CRAG where retrieval failure is a real, frequent risk.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">unreliable retriever · stale / partial corpus · open-domain Qs → use CRAG</div>`, code:`// good fit: noisy corpus + need for freshness + low tolerance for wrong answers` },
+  { title:"9. Cost & latency trade-offs", why:"CRAG is not free. Every query now pays for at least one extra grading pass over the candidate docs, and on Incorrect or Ambiguous verdicts it also pays for a web search plus the latency of that round trip. Knowledge refinement adds more small scoring calls per strip. You are trading speed and tokens for reliability. Tune it: use a tiny fast model or a fine-tuned classifier as the evaluator, cache web results, and only refine when the doc is long enough to matter.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">+1 grading pass (always) · +web search & refine (sometimes) = slower but safer</div>`, code:`// keep the evaluator small/fast; cache web hits; refine only long docs` },
+  { title:"10. Putting it together — RAG that corrects itself", why:"The full loop is: retrieve candidate docs, grade them with an evaluator, pick a verdict, and branch — use the docs, discard and web-search, or combine — then refine the chosen knowledge down to clean strips and finally generate. The result is a retrieval pipeline that refuses to answer from context it has already judged wrong, and reaches for fresh knowledge when its own corpus comes up short. That self-correcting behaviour is what makes CRAG more robust than plain RAG.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Retrieve → Grade → Verdict → {use / web / combine} → Refine → Generate. RAG that fixes its own retrieval.</p></div>`, code:`// retrieve → grade → branch → refine → generate. corrective by design.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

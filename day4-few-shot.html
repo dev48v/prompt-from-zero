@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 4 — Few-shot Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back to PromptFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-700" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 4</div>
+      <h1 class="text-xl font-bold">📚 Few-Shot Prompting</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOOK -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8">
+    <div class="max-w-5xl mx-auto">
+      <p class="text-slate-500 text-center mb-6">Same model. Same problem. Two prompts: zero-shot vs few-shot. Watch the format match.</p>
+
+      <div class="bg-white border rounded-2xl p-5 mb-4">
+        <label class="text-xs font-semibold text-slate-500">TASK</label>
+        <div class="font-bold text-lg mt-1">Classify this product review's sentiment + extract the top complaint.</div>
+        <button id="run" class="mt-3 bg-violet-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-violet-700">▶ Run both prompts</button>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-4">
+        <div class="bg-red-50 border border-red-200 rounded-2xl p-5">
+          <div class="text-xs font-bold uppercase text-red-700 mb-2">❌ Zero-shot</div>
+          <div class="text-xs text-slate-500 mb-2">"Classify sentiment + extract complaint."</div>
+          <div id="bad" class="min-h-24 text-sm font-mono whitespace-pre-line"></div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+          <div class="text-xs font-bold uppercase text-emerald-700 mb-2">✅ Few-shot (2 examples)</div>
+          <div class="text-xs text-slate-500 mb-2">Same task + 2 worked examples first.</div>
+          <div id="good" class="min-h-24 text-sm font-mono whitespace-pre-line"></div>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-400 text-center mt-8">Same model. Same review. Different format. Few-shot output is parseable JSON; zero-shot is prose you'd have to extract from.</p>
+    </div>
+  </div>
+</section>
+
+<!-- UNDERSTAND -->
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Understand it step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div>
+        <div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step on the left →</div></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div>
+        <div id="why" class="text-slate-700">—</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div>
+        <pre id="code"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Estimated time: <b>10 minutes</b>. Node + free Gemini key.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Scaffold</h3></div>
+<pre>mkdir few-shot && cd few-shot
+npm init -y && npm install ai @ai-sdk/google
+echo "GOOGLE_GENERATIVE_AI_API_KEY=your_key" &gt; .env</pre>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Write few-shot.mjs</h3></div>
+        <div class="relative">
+<pre>import { generateText } from "ai";
+import { google } from "@ai-sdk/google";
+const model = google("gemini-2.5-flash");
+
+const FEW_SHOT = `Classify review sentiment + extract main complaint.
+
+Review: "Battery dies in 2 hours. Camera is great though."
+Output: { "sentiment": "negative", "complaint": "battery life" }
+
+Review: "Love the screen and price. Wish it had USB-C."
+Output: { "sentiment": "positive", "complaint": "missing USB-C" }
+
+Review: "{{REVIEW}}"
+Output:`;
+
+const review = "Beautiful display but the keyboard feels mushy under heavy typing.";
+
+const r = await generateText({
+  model,
+  prompt: FEW_SHOT.replace("{{REVIEW}}", review)
+});
+
+console.log(r.text);
+// → { "sentiment": "mixed", "complaint": "mushy keyboard" }</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Run</h3></div>
+<pre>node --env-file=.env few-shot.mjs</pre>
+        <p class="text-sm text-slate-600 mt-2">Model matches the example format = clean JSON, easy to parse.</p>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Upgrades</h3></div>
+        <ul class="text-sm text-slate-600 space-y-2 ml-4 list-disc">
+          <li>3-5 examples is the sweet spot. More = diminishing returns + higher token cost.</li>
+          <li>For real production, use Zod schema + `generateObject()` (Day 9 — structured output)</li>
+          <li>If task changes often, swap examples programmatically based on input class</li>
+          <li>Cache the examples in a system prompt + only swap the {{REVIEW}} bit</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center">
+      <h3 class="font-bold text-lg text-violet-900">🎉 Day 4 of PromptFromZero done.</h3>
+      <p class="text-sm text-violet-700 mt-2">Tomorrow: RAG basic (Embed + retrieve + answer).</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+const REVIEW = "Beautiful display but the keyboard feels mushy under heavy typing.";
+
+async function typeInto(el, text, delay = 16) {
+  el.textContent = "";
+  for (const ch of text) { el.textContent += ch; await new Promise(r => setTimeout(r, delay)); }
+}
+
+async function runDemo() {
+  const bad = document.getElementById("bad"), good = document.getElementById("good");
+  bad.textContent = ""; good.textContent = "";
+  await Promise.all([
+    typeInto(bad,
+`The review you provided seems to express mixed feelings about the product. The reviewer appreciates the visual quality of the display, but is concerned about the typing experience due to the keyboard feeling mushy. The main negative point is the keyboard quality.`,
+      12),
+    typeInto(good,
+`{ "sentiment": "mixed", "complaint": "mushy keyboard" }`,
+      30)
+  ]);
+  bad.innerHTML += `\n\n❌ Verbose prose. Hard to programmatically extract.`;
+  good.innerHTML += `\n\n✅ Parseable JSON. JSON.parse() works directly.`;
+}
+document.getElementById("run").onclick = runDemo;
+
+const STEPS = [
+  { title:"1. The problem with zero-shot", why:"\"Classify sentiment + extract complaint\" → the model improvises a format. Sometimes it's a paragraph. Sometimes bullets. Sometimes JSON. Sometimes JSON wrapped in markdown code fences. You cannot pipe this into JSON.parse() and trust it.", concept:`<div class="bg-red-50 border border-red-200 p-4 rounded text-sm w-full">
+    <div class="font-mono text-xs space-y-1">
+      <div>Call 1: "The sentiment is mixed..."</div>
+      <div>Call 2: "Sentiment: negative\\nComplaint: ..."</div>
+      <div>Call 3: \`\`\`json\\n{...}\\n\`\`\`</div>
+      <div class="text-red-700 italic">Three calls, three formats.</div>
+    </div>
+  </div>`, code:`// Zero-shot:
+const r = await generateText({
+  prompt: "Classify sentiment + extract complaint:\\n" + review
+});
+// r.text → unpredictable shape` },
+  { title:"2. The fix — 2-3 worked examples", why:"Drop 2-3 input/output pairs in the prompt BEFORE the real input. The model copies the format. Same model, dramatically more predictable output. The OG \"few-shot\" technique from GPT-3 paper.", concept:`<div class="bg-emerald-50 border border-emerald-200 p-4 rounded text-xs font-mono w-full">
+    <div>Review: "Battery dies in 2 hours..."</div>
+    <div class="text-emerald-700">Output: { "sentiment": "negative", ... }</div>
+    <div class="mt-2">Review: "Love the screen..."</div>
+    <div class="text-emerald-700">Output: { "sentiment": "positive", ... }</div>
+    <div class="mt-2 font-bold">Review: "{{REAL_INPUT}}"</div>
+    <div class="text-emerald-700">Output: ← model continues</div>
+  </div>`, code:`const FEW_SHOT = \`Classify review sentiment + complaint.
+
+Review: "Battery dies in 2 hours. Camera is great though."
+Output: { "sentiment": "negative", "complaint": "battery life" }
+
+Review: "Love the screen and price. Wish it had USB-C."
+Output: { "sentiment": "positive", "complaint": "missing USB-C" }
+
+Review: "{{REVIEW}}"
+Output:\`;` },
+  { title:"3. Why it works — pattern continuation", why:"LLMs predict the next token given everything before. By the time the model reaches \"Output:\" the third time, it has 'learned' the format from the two prior pairs. Same as showing a kid 2 example math problems before the test.", concept:`<div class="bg-slate-100 p-4 rounded text-sm space-y-1 w-full">
+    <div class="text-xs">2 examples seen →</div>
+    <div class="ml-4 text-xs">→ model infers format = {sentiment, complaint}</div>
+    <div class="ml-4 text-xs">→ model infers values come in quotes</div>
+    <div class="ml-4 text-xs">→ model infers comma between fields</div>
+    <div class="text-violet-700 font-bold mt-1">Third Output: continues the pattern.</div>
+  </div>`, code:`// LLM is next-token predictor.
+// First N tokens contain pattern.
+// Next tokens = continuation of pattern.` },
+  { title:"4. Example count — sweet spot 3-5", why:"1 example is fragile (model might still freestyle). 2-3 is solid. 5 is usually optimal. Beyond ~10 you hit diminishing returns + your context bloats. Don't waste budget on 50 examples.", concept:`<div class="bg-slate-100 p-4 rounded text-sm w-full">
+    <div class="font-mono text-xs space-y-1">
+      <div>1 example  → unreliable (60%)</div>
+      <div>2-3        → most use cases (85%)</div>
+      <div class="text-violet-700 font-bold">5         → sweet spot (90-95%)</div>
+      <div>10+        → diminishing returns</div>
+    </div>
+  </div>`, code:`// For sentiment: 3 examples is enough
+// For weird taxonomy with 20 classes: 5-7
+// For multi-step reasoning: 2-3 (each is long)` },
+  { title:"5. Pick diverse examples", why:"Don't show 3 positive reviews then ask the model to classify a negative one — it'll guess positive. Mix the classes. Pick examples that span the OUTPUT distribution you expect to see in production.", concept:`<div class="grid grid-cols-3 gap-1 text-xs w-full">
+    <div class="bg-red-100 text-red-700 p-2 rounded text-center font-bold">negative</div>
+    <div class="bg-emerald-100 text-emerald-700 p-2 rounded text-center font-bold">positive</div>
+    <div class="bg-amber-100 text-amber-700 p-2 rounded text-center font-bold">mixed</div>
+    <p class="col-span-3 text-slate-500 text-xs italic mt-2 text-center">Cover the class spectrum the model will face.</p>
+  </div>`, code:`// BAD: 3 positives, then ask negative
+// GOOD: 1 positive, 1 negative, 1 mixed
+// → model sees the FULL output distribution` },
+  { title:"6. Few-shot vs fine-tune", why:"Fine-tuning bakes examples into the model weights. Few-shot bakes them into the prompt. For < 10 examples, few-shot is cheaper + faster to iterate. Above ~100 examples, fine-tuning wins on token cost + latency.", concept:`<div class="grid grid-cols-2 gap-2 text-xs w-full">
+    <div class="bg-slate-100 p-3 rounded">
+      <div class="font-bold">Few-shot</div>
+      <div class="text-slate-600 mt-1">Examples in prompt<br>Edit anytime<br>5x tokens per call</div>
+    </div>
+    <div class="bg-violet-50 border border-violet-200 p-3 rounded">
+      <div class="font-bold text-violet-700">Fine-tune</div>
+      <div class="text-slate-600 mt-1">Examples baked in<br>1 hr to retrain<br>1× tokens</div>
+    </div>
+  </div>`, code:`// Heuristic:
+//   <  10 examples  → few-shot
+//   10-100         → either (test)
+//   >  100         → fine-tune
+
+// Day 42 of PromptFromZero will cover fine-tune.` },
+  { title:"7. Pair with CoT for hard tasks", why:"For reasoning problems, combine few-shot + Chain of Thought. Each example shows the model not just WHAT to output but HOW to think. Often called \"few-shot CoT\".", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full">
+    <div>Q: Sara has 4 apples. Gets 2 more.</div>
+    <div class="text-violet-700">A: Sara had 4. She got 2. 4+2=6. <b>Answer: 6.</b></div>
+    <div class="mt-2">Q: Roger has 5 tennis balls. Buys 2 cans of 3.</div>
+    <div class="text-violet-700">A: ← model continues with full reasoning</div>
+  </div>`, code:`// Few-shot CoT — examples include step-by-step:
+const PROMPT = \`
+Q: Sara has 4 apples, gets 2 more. How many?
+A: Sara had 4. She got 2 more. 4 + 2 = 6. Answer: 6.
+
+Q: Roger has 5 tennis balls, buys 2 cans of 3 each.
+A:\`;` },
+  { title:"8. Done!", why:"Few-shot is the cheapest way to force a model into a specific output format. Combined with CoT (Day 2) + self-consistency (Day 3), it's the foundation of every production LLM pipeline. Master the 3 = ship most things.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">You understand format control via examples.</p></div>`, code:`// Tomorrow: RAG basic — pulling relevant chunks
+// from a knowledge base BEFORE the model answers.` }
+];
+const stepsEl = document.getElementById("steps");
+const prev = document.getElementById("prev");
+const next = document.getElementById("next-btn");
+const auto = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  b.innerHTML = `<div class="font-semibold">${s.title}</div>`;
+  b.onclick = () => show(i);
+  stepsEl.appendChild(b);
+});
+function show(i) {
+  cur = i;
+  const s = STEPS[i];
+  document.getElementById("concept").innerHTML = `<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML = `<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent = s.code;
+  stepsEl.querySelectorAll("button").forEach((b, idx) => {
+    b.className = idx === i
+      ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+      : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  });
+}
+prev.onclick = () => show(Math.max(0, cur - 1));
+next.onclick = () => show(Math.min(STEPS.length - 1, cur + 1));
+let timer = null;
+auto.onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; auto.textContent = "▶ Auto-play"; return; }
+  auto.textContent = "⏸ Pause";
+  show(0);
+  timer = setInterval(() => {
+    if (cur >= STEPS.length - 1) { clearInterval(timer); timer = null; auto.textContent = "▶ Replay"; return; }
+    show(cur + 1);
+  }, 2500);
+};
+show(0);
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(() => btn.textContent = o, 1500);
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 9 — HyDE</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .doc { transition: all .5s ease; }
+  .bar { height:6px; border-radius:4px; background:#7c3aed; }
+  .type-cursor::after { content:"▋"; animation: blink 1s steps(2) infinite; color:#7c3aed; }
+  @keyframes blink { 50% { opacity:0; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 9</div>
+      <h1 class="text-xl font-bold">🪄 HyDE — Answer First, Then Search With That</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A short question barely overlaps a long answer</h2>
+      <p class="text-slate-500 text-center mb-5">Embedding a bare question often misses, because questions and answers use different words. <b>HyDE</b> asks the LLM to <i>write a fake answer first</i>, then searches with that — and the fake answer looks just like the real doc. Pick a question:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="bg-violet-50 border border-violet-200 rounded-xl p-4 mb-5">
+        <div class="text-xs font-bold uppercase text-violet-600 mb-1">🪄 LLM writes a hypothetical answer (may be partly wrong — doesn't matter):</div>
+        <div id="hyde" class="text-sm text-slate-700 type-cursor min-h-[40px]"></div>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs font-bold uppercase text-slate-500 mb-2">① Search with the question</div>
+          <div id="direct" class="space-y-2"></div>
+        </div>
+        <div>
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">② Search with the hypothetical answer (HyDE)</div>
+          <div id="hydecol" class="space-y-2"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ The green doc is the true answer. The bare question scatters it; the doc-shaped hypothetical answer pulls it to the top.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How HyDE works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add HyDE to your RAG</h2>
+    <p class="text-slate-500 mb-8">One extra LLM call before the search. Everything downstream stays the same.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Ask the LLM to write a fake answer</h3></div><pre>const hypo = await llm(`Write a short passage that
+would answer this question. Be specific.
+Question: ${query}`);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Embed the HYPOTHETICAL answer, not the question</h3></div><pre>const vec = await embed(hypo);   // ← the whole trick</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Search your real index with that vector</h3></div><pre>const docs = await vectorSearch(vec, { k: 5 });
+// the real passages, retrieved via the fake one</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Answer from the REAL docs (toss the fake)</h3></div><pre>// the hypothetical answer was only a search probe.
+return llm(`Answer using ONLY these:\n${docs}\nQ: ${query}`);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Average a few hypotheticals for stability</h3></div><pre>// generate 3-5 hypotheticals, embed each, average the vectors
+const vec = mean(hypos.map(embed));   // smooths out a bad guess</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 9 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: RAG-Fusion — ask many queries, fuse the ranks.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== HyDE demo =====
+// Direct search scores the bare QUESTION against docs (sparse overlap).
+// HyDE search scores a doc-shaped HYPOTHETICAL answer against docs (rich overlap).
+const QUERIES = [
+  { q:"Why won't my code build?", hyde:"A build can fail when a dependency version is missing from the lockfile, an import path is wrong, or the compiler hits a syntax error. Check the build log for the first error, verify package versions resolve, and clear the cache before rebuilding.",
+    docs:[
+      { t:"Build failures usually start with one root error in the log; later errors are cascades. Read the FIRST error, fix it, rebuild.", rel:0.96 },
+      { t:"Our pricing has three tiers: Free, Pro, and Enterprise.", rel:0.02 },
+      { t:"A missing dependency or mismatched version in the lockfile is the most common cause of a failed compile; run a clean install.", rel:0.9 },
+      { t:"You can customise the dashboard theme in Settings.", rel:0.05 },
+      { t:"Syntax errors and bad import paths stop the compiler before it finishes — the log names the file and line.", rel:0.8 },
+      { t:"Welcome to the product! Here's how to create your first account.", rel:0.04 },
+    ]},
+  { q:"How do plants make food?", hyde:"Plants make food through photosynthesis: chloroplasts capture sunlight and use that energy to combine carbon dioxide from the air with water from the roots, producing glucose for energy and releasing oxygen as a by-product.",
+    docs:[
+      { t:"Photosynthesis lets a plant convert sunlight, carbon dioxide and water into glucose, releasing oxygen. It happens in the chloroplasts of leaf cells.", rel:0.97 },
+      { t:"Many gardeners water their plants in the early morning to reduce evaporation.", rel:0.2 },
+      { t:"Chlorophyll is the green pigment that absorbs light energy to drive the food-making reaction.", rel:0.75 },
+      { t:"Cacti store water in thick stems to survive long dry periods in the desert.", rel:0.1 },
+      { t:"Glucose produced in the leaves is transported through the phloem to the rest of the plant for energy.", rel:0.6 },
+      { t:"Some plants are sold as decorative houseplants and need very little light.", rel:0.05 },
+    ]},
+  { q:"Is it safe to leave?", hyde:"Whether it is safe to leave depends on the context: if there is a hazard like fire or gas, evacuate immediately; otherwise check that doors are locked, appliances are off, and any pets or children are cared for before you go.",
+    docs:[
+      { t:"Before leaving home, confirm the stove and appliances are off, doors and windows are locked, and no hazards like gas or fire are present.", rel:0.95 },
+      { t:"Our return policy allows refunds within 30 days of purchase.", rel:0.02 },
+      { t:"In an emergency such as fire or a gas leak, evacuate the building immediately and call for help — do not delay.", rel:0.82 },
+      { t:"The store is open from 9am to 6pm on weekdays.", rel:0.04 },
+      { t:"If you have pets or young children, make sure they are safe and supervised before you go out.", rel:0.66 },
+      { t:"Leaves change colour in autumn as chlorophyll breaks down.", rel:0.03 },
+    ]},
+];
+const STOP = new Set("how do i is my the a an to on of in for why and or with we our you your can never it to be make made does".split(" "));
+const tok = s => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(w=>w&&!STOP.has(w));
+function score(query, t){ const qs=new Set(tok(query)); const ts=tok(t); if(!ts.length||!qs.size) return 0; let hit=0; for(const w of ts) if(qs.has(w)) hit++; return hit / Math.sqrt(ts.length); }
+
+const qsEl = document.getElementById("qs"), directEl = document.getElementById("direct"), hydeColEl = document.getElementById("hydecol"), hydeEl = document.getElementById("hyde");
+function card(d, s, max, rank, isTop){
+  return `<div class="doc bg-white rounded-xl border ${isTop?'border-emerald-400':'border-slate-200'} p-3">
+    <div class="flex items-start gap-2">
+      <span class="text-xs font-bold ${isTop?'text-emerald-600':'text-slate-400'} mt-0.5">#${rank}</span>
+      <div class="flex-1">
+        <div class="text-xs text-slate-600 ${isTop?'font-semibold':''}">${d.t}</div>
+        <div class="bar mt-1.5" style="width:${Math.max(5,(s/max)*100)}%; background:${isTop?'#10b981':'#7c3aed'}"></div>
+      </div>
+    </div></div>`;
+}
+let typeTimer = null;
+function run(qi){
+  const { q, hyde, docs } = QUERIES[qi];
+  const truth = Math.max(...docs.map(d=>d.rel));
+  // direct: score the bare question
+  const direct = docs.map(d=>({ ...d, s: score(q, d.t) })).sort((a,b)=>b.s-a.s);
+  const maxD = Math.max(...direct.map(d=>d.s))||1;
+  directEl.innerHTML = direct.map((d,i)=>card(d, d.s, maxD, i+1, d.rel===truth)).join("");
+  // typewriter the hypothetical answer, then run HyDE search
+  clearInterval(typeTimer); hydeEl.textContent = ""; hydeColEl.innerHTML = "";
+  let ch = 0;
+  typeTimer = setInterval(()=>{
+    hydeEl.textContent = hyde.slice(0, ch+=2);
+    if (ch >= hyde.length){
+      clearInterval(typeTimer); hydeEl.classList.remove("type-cursor");
+      const hy = docs.map(d=>({ ...d, s: score(hyde, d.t) })).sort((a,b)=>b.s-a.s);
+      const maxH = Math.max(...hy.map(d=>d.s))||1;
+      hydeColEl.innerHTML = hy.map((d,i)=>card(d, d.s, maxH, i+1, d.rel===truth)).join("");
+    }
+  }, 12);
+  hydeEl.classList.add("type-cursor");
+}
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Questions don't look like answers", why:"Embeddings place text near other text that's worded similarly. But a question (\"Why won't my code build?\") and its answer (\"A missing dependency in the lockfile…\") share almost no words. So the question's vector lands in a different neighbourhood than the doc that answers it — and plain semantic search misses.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">short question ⟶ far from ⟶ long answer (vocabulary gap)</div>`, code:`// embed("Why won't my code build?")
+// lands nowhere near the doc that explains lockfiles` },
+  { title:"2. HyDE's bet: generate the answer first", why:"HyDE (Hypothetical Document Embeddings) flips the order. Before searching, ask the LLM to WRITE a plausible answer to the question. That hypothetical passage is long, specific, and answer-shaped — so its embedding lands right where the real answer lives.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">question → LLM writes fake answer → embed THAT</div>`, code:`const hypo = await llm("Write a passage that answers: " + q);
+const vec  = await embed(hypo);   // search with this` },
+  { title:"3. A WRONG fake answer still works", why:"The surprising part: the hypothetical answer can contain factual mistakes and HyDE still helps. You never show it to the user — it's only a search probe. What matters is that it's in the right STYLE and topic, so it's near the genuine documents in vector space. Shape beats accuracy here.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>fake answer: \"glucose is made in the roots\" (wrong!)</div><div class="text-violet-600">…still lands near the real photosynthesis doc ✓</div></div>`, code:`// the hypothetical is a decoy, not the output.
+// it just needs to look like the right kind of doc.` },
+  { title:"4. Retrieve real docs, answer from those", why:"You search your real index with the hypothetical's vector, get back the genuine passages, and THEN generate the final answer grounded only in those real docs. The fake answer is discarded. So you get better retrieval without risking the LLM's hallucinations leaking into the response.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">fake answer → finds real docs → answer from real docs</div>`, code:`const docs = await vectorSearch(vec, { k: 5 });
+return llm("Answer using ONLY:\\n" + docs + "\\nQ: " + q);` },
+  { title:"5. Average several hypotheticals", why:"A single guess can be a dud. Generating 3–5 hypothetical answers and averaging their embeddings smooths out any one bad probe, like ensembling. More LLM calls, but a more robust search vector — useful when retrieval quality really matters.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Answer first, embed the answer, search with that.</p></div>`, code:`const vec = mean(hypos.map(embed));  // ensemble the probes` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

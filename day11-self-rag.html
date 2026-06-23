@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 11 — Self-RAG</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 11</div>
+      <h1 class="text-xl font-bold">🪞 Self-RAG — the Model Decides When to Retrieve, Then Grades Itself</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-3xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Not every question needs a search. Self-RAG knows the difference.</h2>
+      <p class="text-slate-500 text-center mb-5">Plain RAG retrieves for <i>everything</i>. Self-RAG makes the model emit "reflection tokens": <b>Retrieve?</b> first, then grade each doc <b>Relevant?</b>, and grade its own answer <b>Supported?</b> / <b>Useful?</b> — retrying if it falls short. Pick a question:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div id="pipeline" class="space-y-3"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Self-RAG works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add Self-RAG to your pipeline</h2>
+    <p class="text-slate-500 mb-8">Four small LLM judgements wrapped around your normal retrieve-and-generate.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Decide: retrieve at all?</h3></div><pre>const needs = await llm(`Does answering this need external/private facts?
+Answer RETRIEVE or NO_RETRIEVE. Question: ${q}`);
+if (needs === "NO_RETRIEVE") return llm(q);   // skip the whole search</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Grade each retrieved doc for relevance</h3></div><pre>const useful = docs.filter(d =>
+  llm(`Is this passage RELEVANT to "${q}"? yes/no\n${d}`) === "yes");</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Generate, then check it's SUPPORTED</h3></div><pre>const answer = await llm(`Answer using:\n${useful}\nQ: ${q}`);
+const supported = await llm(`Is every claim in this answer supported by
+the passages? FULLY / PARTIAL / NO\n${answer}\n${useful}`);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Loop if it's not good enough</h3></div><pre>if (supported !== "FULLY" || !isUseful(answer)) {
+  // retrieve more / rewrite the query / regenerate
+  return retryWithMoreContext(q);
+}</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 11 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Corrective RAG (CRAG) — fall back to web search when retrieval is weak.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== SELF-RAG demo =====
+const QUERIES = [
+  { q:"What is 17 × 23?", retrieve:false, answer:"391.", note:"Pure reasoning — no external facts needed, so Self-RAG skips retrieval entirely (saving a search + tokens).", docs:[], supported:"N/A", useful:true },
+  { q:"What's our company refund policy?", retrieve:true, answer:"Refunds are available within 30 days of purchase, for unused items, processed to the original payment method.",
+    docs:[ {t:"Refunds: within 30 days of purchase, items must be unused, refunded to the original payment method.", rel:true},
+           {t:"Our office is open 9am–6pm on weekdays.", rel:false},
+           {t:"Store-credit can be issued instead of a refund on request.", rel:true} ],
+    supported:"FULLY", useful:true },
+  { q:"Did our Q3 revenue beat Q2?", retrieve:true, answer:"Yes — Q3 revenue was ₹4.2 Cr vs ₹3.8 Cr in Q2, a 10.5% increase.",
+    docs:[ {t:"Q3 revenue: ₹4.2 Cr. Q2 revenue: ₹3.8 Cr.", rel:true},
+           {t:"The new logo was unveiled in Q3.", rel:false},
+           {t:"Marketing spend rose 12% in Q3.", rel:false} ],
+    supported:"FULLY", useful:true },
+];
+const qsEl=document.getElementById("qs"), pipe=document.getElementById("pipeline");
+const tok=(label,val,good)=>`<span class="tok inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-bold ${good?'bg-emerald-100 text-emerald-700':'bg-rose-100 text-rose-700'}">${label}: ${val}</span>`;
+function run(qi){
+  const Q=QUERIES[qi]; pipe.innerHTML="";
+  const card=(h)=>{ const d=document.createElement("div"); d.className="bg-white rounded-2xl border border-slate-200 p-4 fade-in"; d.innerHTML=h; pipe.appendChild(d); };
+  let delay=0; const add=(h)=>{ setTimeout(()=>card(h), delay); delay+=550; };
+  add(`<div class="text-xs font-bold uppercase text-slate-500 mb-1">① Reflection token: Retrieve?</div>${tok("Retrieve?", Q.retrieve?"YES":"NO", true)}<div class="text-xs text-slate-500 mt-2">${Q.retrieve?"This needs external/private facts → search.":"Answerable from the model's own reasoning → skip the search."}</div>`);
+  if (Q.retrieve){
+    add(`<div class="text-xs font-bold uppercase text-slate-500 mb-2">② Grade each retrieved doc: Relevant?</div>`+
+      Q.docs.map(d=>`<div class="flex items-start gap-2 py-1"><span class="mt-0.5">${tok("Rel?", d.rel?"yes":"no", d.rel)}</span><span class="text-xs text-slate-600 ${d.rel?'':'line-through text-slate-400'}">${d.t}</span></div>`).join("")+
+      `<div class="text-xs text-violet-600 mt-2">→ irrelevant docs dropped; only the relevant ones reach the answer.</div>`);
+  }
+  add(`<div class="text-xs font-bold uppercase text-violet-600 mb-1">③ Answer</div><div class="text-sm text-slate-800">${Q.answer}</div>`);
+  add(`<div class="text-xs font-bold uppercase text-slate-500 mb-2">④ Grade the answer</div><div class="flex flex-wrap gap-2">${tok("Supported?", Q.supported, Q.supported==="FULLY"||Q.supported==="N/A")} ${tok("Useful?", Q.useful?"yes":"no", Q.useful)}</div><div class="text-xs text-slate-500 mt-2">${Q.supported==="FULLY"?"Every claim is backed by a retrieved passage → accept.":Q.supported==="N/A"?"No retrieval, pure reasoning → accept.":"Not fully supported → loop: retrieve more / rewrite / regenerate."}</div>`);
+}
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Plain RAG retrieves for EVERYTHING", why:"Standard RAG runs a search on every single query — even '17 × 23?' or 'rewrite this politely', which need no external facts. That wastes a retrieval call, stuffs irrelevant context into the prompt, and can actually make answers worse by distracting the model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">every query → search → stuff context (even when pointless)</div>`, code:`// naive RAG: always retrieve, always stuff. no judgement.` },
+  { title:"2. Reflection tokens: the model judges itself", why:"Self-RAG trains the model to emit special 'reflection tokens' alongside its output — little self-assessments like Retrieve?, IsRelevant?, IsSupported?, IsUseful?. The model isn't just answering; it's narrating decisions about its own process, which you can branch on.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">[Retrieve?] [IsRel?] [IsSup?] [IsUse?] — self-assessments</div>`, code:`// the model outputs control tokens you can read + act on` },
+  { title:"3. First token: do we even retrieve?", why:"Before searching, the model decides if this query needs external knowledge. Math, formatting, general reasoning → NO_RETRIEVE (skip the search, answer directly, faster + cheaper). Facts about your data, recent events, specifics → RETRIEVE. Adaptive, not blanket.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>"17 × 23?" → NO_RETRIEVE</div><div class="text-violet-700">"our refund policy?" → RETRIEVE</div></div>`, code:`if (decide(q) === "NO_RETRIEVE") return llm(q);  // skip search` },
+  { title:"4. Grade each retrieved doc for relevance", why:"When it does retrieve, the model grades every passage: is this actually relevant to the question? Irrelevant chunks (the keyword-y but off-topic ones) get dropped before generation, so only genuinely useful context reaches the answer. Quality filter on the retrieval itself.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">each doc → IsRelevant? yes/no → keep only the yeses</div>`, code:`const useful = docs.filter(d => isRelevant(q, d) === "yes");` },
+  { title:"5. Grade the answer: is it SUPPORTED?", why:"After generating, the model checks its OWN answer: is every claim backed by the retrieved passages (FULLY / PARTIAL / NO)? This catches hallucinations — confident statements with no source. An unsupported answer is flagged instead of shipped.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">answer + docs → IsSupported? FULLY / PARTIAL / NO</div>`, code:`const supported = grade(answer, docs); // FULLY | PARTIAL | NO` },
+  { title:"6. Loop until it's good — self-correcting RAG", why:"If the answer isn't fully supported or isn't useful, Self-RAG doesn't just ship it — it loops: retrieve more, rewrite the query, or regenerate. The result is a RAG pipeline that adapts retrieval to the question and refuses to hand you a confident, unsupported answer.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Decide → retrieve → grade docs → answer → grade answer → loop. RAG that checks itself.</p></div>`, code:`while (supported !== "FULLY") answer = retryWithMoreContext(q);` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

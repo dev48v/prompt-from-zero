@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 14 — Reranking (Retrieve Fast, Then Reorder Precisely)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  /* smooth reorder of rerank rows */
+  .row-move { transition: transform .65s cubic-bezier(.22,1,.36,1); }
+  .promote-glow { animation: promoteGlow 1.4s ease-out 1; }
+  @keyframes promoteGlow { 0%{ box-shadow:0 0 0 0 rgba(124,58,237,.55);} 60%{ box-shadow:0 0 0 10px rgba(124,58,237,0);} 100%{ box-shadow:0 0 0 0 rgba(124,58,237,0);} }
+  .jump-arrow { animation: jumpArrow 1.4s ease-in-out 1; }
+  @keyframes jumpArrow { 0%{ opacity:0; transform:translateY(6px);} 30%,80%{ opacity:1; transform:none;} 100%{ opacity:0; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 14</div>
+      <h1 class="text-xl font-bold">🥇 Reranking — Retrieve Fast, Then Reorder Precisely</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Fast search gets you a shortlist. A reranker puts the best answer at #1.</h2>
+      <p class="text-slate-500 text-center mb-5">A <b>bi-encoder</b> embeds the query and every doc <i>separately</i> (fast, scalable — but coarse), so its top-6 ordering is rough and the truly best doc often lands at rank&nbsp;4 or&nbsp;5. A <b>cross-encoder</b> then reads the query <b>and</b> each doc <i>together</i> (slow, accurate) and re-scores every pair — so you <b>retrieve a shortlist cheaply, then rerank it precisely</b>. Pick a query and watch the best doc jump to the top:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">①&nbsp;Retrieve — bi-encoder vector search (coarse)</div>
+          <div id="colBefore" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">②&nbsp;Rerank — cross-encoder re-scores each pair (precise)</div>
+          <div id="colAfter" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How reranking works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add a reranker to your retrieval pipeline</h2>
+    <p class="text-slate-500 mb-8">Retrieve a wide shortlist with cheap vector search, re-score every (query, doc) pair with a cross-encoder, sort, keep the top few, then feed only those to generation.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Retrieve a wide shortlist with the bi-encoder</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>const q = "How do I cancel my subscription?";
+
+// Stage 1 — fast & cheap. Embed the query, ANN-search the
+// pre-embedded corpus. Retrieve MANY (over-fetch), e.g. 50,
+// not 5 — recall now, precision later.
+const qVec       = await embed(q);
+const candidates = await vectorStore.search(qVec, { k: 50 });
+// candidates are roughly relevant, but coarsely ordered.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Score every (query, doc) PAIR with a cross-encoder</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Stage 2 — slow but accurate. The cross-encoder reads the
+// query AND the doc TOGETHER and returns one relevance score.
+// We only run it on the ~50 candidates, never the whole corpus.
+async function rerankScores(q, docs) {
+  return Promise.all(
+    docs.map(async d => ({
+      doc:   d,
+      score: await crossEncoder(q, d.text)   // joint encoding
+    }))
+  );
+}
+const scored = await rerankScores(q, candidates);</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Sort by rerank score (high → low)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The reranker's order replaces the vector-search order.
+// A doc that was rank 5 can now be rank 1.
+scored.sort((a, b) =&gt; b.score - a.score);</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Take the top-n — the precise final context</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Retrieve 50 → rerank → keep just the best few.
+const topDocs = scored.slice(0, 5).map(s =&gt; s.doc);
+// these 5 are far cleaner than the raw top-5 from search.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Feed only the reranked top-n to generation</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>const answer = await llm(`Answer using ONLY these documents.
+If they don't contain the answer, say so.
+
+${topDocs.map(d =&gt; d.text).join("\n---\n")}
+
+Question: ${q}`);
+// the best evidence is now first → tighter, more accurate answer.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Use a hosted reranker (e.g. Cohere Rerank)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Don't want to host a cross-encoder? Call a rerank API.
+const reranked = await cohere.rerank({
+  model:     "rerank-english-v3.0",
+  query:     q,
+  documents: candidates.map(d =&gt; d.text),
+  top_n:     5
+});
+// returns indices + relevance_score, already sorted.
+const topDocs = reranked.results.map(r =&gt; candidates[r.index]);</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Tune top-k (retrieve) vs top-n (keep)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// k too small → the right doc never reaches the reranker.
+// k too big  → reranker is slow & costs more per query.
+// n too big  → noisy context dilutes the answer.
+const K = 50;   // how many the bi-encoder hands over (recall)
+const N = 5;    // how many survive the rerank (precision)
+// rule of thumb: over-fetch generously, keep tightly.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Wrap it as one drop-in two-stage retriever</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>async function retrieveAndRerank(q, k = 50, n = 5) {
+  const cands  = await vectorStore.search(await embed(q), { k });
+  const scored = await rerankScores(q, cands);     // cross-encoder
+  scored.sort((a, b) =&gt; b.score - a.score);
+  return scored.slice(0, n).map(s =&gt; s.doc);
+}
+// swap your retriever for this — generation stays the same.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 14 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Contextual Compression — trim each retrieved doc down to just the sentences that answer the question before sending it to generation.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Reranking demo =====
+// Each query carries a small shared corpus. `retr` = the COARSE bi-encoder
+// similarity (separate embeddings → fast but rough; the truly-best doc is
+// deliberately buried at rank 4–5). `rerank` = the cross-encoder relevance
+// score (query+doc read TOGETHER → accurate). The SAME shortlist is shown
+// twice: ordered by `retr` (Before) and by `rerank` (After). `best:true`
+// marks the doc that should win once reranked.
+const QUERIES = [
+  { q:"How do I cancel my subscription?",
+    docs:[
+      { t:"Subscription pricing tiers: Basic, Pro and Team plans, billed monthly or annually.", retr:0.71, rerank:0.22 },
+      { t:"Manage your subscription from the Billing dashboard, where invoices and plans live.", retr:0.66, rerank:0.45 },
+      { t:"Pausing a subscription freezes billing for up to 3 months without losing your data.", retr:0.61, rerank:0.58 },
+      { t:"To cancel your subscription: Settings → Billing → Cancel Plan. Access stays active until the end of the current billing period.", retr:0.57, rerank:0.96, best:true },
+      { t:"Subscription receipts are emailed automatically after each successful charge.", retr:0.52, rerank:0.18 },
+      { t:"You can change your subscription's payment method anytime under Billing.", retr:0.49, rerank:0.33 },
+    ],
+    answer:"Go to Settings → Billing → Cancel Plan. Your access stays active until the end of the current billing period." },
+
+  { q:"Why is my payment failing?",
+    docs:[
+      { t:"Payment methods we accept: Visa, Mastercard, Amex and PayPal in most regions.", retr:0.73, rerank:0.20 },
+      { t:"Set up a backup payment method so charges don't fail if your primary card expires.", retr:0.68, rerank:0.52 },
+      { t:"Payment history and receipts are available for download under Billing → Invoices.", retr:0.62, rerank:0.24 },
+      { t:"Annual payment plans give a 15% discount versus paying monthly.", retr:0.55, rerank:0.16 },
+      { t:"A payment fails when the card is expired, the billing address mismatches, or funds are insufficient — update the card under Billing and retry.", retr:0.51, rerank:0.95, best:true },
+      { t:"After three declined payments in a row, the account is paused until a valid card is added.", retr:0.47, rerank:0.71 },
+    ],
+    answer:"Payments fail when the card is expired, the billing address mismatches, or funds are insufficient. Update the card under Billing and retry; after three declines the account is paused until a valid card is added." },
+
+  { q:"Can I export my data?",
+    docs:[
+      { t:"Data & Privacy settings let you control cookies, tracking and marketing emails.", retr:0.70, rerank:0.19 },
+      { t:"Imported data must be in CSV format with a header row and UTF-8 encoding.", retr:0.65, rerank:0.30 },
+      { t:"We store your data encrypted at rest in your region's data centre.", retr:0.60, rerank:0.21 },
+      { t:"Backups of your account data are taken nightly and retained for 30 days.", retr:0.56, rerank:0.41 },
+      { t:"To export your data: Settings → Data & Privacy → Export, choose CSV or JSON; a download link is emailed when ready.", retr:0.50, rerank:0.96, best:true },
+      { t:"Exported files are retained for 7 days — download yours before the link expires.", retr:0.46, rerank:0.74 },
+    ],
+    answer:"Yes — go to Settings → Data & Privacy → Export, choose CSV or JSON, and a download link is emailed when ready. The link is valid for 7 days." },
+];
+
+const NODE_NAMES = ["Query","Embed query","ANN search (bi-encoder)","Shortlist (coarse)","Cross-encoder re-score","Re-sort","Top-n"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const colBefore=document.getElementById("colBefore"), colAfter=document.getElementById("colAfter");
+const verdictBar=document.getElementById("verdictBar");
+
+const simBadge=(s)=>{ const good=s>=0.75, mid=s>=0.40; const cls=good?'bg-emerald-100 text-emerald-700':mid?'bg-amber-100 text-amber-700':'bg-rose-100 text-rose-700'; return `<span class="tok rounded-full px-2 py-0.5 text-xs font-bold ${cls}">${s.toFixed(2)}</span>`; };
+const bar=(s,color)=>`<div class="h-1.5 rounded-full bg-slate-100 mt-1"><div class="h-1.5 rounded-full ${color}" style="width:${Math.round(s*100)}%"></div></div>`;
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+// build one ranked card row; `key` = which score to show
+function rowHTML(d, rank, key, color, isBest, highlight){
+  const score = d[key];
+  return `<div class="rerow row-move bg-white rounded-xl border ${isBest&&highlight?'border-violet-400 promote-glow':'border-slate-200'} p-3 ${isBest&&highlight?'ring-1 ring-violet-300':''}">
+    <div class="flex items-start gap-2">
+      <span class="tok text-xs font-bold ${rank===0?'text-violet-700':'text-slate-400'} w-7 shrink-0">#${rank+1}</span>
+      <div class="flex-1 min-w-0">
+        <div class="flex items-start gap-2">
+          <span class="mt-0.5">${simBadge(score)}</span>
+          <span class="text-xs ${rank===0?'text-slate-900 font-semibold':'text-slate-500'}">${d.t}${isBest?` <span class="tok text-[10px] font-bold text-violet-600">★ best answer</span>`:''}</span>
+        </div>
+        ${bar(score,color)}
+      </div>
+    </div>
+  </div>`;
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUERIES[qi]; colBefore.innerHTML=""; colAfter.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=900; };
+
+  // coarse retrieval order (bi-encoder) and precise order (cross-encoder)
+  const retrRanked   = [...Q.docs].sort((a,b)=>b.retr-a.retr);
+  const rerankRanked = [...Q.docs].sort((a,b)=>b.rerank-a.rerank);
+  const bestRetrRank = retrRanked.findIndex(d=>d.best);   // 0-based, ~3-4
+
+  // STAGE 1 — show the coarse retrieved shortlist (Before column)
+  step(3, ()=>{
+    colBefore.innerHTML = retrRanked.map((d,i)=>rowHTML(d,i,'retr','bg-rose-400',d.best,false)).join("");
+  });
+
+  // STAGE 2a — cross-encoder is "scoring pairs" (After column appears in the OLD order first)
+  step(4, ()=>{
+    colAfter.innerHTML = `<div class="text-xs text-violet-600 font-semibold mb-1">cross-encoder reads (query, doc) pairs…</div>`+
+      retrRanked.map((d,i)=>rowHTML(d,i,'rerank','bg-violet-300',d.best,false)).join("");
+  });
+
+  // STAGE 2b — re-sort: animate the rows into the reranked order
+  step(5, ()=>{
+    // measure current positions (keyed by doc text)
+    const rows = Array.from(colAfter.querySelectorAll(".rerow"));
+    const firstTop = {}; rows.forEach((r,i)=>{ firstTop[retrRanked[i].t] = r.getBoundingClientRect().top; });
+
+    // rebuild in reranked order
+    colAfter.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">…then re-sorts by true relevance</div>`+
+      rerankRanked.map((d,i)=>rowHTML(d,i,'rerank','bg-emerald-500',d.best,true)).join("");
+
+    // FLIP animation: from old top → new top
+    requestAnimationFrame(()=>{
+      const newRows = Array.from(colAfter.querySelectorAll(".rerow"));
+      newRows.forEach((r,i)=>{
+        const txt = rerankRanked[i].t;
+        const lastTop = r.getBoundingClientRect().top;
+        const dy = (firstTop[txt]||lastTop) - lastTop;
+        if(Math.abs(dy)>1){
+          r.style.transform = `translateY(${dy}px)`;
+          r.style.transition = "transform 0s";
+          requestAnimationFrame(()=>{ r.style.transition=""; r.style.transform=""; });
+        }
+      });
+    });
+  });
+
+  // verdict — best doc promoted from rank N → #1
+  step(6, ()=>{
+    const best = rerankRanked[0];
+    const fromRank = bestRetrRank+1, toRank = 1;
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">retrieve put the best doc at #${fromRank}</span>
+        <span class="text-slate-400 font-bold jump-arrow">⤴</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">rerank promotes it to #1</span>
+        <span class="tok rounded-full px-3 py-1 bg-violet-100 text-violet-700 font-bold">+${fromRank-toRank} ranks</span>
+      </div>
+      <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Final answer — from the reranked top doc</div>
+      <div class="text-sm text-slate-800">${Q.answer}</div>
+      <div class="text-xs text-slate-500 mt-3">Bi-encoder fetched a coarse shortlist cheaply; the cross-encoder re-read each (query, doc) pair and pushed the genuinely-best doc to the top.</div>
+    </div>`;
+  });
+}
+
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. The two-stage pattern: retrieve, then rerank", why:"Good retrieval is a balancing act between speed and accuracy, and no single model does both well. The two-stage pattern splits the job: a fast first stage scans the whole corpus and pulls back a rough shortlist of candidates, and a slow, accurate second stage carefully re-orders just that shortlist. You get the speed of cheap search over millions of documents and the precision of an expensive model over only a few dozen. Almost every serious search and RAG system is built this way — fetch wide, then sharpen.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">query → <b class="text-rose-700">retrieve many (fast, coarse)</b> → <b class="text-emerald-700">rerank few (slow, precise)</b> → top-n</div>`, code:`// stage 1: search all docs, keep top-50 (recall)
+// stage 2: rerank those 50, keep top-5 (precision)` },
+  { title:"2. The bi-encoder: embed query and docs separately", why:"The fast first stage uses a bi-encoder. It turns the query into one vector and each document into its own vector, completely independently of each other. Crucially, every document can be embedded once, ahead of time, and stored in an index. At query time you only embed the short query and compare its single vector against the pre-computed library. Because the heavy work is done in advance, the bi-encoder can search millions of documents in milliseconds — that is what makes it the workhorse of large-scale retrieval.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">embed(query) · embed(doc) — <b>separately</b> → two independent vectors → compare</div>`, code:`const qVec = await embed(q);          // once per query
+// docVecs were embedded & indexed long ago` },
+  { title:"3. ANN search: nearest neighbours, fast", why:"Once everything is a vector, finding relevant documents becomes a geometry problem: return the document vectors closest to the query vector. Doing this exactly over millions of items would be slow, so search engines use Approximate Nearest Neighbour (ANN) indexes that find the closest points almost instantly with a tiny accuracy trade-off. This is why the bi-encoder stage scales — it never compares the query to every document one by one, it jumps straight to the neighbourhood. The output is a shortlist ordered by raw vector distance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">query vector → ANN index → nearest doc vectors (top-k) in milliseconds</div>`, code:`const candidates = await vectorStore.search(qVec, { k: 50 });` },
+  { title:"4. Why the bi-encoder order is coarse", why:"The bi-encoder never looks at the query and a document at the same time. Each vector is a frozen summary of its text made in isolation, so the model can't notice that a particular word in the query is the exact thing this document explains. Two passages can land near each other just for sharing a topic, even when only one truly answers the question. That is why the right document so often shows up in the top results but sits at rank four or five instead of first — the ordering captures the general subject, not the precise relevance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-slate-700">no query↔doc interaction → ranks by topic, not by true relevance</div><div class="text-rose-700 mt-1">the best answer is in the list — but buried at #4–#5 😕</div></div>`, code:`// vectors are made in isolation → "about the same thing"
+// is not the same as "actually answers this".` },
+  { title:"5. The cross-encoder: read query and doc together", why:"The second stage uses a cross-encoder, which works in the opposite way. Instead of two separate vectors, it feeds the query and one document into the model as a single joined input and lets every word of the query attend to every word of the document. This lets it judge true relevance — it can tell that a passage actually answers the question, not merely mentions the same topic. The result is a single, sharp relevance score per pair that is far more accurate than vector distance. The price is that it must run the model fresh for each query-document pair.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">model( [query] + [doc] ) — read <b class="text-emerald-700">together</b> → one true-relevance score</div>`, code:`const score = await crossEncoder(q, doc.text);
+// joint encoding → far more accurate than vector distance` },
+  { title:"6. Why you can't cross-encode the whole corpus", why:"If the cross-encoder is so accurate, why not use it for everything? Because it has to run the model once for every single query-document pair, with no pre-computation possible — the query is baked into each comparison. Scoring a million documents per query would mean a million model passes and would take seconds or minutes, which is hopeless for live search. So you only ever run it on the small shortlist the bi-encoder already narrowed down. The cheap stage makes the expensive stage affordable by shrinking its workload from millions to dozens.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-rose-700">cross-encode 1,000,000 docs → minutes per query ❌</div><div class="text-emerald-700">cross-encode the top-50 shortlist → milliseconds ✅</div></div>`, code:`// run the cross-encoder ONLY on the ~50 candidates,
+// never on the full index.` },
+  { title:"7. Score, then re-sort the shortlist", why:"The mechanics of reranking are simple. Run the cross-encoder over each candidate from the shortlist to get a relevance score, then sort the candidates by that new score from high to low. The vector-search order is thrown away and the cross-encoder order takes over. A document that the bi-encoder ranked fifth can leap to first if it genuinely answers the question best, and a topic-match that fooled the vector search drops down. The output is the same set of documents, just placed in a much more trustworthy order.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">score each pair → sort high→low → <b class="text-violet-700">#5 can become #1</b></div>`, code:`scored.sort((a, b) => b.score - a.score);
+const top = scored.slice(0, 5);` },
+  { title:"8. Reranker models: cross-encoders & Rerank APIs", why:"You don't have to build a cross-encoder yourself. Open models such as the sentence-transformers cross-encoders run locally and are free, while hosted services like Cohere Rerank expose the same idea behind a single API call — you send the query and the list of documents and get back relevance scores already sorted. Hosted rerankers trade a per-call cost for zero infrastructure and strong out-of-the-box quality, including multilingual support. Either way the interface is the same: give it the query and the shortlist, receive a precisely ordered list.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">local cross-encoder (free, self-hosted) · or Cohere Rerank API (hosted, sorted scores)</div>`, code:`const r = await cohere.rerank({ query: q,
+  documents: docs, top_n: 5 });   // sorted relevance` },
+  { title:"9. Tuning top-k and top-n, and the cost trade-off", why:"Reranking has two dials. Top-k is how many candidates the bi-encoder hands over: set it too low and the right document may never reach the reranker, too high and the cross-encoder gets slow and expensive. Top-n is how many survive the rerank and reach the model: too many and noisy context dilutes the answer, too few and you risk dropping a useful doc. The honest cost is the extra latency and money of running the cross-encoder per query. The usual recipe is to over-fetch generously — say 50 — and keep tightly — say 5.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b>retrieve k=50</b> (recall) → rerank → <b>keep n=5</b> (precision) · +1 model pass per candidate</div>`, code:`const K = 50;  // over-fetch wide (recall)
+const N = 5;   // keep tight (precision)` },
+  { title:"10. Why reranking lifts RAG answer quality", why:"In retrieval-augmented generation the model can only be as good as the documents you place in front of it, and it leans hardest on the first few. If the truly relevant passage is buried at rank five, a top-three context window misses it entirely and the answer is vague or wrong. Reranking fixes exactly this: it lifts the best evidence to the very top so the strongest passages fill the context the model reads. The payoff is consistently more accurate, better-grounded answers, which is why a reranker is one of the highest-leverage upgrades you can bolt onto a RAG pipeline.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Best evidence first → the model reads the right docs → sharper, better-grounded answers.</p></div>`, code:`// retrieve wide, rerank precise, feed the BEST docs first.
+const ctx = await retrieveAndRerank(q, 50, 5);` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>

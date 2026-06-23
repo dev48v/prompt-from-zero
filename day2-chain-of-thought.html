@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 2 — Chain of Thought</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .copy-btn:hover { background:#1e293b; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back to PromptFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-700" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 2</div>
+      <h1 class="text-xl font-bold">🪜 Chain of Thought</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOOK -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8">
+    <div class="max-w-3xl mx-auto">
+      <p class="text-slate-500 mb-6 text-center">Same problem, two prompts. Watch the difference.</p>
+
+      <div class="bg-white border rounded-2xl p-5 mb-4">
+        <label class="text-xs font-semibold text-slate-500">PROBLEM</label>
+        <div class="font-bold text-lg mt-1">Roger has 5 tennis balls. He buys 2 cans of 3 balls each. How many balls does he have now?</div>
+        <button id="run" class="mt-3 bg-violet-600 text-white px-5 py-2 rounded-lg font-semibold hover:bg-violet-700">▶ Run both prompts</button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-red-50 border border-red-200 rounded-2xl p-5">
+          <div class="text-xs font-bold uppercase text-red-700 mb-2">❌ Without CoT</div>
+          <div class="text-xs text-slate-500 mb-2">prompt: "Just answer."</div>
+          <div id="bad" class="min-h-20 text-sm"></div>
+        </div>
+        <div class="bg-emerald-50 border border-emerald-200 rounded-2xl p-5">
+          <div class="text-xs font-bold uppercase text-emerald-700 mb-2">✅ With CoT</div>
+          <div class="text-xs text-slate-500 mb-2">prompt: "Let's think step by step."</div>
+          <div id="good" class="min-h-20 text-sm"></div>
+        </div>
+      </div>
+
+      <p class="text-xs text-slate-400 text-center mt-8">↑ Same model. Different prompt. Massive accuracy lift.</p>
+    </div>
+  </div>
+</section>
+
+<!-- UNDERSTAND -->
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Understand it step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step. Read the WHY.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div>
+        <div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step on the left →</div></div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div>
+        <div id="why" class="text-slate-700">—</div>
+      </div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div>
+        <pre id="code"></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Estimated time: <b>15 minutes</b>. Needs Node + a free Gemini API key.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Get a free Gemini API key</h3></div>
+        <p class="text-sm text-slate-600">Go to <a href="https://aistudio.google.com/apikey" class="text-violet-600 underline" target="_blank">aistudio.google.com/apikey</a>. Click <b>Create API key</b>. Copy. No credit card.</p>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Scaffold project</h3></div>
+        <div class="relative">
+<pre>mkdir cot-from-zero && cd cot-from-zero
+npm init -y
+npm install ai @ai-sdk/google
+echo "GOOGLE_GENERATIVE_AI_API_KEY=your_key_here" &gt; .env</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Write cot.mjs</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Send the SAME problem twice — once with a CoT hint, once without.</p>
+        <div class="relative">
+<pre id="full-code">import { generateText } from "ai";
+import { google } from "@ai-sdk/google";
+
+const model = google("gemini-2.5-flash");
+const problem = "Roger has 5 tennis balls. He buys 2 cans of 3 balls each. How many balls does he have now?";
+
+// Without CoT: ask for the answer directly.
+const bad = await generateText({
+  model,
+  prompt: problem + "\n\nJust answer with the number, nothing else."
+});
+
+// With CoT: the magic phrase.
+const good = await generateText({
+  model,
+  prompt: problem + "\n\nLet's think step by step."
+});
+
+console.log("=== Without CoT ===");
+console.log(bad.text);
+console.log("\n=== With CoT ===");
+console.log(good.text);</pre>
+          <button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button>
+        </div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Run</h3></div>
+<pre>node --env-file=.env cot.mjs</pre>
+        <p class="text-sm text-slate-600 mt-2">CoT version produces step-by-step working. Often more accurate on multi-step problems.</p>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Tweak</h3></div>
+        <ul class="text-sm text-slate-600 space-y-2 ml-4 list-disc">
+          <li>Use few-shot CoT: prepend 2 worked examples before the question.</li>
+          <li>Force step format: "Number your steps 1, 2, 3."</li>
+          <li>Compare to "self-consistency": sample 5 CoT runs, take majority answer (next-day topic).</li>
+        </ul>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center">
+      <h3 class="font-bold text-lg text-violet-900">🎉 Day 2 of PromptFromZero done.</h3>
+      <p class="text-sm text-violet-700 mt-2">Tomorrow: Self-consistency. Same problem, 5 samples, majority vote.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// LOOK animated trace
+const bad = document.getElementById("bad"), good = document.getElementById("good");
+async function typeInto(el, text, delay = 18) {
+  el.textContent = "";
+  for (const ch of text) {
+    el.textContent += ch;
+    await new Promise(r => setTimeout(r, delay));
+  }
+}
+async function runDemo() {
+  bad.textContent = "";
+  good.textContent = "";
+  await Promise.all([
+    typeInto(bad, "8"),
+    typeInto(good,
+      "Roger starts with 5 balls.\n" +
+      "He buys 2 cans, each holding 3 balls.\n" +
+      "2 × 3 = 6 new balls.\n" +
+      "5 + 6 = 11.\n\n" +
+      "Final answer: 11.",
+      14
+    )
+  ]);
+  bad.innerHTML += `<div class='mt-2 text-xs text-red-700 font-semibold'>❌ Wrong — model guessed.</div>`;
+  good.innerHTML += `<div class='mt-2 text-xs text-emerald-700 font-semibold'>✅ Right — reasoning made the calculation explicit.</div>`;
+}
+document.getElementById("run").onclick = runDemo;
+
+// UNDERSTAND STEPS
+const STEPS = [
+  { title:"1. The bug: LLMs guess", why:"Ask a multi-step math word problem and a small model often answers the first plausible-sounding number. There's no scratch paper. The token after the question is the answer.", concept:`<div class="bg-red-50 border border-red-200 p-4 rounded text-sm space-y-1"><div class="font-mono">Q: Roger has 5 balls + buys 2 cans of 3 each. Total?</div><div class="font-mono text-red-700">A: 8  ❌</div><div class="text-slate-500 text-xs italic">Model guessed without working it out.</div></div>`, code:`prompt: "Roger has 5 tennis balls. He buys 2 cans of 3 balls each.
+        How many balls now? Just answer."
+
+answer: "8"   ❌` },
+  { title:"2. The fix: 'let's think step by step'", why:"Adding 7 magic words at the end of the prompt unlocks step-by-step reasoning. The model writes out the working — 5 + 2×3 — and the final answer is now constrained by visible math, not vibes.", concept:`<div class="bg-emerald-50 border border-emerald-200 p-4 rounded text-sm font-mono space-y-1"><div>1. Roger starts with 5 balls.</div><div>2. 2 cans × 3 balls = 6.</div><div>3. 5 + 6 = 11.</div><div class="text-emerald-700 font-bold">Answer: 11  ✅</div></div>`, code:`prompt: "...same problem...
+
+Let's think step by step."` },
+  { title:"3. Why it works", why:"Each token an LLM generates is conditioned on every previous token. Forcing it to write \"Step 1: ... Step 2: ...\" gives it more conditioning context — the answer is generated AFTER the working, so it's anchored to the correct arithmetic.", concept:`<div class="bg-slate-100 p-4 rounded text-sm space-y-2"><div>token 1: \"Roger starts with 5\"</div><div>token 2: \"He buys 2 cans of 3\"</div><div>token 3: \"That's 6\"</div><div>token 4: \"5 + 6 = 11\"</div><div class="text-violet-700 font-bold">token N: \"Answer: 11\"</div><div class="text-slate-500 text-xs italic">Each token \"sees\" the math it just wrote.</div></div>`, code:`// More intermediate tokens = more compute spent
+// per problem = higher reasoning accuracy.` },
+  { title:"4. Few-shot CoT", why:"Give 2-3 worked examples BEFORE the question. The model copies the format and reasoning depth. Better than zero-shot \"step by step\" on harder problems.", concept:`<div class="bg-slate-100 p-4 rounded font-mono text-xs space-y-2"><div>Q: Sara had 4 apples...</div><div>A: 4 + 2 = 6 apples. Answer: 6.</div><div>---</div><div>Q: Roger has 5 balls...</div><div class="text-emerald-700">A: [model continues in same format]</div></div>`, code:`prompt: \`
+Q: Sara had 4 apples and got 2 more. How many?
+A: Sara had 4. She got 2 more. 4 + 2 = 6. Answer: 6.
+
+Q: Roger has 5 tennis balls. He buys 2 cans of 3 each.
+A:\`` },
+  { title:"5. When to use it", why:"Math, multi-hop reasoning, classification with subtle distinctions, logical deduction. NOT helpful for: short factual lookups, creative writing, summaries. CoT trades latency + tokens for accuracy — only worth it on problems the model otherwise gets wrong.", concept:`<div class="grid grid-cols-2 gap-2 text-xs"><div class="bg-emerald-50 border border-emerald-200 p-2 rounded"><b class="text-emerald-700">USE IT</b><br>math · reasoning · multi-hop · logic</div><div class="bg-red-50 border border-red-200 p-2 rounded"><b class="text-red-700">SKIP IT</b><br>factual lookup · creative · short replies</div></div>`, code:`// Heuristic: if you'd write out scratch-paper math
+// for the problem yourself, the LLM will benefit from CoT.` },
+  { title:"6. Hide the chain", why:"For end users, the reasoning is noise — they want the answer. Generate the chain, then extract just the last line OR ask the model to wrap the chain in <thinking>...</thinking> tags you can strip.", concept:`<div class="bg-slate-100 p-4 rounded text-sm space-y-2"><div class="text-slate-500 text-xs">LLM output:</div><div class="font-mono text-xs">&lt;thinking&gt;step1...step2...5+6=11&lt;/thinking&gt;<br>11</div><div class="text-violet-700 font-bold text-xs">User sees: 11</div></div>`, code:`const reply = result.text;
+// Strip thinking block before showing to user:
+const clean = reply.replace(/<thinking>[\\s\\S]*?<\\/thinking>/g, '').trim();` },
+  { title:"7. Modern models do this by default", why:"GPT-5, Claude 4, o1/o3, Gemini 2.5 — all train with reasoning baked in. \"Reasoning models\" think before responding without needing the magic phrase. But CoT is still useful for smaller / older / cheaper models where reasoning isn't default.", concept:`<div class="bg-slate-100 p-4 rounded text-sm space-y-2"><div>2022: CoT magic phrase needed everywhere</div><div>2024: Reasoning models (o1, Claude Sonnet 3.5)</div><div class="text-violet-700 font-bold">2025+: reasoning built-in for most flagship models</div></div>`, code:`// Cheap model + CoT prompt ≈ reasoning model.
+// Often 10x cheaper, 80% as good.` },
+  { title:"8. Done!", why:"CoT is the foundational prompting technique. It costs nothing, takes 7 extra words, and unlocks reasoning on problems the model otherwise blows. Self-consistency, ReAct, Tree-of-thought — all build on CoT.", concept:`<div class="text-center"><div class="text-5xl mb-3">🎉</div><p class="font-bold text-slate-700">You understand Chain of Thought.</p><p class="text-sm text-slate-500 mt-2">Open BUILD to send your first CoT prompt.</p></div>`, code:`// next: self-consistency = sample CoT N times, majority vote.` }
+];
+const stepsEl = document.getElementById("steps");
+const prev = document.getElementById("prev");
+const next = document.getElementById("next");
+const auto = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  b.innerHTML = `<div class="font-semibold">${s.title}</div>`;
+  b.onclick = () => show(i);
+  stepsEl.appendChild(b);
+});
+function show(i) {
+  cur = i;
+  const s = STEPS[i];
+  document.getElementById("concept").innerHTML = `<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML = `<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent = s.code;
+  stepsEl.querySelectorAll("button").forEach((b, idx) => {
+    b.className = idx === i
+      ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+      : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  });
+}
+prev.onclick = () => show(Math.max(0, cur - 1));
+next.onclick = () => show(Math.min(STEPS.length - 1, cur + 1));
+let timer = null;
+auto.onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; auto.textContent = "▶ Auto-play"; return; }
+  auto.textContent = "⏸ Pause";
+  show(0);
+  timer = setInterval(() => {
+    if (cur >= STEPS.length - 1) { clearInterval(timer); timer = null; auto.textContent = "▶ Replay"; return; }
+    show(cur + 1);
+  }, 2500);
+};
+show(0);
+
+function copy(btn) {
+  const pre = btn.parentElement.querySelector("pre");
+  navigator.clipboard.writeText(pre.textContent);
+  const orig = btn.textContent;
+  btn.textContent = "✓ Copied!";
+  setTimeout(() => btn.textContent = orig, 1500);
+}
+</script>
+</body>
+</html>

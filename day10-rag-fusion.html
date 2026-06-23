@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 10 — RAG-Fusion</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .doc { transition: all .5s ease; }
+  .bar { height:6px; border-radius:4px; background:#7c3aed; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 10</div>
+      <h1 class="text-xl font-bold">🔀 RAG-Fusion — Ask It Many Ways, Fuse the Ranks</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">One query is one guess. Several queries vote.</h2>
+      <p class="text-slate-500 text-center mb-5">A single phrasing can miss the right doc. RAG-Fusion has the LLM rewrite your question several ways, retrieves for each, then <b>fuses</b> the lists with Reciprocal Rank Fusion — docs that rank well across many phrasings float to the top. Pick a question:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div>
+          <div class="text-xs font-bold uppercase text-slate-500 mb-2">① LLM rewrites → 3 retrievals</div>
+          <div id="variations" class="space-y-3"></div>
+        </div>
+        <div>
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">② Reciprocal Rank Fusion → final</div>
+          <div id="fused" class="space-y-2"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ The green doc is the true answer. It may not top any single list — but appearing across several pushes its fused score above a doc that only one phrasing liked.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How RAG-Fusion works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add it to your RAG</h2>
+    <p class="text-slate-500 mb-8">Generate queries → retrieve each → fuse with one tiny formula.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Ask the LLM for query variations</h3></div><pre>const queries = await llm(`Generate 4 different search queries for:
+"${userQuery}". Vary the wording and angle. One per line.`);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Retrieve a ranked list for each</h3></div><pre>const lists = await Promise.all(
+  queries.map(q =&gt; vectorSearch(q, { k: 10 }))
+);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Reciprocal Rank Fusion (the magic)</h3></div><pre>const scores = {};
+for (const list of lists)
+  list.forEach((doc, rank) =&gt; {
+    scores[doc.id] = (scores[doc.id] || 0) + 1 / (60 + rank);
+  });   // rank is 0-based; 60 is the standard RRF constant k</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Sort by fused score, keep the top few</h3></div><pre>const fused = Object.entries(scores)
+  .sort((a,b) =&gt; b[1] - a[1])
+  .slice(0, 4)
+  .map(([id]) =&gt; byId[id]);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Answer from the fused context</h3></div><pre>return llm(`Answer using ONLY these:\n${fused}\nQ: ${userQuery}`);</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 10 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Self-RAG — let the model decide when to retrieve.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== RAG-FUSION demo =====
+// Each variation retrieves docs by keyword overlap; RRF fuses the 3 ranked lists.
+const QUERIES = [
+  { q:"How do I make my website load faster?",
+    variations:["website slow loading performance fix","reduce page load time speed optimization","improve site speed bundle images"],
+    docs:[
+      { id:1, t:"Compress and lazy-load images; they're usually the biggest bytes on a page and the easiest speed win.", rel:0.95 },
+      { id:2, t:"Our company was founded in 2014 and is based in Berlin.", rel:0.02 },
+      { id:3, t:"Reduce JavaScript bundle size with code-splitting so the first screen renders before everything loads.", rel:0.9 },
+      { id:4, t:"A CDN serves assets from a server near the user, cutting latency and load time.", rel:0.8 },
+      { id:5, t:"You can change the website's font in the theme settings.", rel:0.15 },
+      { id:6, t:"Caching static assets in the browser avoids re-downloading them on repeat visits.", rel:0.7 },
+    ]},
+  { q:"Why am I always tired?",
+    variations:["constant fatigue causes low energy","why feel exhausted all the time","reasons for tiredness sleep diet"],
+    docs:[
+      { id:1, t:"Poor sleep quality — not just quantity — is the most common cause of daytime fatigue; aim for consistent sleep and wake times.", rel:0.94 },
+      { id:2, t:"The cafeteria serves lunch from noon to 2pm.", rel:0.02 },
+      { id:3, t:"Dehydration and low iron can both leave you feeling drained even after a full night's sleep.", rel:0.85 },
+      { id:4, t:"Too much caffeine late in the day fragments sleep, creating a tiredness loop.", rel:0.7 },
+      { id:5, t:"Tired eyes can be relieved with the 20-20-20 screen rule.", rel:0.25 },
+      { id:6, t:"Regular daytime exercise improves sleep depth and boosts energy over time.", rel:0.6 },
+    ]},
+  { q:"Is this email a scam?",
+    variations:["how to spot phishing email scam","signs of fraudulent message","detect fake email suspicious link"],
+    docs:[
+      { id:1, t:"Phishing emails create urgency and ask you to click a link or share credentials — hover the link to check the real domain before clicking.", rel:0.95 },
+      { id:2, t:"You can set up an email signature in account settings.", rel:0.05 },
+      { id:3, t:"Mismatched sender addresses and generic greetings ('Dear Customer') are classic scam tells.", rel:0.85 },
+      { id:4, t:"Legitimate companies never ask for your password or OTP by email.", rel:0.78 },
+      { id:5, t:"Archive old emails to keep your inbox tidy.", rel:0.03 },
+      { id:6, t:"Unexpected attachments, especially .zip or .exe, are a major red flag.", rel:0.62 },
+    ]},
+];
+const STOP = new Set("how do i is this my the a an to on of in for why am always make can you your reduce".split(" "));
+const tok = s => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(w=>w&&!STOP.has(w));
+function kw(query, t){ const qs=new Set(tok(query)); const ts=tok(t); if(!ts.length) return 0; let h=0; for(const w of ts) if(qs.has(w)) h++; return h/Math.sqrt(ts.length); }
+
+const qsEl=document.getElementById("qs"), varEl=document.getElementById("variations"), fusedEl=document.getElementById("fused");
+function miniList(title, ranked, truthId){
+  return `<div class="bg-white rounded-xl border border-slate-200 p-3">
+    <div class="text-[11px] font-mono text-violet-600 mb-1">🔎 "${title}"</div>
+    ${ranked.slice(0,4).map((d,i)=>`<div class="flex items-center gap-2 text-xs py-0.5 ${d.id===truthId?'text-emerald-700 font-semibold':'text-slate-500'}"><span class="text-slate-400">#${i+1}</span><span class="truncate">${d.t.slice(0,46)}…</span></div>`).join("")}
+  </div>`;
+}
+function run(qi){
+  const { variations, docs } = QUERIES[qi];
+  const truth = docs.reduce((a,b)=>b.rel>a.rel?b:a).id;
+  // each variation -> ranked list by keyword overlap
+  const lists = variations.map(v => [...docs].map(d=>({...d, s:kw(v,d.t)})).sort((a,b)=>b.s-a.s));
+  varEl.innerHTML = variations.map((v,i)=>miniList(v, lists[i], truth)).join("");
+  // Reciprocal Rank Fusion
+  const rrf = {};
+  for (const list of lists) list.forEach((d, rank)=>{ rrf[d.id]=(rrf[d.id]||0)+1/(60+rank); });
+  const fused = docs.map(d=>({...d, rrf:rrf[d.id]||0})).sort((a,b)=>b.rrf-a.rrf);
+  const maxR = fused[0].rrf || 1;
+  fusedEl.innerHTML = fused.map((d,i)=>`<div class="doc bg-white rounded-xl border ${d.id===truth?'border-emerald-400':'border-slate-200'} p-3">
+    <div class="flex items-start gap-2"><span class="text-xs font-bold ${d.id===truth?'text-emerald-600':'text-slate-400'} mt-0.5">#${i+1}</span>
+    <div class="flex-1"><div class="text-xs text-slate-600 ${d.id===truth?'font-semibold':''}">${d.t}</div>
+    <div class="bar mt-1.5" style="width:${Math.max(6,(d.rrf/maxR)*100)}%; background:${d.id===truth?'#10b981':'#7c3aed'}"></div></div></div></div>`).join("");
+}
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. A single query is a single point of view", why:"Vector search retrieves whatever's nearest to your exact phrasing. But there are many ways to ask the same thing, and the doc that answers you might be worded like a DIFFERENT phrasing. So one query is one roll of the dice — it can systematically miss the best passage.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">one phrasing → one neighbourhood → blind spots</div>`, code:`vectorSearch("why am I tired?")  // misses "low iron" doc` },
+  { title:"2. Let the LLM ask it several ways", why:"RAG-Fusion's first move: have the LLM rewrite your question into 3–5 varied search queries — different words, different angles. Each one probes a different region of your vector space, so collectively they cover far more ground than any single query could.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>"why tired?" →</div><div class="text-violet-700">"causes of fatigue" · "low energy reasons" · "poor sleep effects"</div></div>`, code:`llm("Generate 4 search queries for: " + userQuery)` },
+  { title:"3. Retrieve a ranked list per query", why:"Run a normal retrieval for each generated query. Now you have several ranked lists instead of one. The same great doc often shows up in MANY of them (maybe at #2 here, #1 there, #3 elsewhere) — that repetition is the signal RAG-Fusion exploits.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">4 queries → 4 ranked lists → look for overlap</div>`, code:`lists = queries.map(q => vectorSearch(q, { k: 10 }))` },
+  { title:"4. Reciprocal Rank Fusion combines them", why:"RRF is a beautifully simple formula: each doc earns 1/(k + rank) from every list it appears in (k is usually 60, rank is its position). Sum those across all lists. A doc that ranks decently in several lists beats a doc that ranks #1 in just one. It rewards CONSENSUS, and it needs no scores — only positions.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">score(doc) = Σ over lists of 1 / (60 + rank)</div>`, code:`for (const list of lists)
+  list.forEach((doc, rank) =>
+    scores[doc.id] += 1 / (60 + rank));` },
+  { title:"5. Why RRF instead of averaging scores?", why:"Different queries return scores on different scales, so averaging raw similarity is apples-to-oranges. RRF ignores the messy scores and uses only RANK, which is comparable across any retriever. That's also why it can fuse totally different systems — vector + keyword + reranker — into one list.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>scores: incomparable across queries ✗</div><div class="text-violet-700">ranks: always comparable ✓</div></div>`, code:`// rank-based → works across any mix of retrievers` },
+  { title:"6. Consensus beats a single lucky hit", why:"The payoff: the truly relevant doc — the one that's a solid answer no matter how you phrase the question — rises to the top, while a doc that only one odd phrasing happened to love sinks. More robust retrieval, for the cost of a few extra cheap searches.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Ask many ways → fuse the ranks → the consensus answer wins.</p></div>`, code:`// generate → retrieve each → RRF → top-k → answer` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 13 — HyDE (Hypothetical Document Embeddings)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 13</div>
+      <h1 class="text-xl font-bold">📝 HyDE — Search With a Hypothetical Answer, Not the Question</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A 5-word question is a poor search vector. A full answer is a great one.</h2>
+      <p class="text-slate-500 text-center mb-5">HyDE first <b>drafts a hypothetical answer</b> to the question — a full, detailed passage written <i>as if</i> it already knew the answer. It embeds <b>that rich passage</b> (not the short question) and searches with it. The fake answer lives near the real answer docs in vector space, so it finds better evidence — even if the draft contains errors, since it's only used to <b>search</b>, never to answer. Pick a question and watch both paths race:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">🅐 Naive — embed the short query</div>
+          <div id="pipeNaive" class="space-y-3"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">🅑 HyDE — embed a hypothetical answer</div>
+          <div id="pipeHyde" class="space-y-3"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How HyDE works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add HyDE to your retrieval pipeline</h2>
+    <p class="text-slate-500 mb-8">Draft a hypothetical answer, embed <i>that</i>, search with it, then answer from the REAL docs you found.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with the user's short query</h3></div><pre>const q = "How do I cancel my subscription?";
+// 5 words. As a search vector this is sparse and weak —
+// it barely overlaps with how the real answer is written.</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Prompt the LLM for a hypothetical document</h3></div><pre>async function draftHyde(q) {
+  return await llm(`Write a short, detailed passage that
+DIRECTLY ANSWERS the question, as if quoted from a help
+article. Invent plausible specifics. Do NOT hedge.
+
+Question: ${q}`);
+}
+const hypo = await draftHyde(q);
+// e.g. "To cancel your subscription, open Account Settings,
+//  choose Billing, then click Cancel Plan. Access continues
+//  until the end of the current billing period; no refund
+//  is issued for the remaining days."</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Embed the hypothetical answer (not the query)</h3></div><pre>// the draft may contain errors — that's fine.
+// we embed it only to SEARCH, never to answer.
+const searchVector = await embed(hypo);
+// rich, answer-shaped text → a vector that sits close to
+// the real answer docs in embedding space.</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Vector-search the REAL corpus with that vector</h3></div><pre>const realDocs = await vectorStore.search(searchVector, { k: 4 });
+// retrieves genuine documents from your index — the
+// hypothetical text is thrown away after this step.</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">(Optional) Rerank the retrieved docs</h3></div><pre>// HyDE finds good CANDIDATES; a cross-encoder reranker
+// then orders them precisely against the ORIGINAL query.
+const ranked = await rerank(q, realDocs);   // q, not hypo
+const top = ranked.slice(0, 3);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Answer using ONLY the real retrieved docs</h3></div><pre>const answer = await llm(`Answer using ONLY these documents.
+If they don't contain the answer, say so.
+
+${top.map(d =&gt; d.text).join("\n---\n")}
+
+Question: ${q}`);
+return answer;   // grounded in real evidence, found via HyDE</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Wrap it as one drop-in retriever</h3></div><pre>async function hydeRetrieve(q, k = 4) {
+  const hypo = await draftHyde(q);            // 1 extra LLM call
+  const v    = await embed(hypo);             // embed the draft
+  return vectorStore.search(v, { k });        // search real corpus
+}
+// swap your retriever for this — generation stays the same.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 13 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Multi-Query / RAG-Fusion — fan one question into many, retrieve for each, then fuse the results.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== HyDE demo =====
+// Each query carries: a tiny shared corpus of REAL docs, the similarity each doc
+// scores against the SHORT query (naive path), the hypothetical answer the LLM
+// drafts, and the similarity each doc scores against THAT draft (HyDE path).
+// The same docs are searched both ways — only the search vector differs.
+const QUERIES = [
+  { q:"How do I cancel my subscription?",
+    hypo:"To cancel your subscription, open Account Settings, choose Billing, then click Cancel Plan. Your access continues until the end of the current billing period, and no refund is issued for the unused days.",
+    docs:[
+      { t:"Cancelling your plan: go to Settings → Billing → Cancel Plan. Access stays active until the end of the billing period.", naive:0.41, hyde:0.92 },
+      { t:"Refunds for unused subscription time are not provided once a plan is cancelled.", naive:0.33, hyde:0.81 },
+      { t:"Upgrade to the Pro tier from the Billing page to unlock more seats.", naive:0.29, hyde:0.34 },
+      { t:"Our mobile app supports dark mode and push notifications.", naive:0.07, hyde:0.06 },
+    ],
+    answer:"Go to Settings → Billing → Cancel Plan. Your access stays active until the end of the current billing period, and unused time is not refunded." },
+
+  { q:"Why is my payment failing?",
+    hypo:"Your payment may be failing because the card on file has expired, the billing address does not match your bank's records, or the card issuer declined the charge. Update your card details under Billing and retry the payment.",
+    docs:[
+      { t:"Declined payments are usually caused by an expired card, a billing-address mismatch, or insufficient funds. Update the card under Billing and retry.", naive:0.38, hyde:0.94 },
+      { t:"If a charge is declined three times, the account is paused until a valid card is added.", naive:0.30, hyde:0.79 },
+      { t:"You can switch between monthly and annual billing at any time.", naive:0.25, hyde:0.31 },
+      { t:"Team workspaces can have up to 50 members on the standard plan.", naive:0.05, hyde:0.05 },
+    ],
+    answer:"Payments commonly fail due to an expired card, a billing-address mismatch, or insufficient funds. Update your card under Billing and retry; after three declines the account is paused until a valid card is added." },
+
+  { q:"Can I export my data?",
+    hypo:"Yes, you can export your data from Settings → Data & Privacy → Export. Choose CSV or JSON, and a download link is emailed to you when the export is ready, usually within a few minutes.",
+    docs:[
+      { t:"To export your data, open Settings → Data & Privacy → Export and pick CSV or JSON. A download link is emailed when the file is ready.", naive:0.44, hyde:0.93 },
+      { t:"Exports are retained for 7 days; download the file before the link expires.", naive:0.28, hyde:0.77 },
+      { t:"Importing data from a CSV is available on the Enterprise plan.", naive:0.36, hyde:0.40 },
+      { t:"The status page shows real-time uptime for all regions.", naive:0.06, hyde:0.07 },
+    ],
+    answer:"Yes — go to Settings → Data & Privacy → Export, choose CSV or JSON, and a download link is emailed when ready. The link is valid for 7 days, so download the file before it expires." },
+];
+
+const NODE_NAMES = ["Query","Draft hypo (HyDE)","Embed","Search corpus","Top match","Compare"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const pipeNaive=document.getElementById("pipeNaive"), pipeHyde=document.getElementById("pipeHyde");
+const verdictBar=document.getElementById("verdictBar");
+
+const simBadge=(s)=>{ const good=s>=0.75, mid=s>=0.40; const cls=good?'bg-emerald-100 text-emerald-700':mid?'bg-amber-100 text-amber-700':'bg-rose-100 text-rose-700'; return `<span class="tok rounded-full px-2 py-0.5 text-xs font-bold ${cls}">${s.toFixed(2)}</span>`; };
+const bar=(s,color)=>`<div class="h-1.5 rounded-full bg-slate-100 mt-1"><div class="h-1.5 rounded-full ${color}" style="width:${Math.round(s*100)}%"></div></div>`;
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUERIES[qi]; pipeNaive.innerHTML=""; pipeHyde.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  const myToken = ++runToken;
+  const cardTo=(host,h)=>{ if(myToken!==runToken) return; const d=document.createElement("div"); d.className="bg-white rounded-2xl border border-slate-200 p-4 fade-in"; d.innerHTML=h; host.appendChild(d); };
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=850; };
+
+  // sorted views of the same corpus, one ranking per search vector
+  const naiveRanked = [...Q.docs].sort((a,b)=>b.naive-a.naive);
+  const hydeRanked  = [...Q.docs].sort((a,b)=>b.hyde -a.hyde);
+
+  // ① Query (both paths start from the same short question)
+  step(0, ()=>{
+    cardTo(pipeNaive, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">① Query</div><div class="text-sm text-slate-800">“${Q.q}”</div><div class="text-xs text-rose-600 mt-2">Only ${Q.q.split(" ").length} words → a thin, keyword-poor search vector.</div>`);
+    cardTo(pipeHyde,  `<div class="text-xs font-bold uppercase text-slate-500 mb-2">① Query</div><div class="text-sm text-slate-800">“${Q.q}”</div><div class="text-xs text-emerald-600 mt-2">Same question — but we won't search with it directly.</div>`);
+  });
+
+  // ② Draft hypothetical doc (HyDE path only)
+  step(1, ()=>{
+    cardTo(pipeNaive, `<div class="text-xs font-bold uppercase text-slate-400 mb-1">② (no draft step)</div><div class="text-xs text-slate-400">Naive RAG embeds the raw question as-is.</div>`);
+    cardTo(pipeHyde,  `<div class="text-xs font-bold uppercase text-violet-600 mb-2">② LLM drafts a hypothetical answer</div><div class="text-sm text-slate-700 bg-violet-50 border border-violet-100 rounded-lg p-3 italic">“${Q.hypo}”</div><div class="text-xs text-slate-500 mt-2">A full, answer-shaped passage. It may contain errors — used only to search.</div>`);
+  });
+
+  // ③ Embed
+  step(2, ()=>{
+    cardTo(pipeNaive, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">③ Embed the short query</div><div class="tok text-xs text-slate-500">embed("${Q.q}") → <span class="text-rose-600">[ sparse vector ]</span></div>`);
+    cardTo(pipeHyde,  `<div class="text-xs font-bold uppercase text-slate-500 mb-2">③ Embed the hypothetical answer</div><div class="tok text-xs text-slate-500">embed(hypo) → <span class="text-emerald-600">[ rich, answer-shaped vector ]</span></div>`);
+  });
+
+  // ④ Search the SAME corpus, ⑤ show ranked matches
+  step(3, ()=>{
+    cardTo(pipeNaive, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">④ Search corpus → ranked by similarity</div>`+
+      naiveRanked.map((d,i)=>`<div class="py-1 ${i===0?'bg-rose-50 rounded-lg px-2 -mx-1':''}"><div class="flex items-start gap-2"><span class="mt-0.5">${simBadge(d.naive)}</span><span class="text-xs ${i===0?'text-slate-800 font-semibold':'text-slate-500'}">${d.t}</span></div>${bar(d.naive,'bg-rose-400')}</div>`).join(""));
+    cardTo(pipeHyde, `<div class="text-xs font-bold uppercase text-slate-500 mb-2">④ Search SAME corpus → ranked by similarity</div>`+
+      hydeRanked.map((d,i)=>`<div class="py-1 ${i===0?'bg-emerald-50 rounded-lg px-2 -mx-1':''}"><div class="flex items-start gap-2"><span class="mt-0.5">${simBadge(d.hyde)}</span><span class="text-xs ${i===0?'text-slate-800 font-semibold':'text-slate-500'}">${d.t}</span></div>${bar(d.hyde,'bg-emerald-500')}</div>`).join(""));
+  });
+
+  // ⑤ Top match each path
+  step(4, ()=>{
+    cardTo(pipeNaive, `<div class="text-xs font-bold uppercase text-rose-600 mb-1">⑤ Top match (naive)</div><div class="text-xs text-slate-700">${naiveRanked[0].t} ${simBadge(naiveRanked[0].naive)}</div>`);
+    cardTo(pipeHyde,  `<div class="text-xs font-bold uppercase text-emerald-600 mb-1">⑤ Top match (HyDE)</div><div class="text-xs text-slate-700">${hydeRanked[0].t} ${simBadge(hydeRanked[0].hyde)}</div>`);
+  });
+
+  // ⑥ Compare + final answer (built from the REAL docs HyDE found)
+  step(5, ()=>{
+    const nTop=naiveRanked[0].naive, hTop=hydeRanked[0].hyde;
+    const lift=Math.round((hTop-nTop)*100);
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">🅐 Naive best ${nTop.toFixed(2)}</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">🅑 HyDE best ${hTop.toFixed(2)}</span>
+        <span class="tok rounded-full px-3 py-1 bg-violet-100 text-violet-700 font-bold">HyDE wins by +${lift} pts</span>
+      </div>
+      <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">⑥ Final answer — from the REAL docs HyDE retrieved</div>
+      <div class="text-sm text-slate-800">${Q.answer}</div>
+      <div class="text-xs text-slate-500 mt-3">The hypothetical draft was discarded after search — the answer is grounded only in genuine corpus docs.</div>
+    </div>`;
+    drawNodes(5);
+  });
+}
+
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. The retrieval problem: short queries are weak vectors", why:"Vector search works by turning text into a point in space and finding the nearest stored documents. The trouble is that a real user question is short — often four or five words — while the documents that actually answer it are long, detailed passages written in completely different language. A tiny query carries little signal, so its vector lands in a vague neighbourhood and the nearest docs are only loosely related. The search misses the good evidence because the question and the answer simply do not look alike.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">short question → sparse vector → lands far from the detailed answer docs 😕</div>`, code:`// "How do I cancel?" — 4 words to match a 200-word help article.` },
+  { title:"2. Embeddings recap: text becomes a point in space", why:"An embedding model reads a piece of text and outputs a list of numbers — a vector — that captures its meaning. Texts about the same topic produce vectors that sit close together, while unrelated texts land far apart. Search then becomes geometry: embed the query, embed every document once in advance, and return the documents whose vectors are nearest. Everything in HyDE hinges on this one fact — closeness in vector space means similarity in meaning, so whatever you choose to embed decides what you find.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">text → embed() → vector · similar meaning = nearby points</div>`, code:`const v = await embed(text);  // similar texts → nearby vectors` },
+  { title:"3. The HyDE idea: search with a hypothetical answer", why:"HyDE — Hypothetical Document Embeddings — flips the question around. Instead of embedding the short query, you first ask a language model to write a hypothetical answer: a full passage that responds to the question as if it already knew the facts. You then embed that passage and search with it. The insight is simple but powerful — a made-up answer is shaped like a real answer, so its vector lands right where the genuine answer documents live. You search with the answer you wish you had.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">query → <b class="text-violet-700">draft a fake answer</b> → embed THAT → search</div>`, code:`const hypo = await llm("Write a passage answering: " + q);` },
+  { title:"4. Why a fake answer helps: it lives near real answers", why:"Two pieces of text that answer the same question — even if one is invented — use the same vocabulary, the same structure, and the same concepts. So a hypothetical answer and the true answer documents end up as near neighbours in embedding space, far closer than the bare question ever was. By embedding the draft you move your search point out of the vague question neighbourhood and into the dense cluster of real answers. The fake answer acts as a bridge that pulls retrieval toward the right region.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-rose-700">query vector — far from the answer cluster</div><div class="text-emerald-700">hypothetical-answer vector — inside the answer cluster ✅</div></div>`, code:`// answer-shaped text sits near other answer-shaped text.` },
+  { title:"5. The full pipeline: query → draft → embed → retrieve → answer", why:"The end-to-end flow has five moves. Take the user's query. Ask the model to draft a hypothetical answer. Embed that draft and run the vector search to pull back real documents from your corpus. Throw the draft away. Finally, generate the actual answer using only those retrieved real documents. HyDE changes just one thing — what you embed for the search step — while retrieval and generation stay exactly as they were. That is why it slots into an existing RAG stack so cleanly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">query → draft hypo → embed hypo → retrieve REAL docs → answer from real docs</div>`, code:`const docs = await search(await embed(await draftHyde(q)));` },
+  { title:"6. The draft can be wrong — and that's fine", why:"It feels unsafe to search with a passage the model invented, because the model might get facts wrong. But the draft is never shown to the user and never used to write the final answer — it exists only to produce a good search vector. Even a draft riddled with errors is still shaped like a real answer, so it still lands near the correct documents and still retrieves the right evidence. You then answer strictly from the real docs you found. The fake answer is a search probe, not a source of truth.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">draft may be wrong → still finds the right docs → answer from REAL docs only</div>`, code:`// hypo is used to SEARCH, never to ANSWER. errors don't leak.` },
+  { title:"7. Zero-shot: no training, no labelled data", why:"HyDE needs no fine-tuning, no relevance labels, and no special index — it is purely zero-shot. The only ingredients are an embedding model you already have and a language model that can write a plausible paragraph, which any general model can do. There is nothing to train and nothing to maintain beyond a prompt. That makes HyDE one of the cheapest retrieval upgrades to try: add a draft step in front of your existing embedder and measure whether your top results improve.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">no training · no labels · just an embedder + a draft prompt</div>`, code:`// off-the-shelf embedder + a 1-line draft prompt. nothing to train.` },
+  { title:"8. Cost & latency: you pay for one extra call", why:"HyDE is not free. Every query now triggers one additional language-model call to write the hypothetical document before you can even start searching, which adds both money and a round-trip of latency to each request. For interactive search that delay can be noticeable. The mitigations are familiar: use a small fast model just to draft, cache drafts for repeated queries, and keep the draft short — a tight paragraph retrieves as well as a long essay while costing far fewer tokens.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">+1 LLM call per query → more tokens + more latency · use a small model, keep drafts short</div>`, code:`// draft with a small/fast model; cache by query; keep hypo brief.` },
+  { title:"9. When HyDE helps vs when it hurts", why:"HyDE shines when queries are short and vague and the corpus is full of long, factual passages — exactly where the question-versus-answer mismatch is worst. It struggles when the model has no idea what a plausible answer looks like, such as niche jargon, private internal data it was never exposed to, or made-up entities; there it can draft a misleading passage and steer retrieval the wrong way. It also adds little when queries are already long and detailed, since the original query is already a strong vector. A quick rule of thumb: the bigger the gap between how the question is phrased and how the answer is written, the more HyDE buys you.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-emerald-700">HELPS — short vague queries · rich factual corpus</div><div class="text-rose-700">HURTS — niche/private topics the model can't fake well · already-long queries</div></div>`, code:`// great for short Qs over general knowledge; risky for unknown domains.` },
+  { title:"10. Combining HyDE with reranking", why:"HyDE is good at finding the right neighbourhood of documents but not at ordering them precisely, because the draft is only an approximation of the true answer. The standard fix is to pair it with a reranker: HyDE pulls back a generous set of candidates, then a cross-encoder reranker scores each candidate against the original query — not the draft — and reorders them. HyDE handles recall, the reranker handles precision. Together they widen the net and then tighten it, giving cleaner top results than either step alone.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">HyDE finds the right region (recall) → reranker sorts it against the real query (precision).</p></div>`, code:`const docs = await hydeRetrieve(q, 10);  // recall
+const top  = await rerank(q, docs);      // precision (vs original q)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

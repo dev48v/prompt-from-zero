@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 7 — ReAct + Tools</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tool-badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:700; letter-spacing:.04em; }
+  .spin { animation: spin 1s linear infinite; display:inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back to PromptFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 7</div>
+      <h1 class="text-xl font-bold">🛠️ ReAct + Tools — the Agent Reaches Out</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- LOOK -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Watch the agent pick a tool, call it, and loop back</h2>
+      <p class="text-slate-500 text-center mb-6">Pick a question, hit <b>▶ Run agent</b>, and watch every Thought → Action(tool) → Observation cycle animate live.</p>
+
+      <!-- Question picker -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
+        <div class="text-xs font-semibold text-slate-500 mb-2">PICK A QUESTION</div>
+        <div class="flex flex-wrap gap-2 mb-4" id="qpicker">
+          <button data-q="0" class="q-btn bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold">What is 23 × 47 + the population of France?</button>
+          <button data-q="1" class="q-btn bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-50">How many seconds in 3 days, and what is that divided by 7?</button>
+          <button data-q="2" class="q-btn bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-50">What is the GDP of Japan minus that of South Korea?</button>
+        </div>
+        <div class="flex items-center gap-3">
+          <div id="qtext" class="flex-1 bg-slate-50 border border-slate-200 rounded-lg px-4 py-2 text-sm font-medium text-slate-800">What is 23 × 47 + the population of France?</div>
+          <button id="run" class="bg-violet-600 hover:bg-violet-700 text-white font-bold px-5 py-2 rounded-lg whitespace-nowrap">▶ Run agent</button>
+          <button id="resetbtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">Reset</button>
+        </div>
+      </div>
+
+      <!-- Tool legend -->
+      <div class="flex gap-3 mb-4 flex-wrap">
+        <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2 text-xs"><span class="tool-badge bg-amber-100 text-amber-800">🧮 calculator</span><span class="text-slate-500">evaluates math expressions</span></div>
+        <div class="flex items-center gap-2 bg-white rounded-lg border border-slate-200 px-3 py-2 text-xs"><span class="tool-badge bg-sky-100 text-sky-800">🔍 search</span><span class="text-slate-500">looks up facts about the world</span></div>
+      </div>
+
+      <!-- Trace output -->
+      <div id="trace" class="space-y-3"></div>
+      <p class="text-xs text-slate-400 text-center mt-8">↑ Each block is one turn of the loop. The agent keeps going until it has a Final Answer.</p>
+    </div>
+  </div>
+</section>
+
+<!-- UNDERSTAND -->
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">ReAct + Tools, step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">PROMPT / CODE</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<!-- BUILD -->
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Tool-augmented ReAct = define tools → write system prompt → run the loop → parse tool calls → feed results back. Repeat.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Define your tool list in the system prompt</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The model must know what tools exist, what each one does, and the exact format to call them. Put this in the system prompt.</p>
+        <pre>You are a ReAct agent. For EVERY step write:
+Thought: &lt;your reasoning&gt;
+Action: &lt;tool_name&gt;[&lt;input&gt;]
+  OR (when ready)
+Final Answer: &lt;answer&gt;
+
+Available tools:
+- calculator[expr]  — evaluates a math expression, e.g. calculator[23*47]
+- search[query]     — looks up a factual question, e.g. search[population of France]
+
+Never skip the Thought. Never skip the Action format.</pre>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Parse the model's output for tool calls</h3></div>
+        <p class="text-sm text-slate-600 mb-3">After every model reply, check whether it wrote an <code>Action:</code> line. If yes — run the tool. If it wrote <code>Final Answer:</code> — stop.</p>
+        <pre>function parseAction(text) {
+  // matches: Action: calculator[23*47]
+  const m = text.match(/Action:\s*(\w+)\[(.+?)\]/);
+  if (m) return { tool: m[1], input: m[2] };
+  if (/Final Answer:/i.test(text)) return { tool: "done" };
+  return null;
+}</pre>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Run the tool and feed the Observation back</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Append the tool result as an <code>Observation:</code> line in the conversation, then re-call the model. The model now reasons on real data.</p>
+        <pre>async function runTool(tool, input) {
+  if (tool === "calculator") {
+    // safe math eval
+    return String(Function(`return (${input})`)());
+  }
+  if (tool === "search") {
+    return await fetchSearchResult(input); // your real or mock API
+  }
+}
+
+// In the loop:
+const obs = await runTool(action.tool, action.input);
+messages.push({ role: "user", content: `Observation: ${obs}` });
+// then call the model again</pre>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The full loop — run until Final Answer</h3></div>
+        <pre>const messages = [{ role: "user", content: question }];
+let answer = null;
+
+for (let step = 0; step &lt; 8; step++) {
+  const reply = await llm(systemPrompt, messages);
+  messages.push({ role: "assistant", content: reply });
+
+  const action = parseAction(reply);
+  if (!action) break;                        // safety: no recognised pattern
+  if (action.tool === "done") {
+    answer = reply.match(/Final Answer:\s*(.+)/)?.[1];
+    break;
+  }
+
+  const obs = await runTool(action.tool, action.input);
+  messages.push({ role: "user", content: `Observation: ${obs}` });
+}
+
+console.log("Answer:", answer);</pre>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Add more tools = instant new powers</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The loop doesn't change. Just extend the system-prompt tool list and add a branch in <code>runTool</code>.</p>
+        <pre>// Add to system prompt:
+// - get_weather[city]  — current weather
+// - read_file[path]    — reads a local file
+// - send_email[to|subject|body] — sends an email
+
+// Add to runTool():
+if (tool === "get_weather") return await weatherAPI(input);
+if (tool === "read_file")   return fs.readFileSync(input, "utf8");
+if (tool === "send_email")  return await mailer.send(...input.split("|"));</pre>
+      </li>
+    </ol>
+
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center">
+      <h3 class="font-bold text-lg text-violet-900">🎉 Day 7 of PromptFromZero done.</h3>
+      <p class="text-sm text-violet-700 mt-2">Tomorrow: RAG rerank — reorder your top-K results with a cross-encoder for much sharper answers.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+// ===== TABS =====
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK — canned question traces =====
+const QUESTIONS = [
+  "What is 23 × 47 + the population of France?",
+  "How many seconds in 3 days, and what is that divided by 7?",
+  "What is the GDP of Japan minus that of South Korea?"
+];
+
+const TRACES = [
+  // Q0: 23*47 + population of France
+  [
+    { k:"thought", t:"I need two things: 23 × 47 (a calculation) and the population of France (a fact). I'll start with the math." },
+    { k:"action",  tool:"calculator", t:"23*47" },
+    { k:"obs",     t:"1081" },
+    { k:"thought", t:"Got 1081. Now I need the population of France to add to it." },
+    { k:"action",  tool:"search", t:"population of France" },
+    { k:"obs",     t:"France has a population of approximately 68 million (68,000,000) as of 2024." },
+    { k:"thought", t:"Population of France ≈ 68,000,000. Now add: 1081 + 68000000." },
+    { k:"action",  tool:"calculator", t:"1081 + 68000000" },
+    { k:"obs",     t:"68001081" },
+    { k:"final",   t:"23 × 47 = 1,081. The population of France is about 68,000,000. So 1,081 + 68,000,000 = <b>68,001,081</b>." }
+  ],
+  // Q1: seconds in 3 days / 7
+  [
+    { k:"thought", t:"Seconds in 3 days: 3 × 24 × 60 × 60. I can calculate that directly." },
+    { k:"action",  tool:"calculator", t:"3*24*60*60" },
+    { k:"obs",     t:"259200" },
+    { k:"thought", t:"259,200 seconds in 3 days. Now divide by 7." },
+    { k:"action",  tool:"calculator", t:"259200/7" },
+    { k:"obs",     t:"37028.571428571428" },
+    { k:"final",   t:"There are <b>259,200 seconds</b> in 3 days. Divided by 7 that's <b>≈ 37,028.57 seconds</b>." }
+  ],
+  // Q2: GDP Japan - South Korea
+  [
+    { k:"thought", t:"I need the GDP of Japan and South Korea. Neither is something I can calculate — I'll search both." },
+    { k:"action",  tool:"search", t:"GDP of Japan 2024" },
+    { k:"obs",     t:"Japan's GDP is approximately $4.2 trillion USD (2024 estimate)." },
+    { k:"thought", t:"Japan GDP ≈ $4.2 trillion. Now South Korea." },
+    { k:"action",  tool:"search", t:"GDP of South Korea 2024" },
+    { k:"obs",     t:"South Korea's GDP is approximately $1.7 trillion USD (2024 estimate)." },
+    { k:"thought", t:"Now subtract: 4.2T − 1.7T = 2.5T. I'll confirm with the calculator using comparable units." },
+    { k:"action",  tool:"calculator", t:"4.2 - 1.7" },
+    { k:"obs",     t:"2.5" },
+    { k:"final",   t:"Japan's GDP (~$4.2T) minus South Korea's (~$1.7T) = <b>$2.5 trillion USD</b>." }
+  ]
+];
+
+let activeQ = 0;
+let running = false;
+
+// question picker
+document.querySelectorAll(".q-btn").forEach(btn => {
+  btn.onclick = () => {
+    activeQ = +btn.dataset.q;
+    document.querySelectorAll(".q-btn").forEach(b => {
+      b.className = "q-btn bg-slate-100 text-slate-700 px-4 py-2 rounded-lg text-sm font-semibold hover:bg-violet-50";
+    });
+    btn.className = "q-btn bg-violet-600 text-white px-4 py-2 rounded-lg text-sm font-semibold";
+    document.getElementById("qtext").textContent = QUESTIONS[activeQ];
+    document.getElementById("trace").innerHTML = "";
+  };
+});
+
+const STYLES = {
+  thought: { bg:"bg-blue-50",    border:"border-blue-200",    label:"💭 THOUGHT",        text:"text-blue-900" },
+  action:  { bg:"bg-amber-50",   border:"border-amber-300",   label:"⚡ ACTION",          text:"text-amber-900" },
+  obs:     { bg:"bg-emerald-50", border:"border-emerald-200", label:"👁 OBSERVATION",     text:"text-emerald-900" },
+  final:   { bg:"bg-violet-600", border:"border-violet-700",  label:"✅ FINAL ANSWER",   text:"text-white" }
+};
+
+const TOOL_BADGE = {
+  calculator: '<span class="tool-badge bg-amber-100 text-amber-800 mr-2">🧮 calculator</span>',
+  search:     '<span class="tool-badge bg-sky-100 text-sky-800 mr-2">🔍 search</span>'
+};
+
+async function runAgent() {
+  if (running) return;
+  running = true;
+  const trace = document.getElementById("trace");
+  trace.innerHTML = "";
+  document.getElementById("run").disabled = true;
+  document.getElementById("run").textContent = "⏳ Running…";
+
+  const steps = TRACES[activeQ];
+  for (const s of steps) {
+    const st = STYLES[s.k];
+    const el = document.createElement("div");
+    el.className = `fade-in ${st.bg} ${st.border} border rounded-xl p-4`;
+
+    let body = "";
+    if (s.k === "action") {
+      body = `${TOOL_BADGE[s.tool]}<code class="text-sm font-mono">${s.t}</code>`;
+    } else {
+      body = s.t;
+    }
+
+    el.innerHTML = `
+      <div class="${st.text} text-xs font-bold mb-1 uppercase tracking-wider">${st.label}${s.k === "action" ? "" : ""}</div>
+      <div class="${st.text} text-sm leading-relaxed">${body}</div>`;
+    trace.appendChild(el);
+    await new Promise(r => setTimeout(r, s.k === "thought" ? 900 : 550));
+  }
+
+  document.getElementById("run").disabled = false;
+  document.getElementById("run").textContent = "▶ Run agent";
+  running = false;
+}
+
+document.getElementById("run").onclick = runAgent;
+document.getElementById("resetbtn").onclick = () => {
+  if (running) return;
+  document.getElementById("trace").innerHTML = "";
+};
+
+// ===== UNDERSTAND steps =====
+const STEPS = [
+  {
+    title: "1. Why Day 1's ReAct loop needed tools",
+    why: "Day 1 showed the Thought → Action → Observation loop conceptually. But the 'Action' was fake — just a label. To make it real, you need an actual function the model can invoke. Day 7 plugs real tools into that loop.",
+    concept: `<div class="space-y-2 w-full text-sm">
+      <div class="bg-red-50 border border-red-200 p-3 rounded"><b class="text-red-700">Day 1 Action:</b> <code>search_web("Tokyo")</code> — hardcoded mock</div>
+      <div class="text-center text-slate-400 text-xs">↓ Day 7 upgrade</div>
+      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded"><b class="text-emerald-700">Day 7 Action:</b> model writes <code>Action: search[Tokyo]</code> — your code intercepts + runs it</div>
+    </div>`,
+    code: `// Day 1: hardcoded trace
+// Day 7: model picks the tool, your loop runs it`
+  },
+  {
+    title: "2. What ReAct actually is",
+    why: "ReAct (Reason + Act) is a prompting pattern from a 2022 paper. The model alternates between Thought (internal reasoning) and Action (external tool call). The Observation that comes back closes the loop and informs the next thought.",
+    concept: `<div class="space-y-2 w-full text-sm font-mono">
+      <div class="bg-blue-50 border border-blue-200 p-3 rounded">Thought: I need the population of France</div>
+      <div class="text-center text-slate-400 text-xs">↓</div>
+      <div class="bg-amber-50 border border-amber-200 p-3 rounded">Action: search[population of France]</div>
+      <div class="text-center text-slate-400 text-xs">↓ your code runs the tool</div>
+      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded">Observation: ~68 million (2024)</div>
+      <div class="text-center text-slate-400 text-xs">↓ fed back to model</div>
+      <div class="bg-blue-50 border border-blue-200 p-3 rounded">Thought: now I can answer...</div>
+    </div>`,
+    code: `// The three labels are just text conventions.
+// Thought: ... (model's internal reasoning)
+// Action: tool_name[input]
+// Observation: <result injected by your code>`
+  },
+  {
+    title: "3. Giving the model a tool list",
+    why: "The model learns about tools entirely through the system prompt. You describe each tool by name, what it does, and how to call it. The model generates text matching that format — your parsing code then recognises the call and routes it.",
+    concept: `<div class="bg-slate-100 p-4 rounded text-xs w-full font-mono space-y-1">
+      <div class="text-violet-700 font-bold">System prompt (tool registry):</div>
+      <div>Available tools:</div>
+      <div class="ml-2">- calculator[expr]</div>
+      <div class="ml-2">- search[query]</div>
+      <div class="ml-2">- get_weather[city]</div>
+      <div class="mt-2 text-slate-400">Model output → Action: calculator[23*47]</div>
+    </div>`,
+    code: `const SYSTEM = \`
+Available tools:
+- calculator[expr]  — evaluates math expressions
+- search[query]     — looks up factual info
+
+For every step write:
+Thought: <reasoning>
+Action: <tool>[<input>]
+  OR
+Final Answer: <final response>
+\`;`
+  },
+  {
+    title: "4. Parsing the Action line",
+    why: "The model doesn't call your function directly — it writes text. Your code must parse that text. A single regex is usually enough. If the match fails or you see 'Final Answer', stop the loop.",
+    concept: `<div class="bg-slate-100 p-4 rounded text-xs w-full font-mono space-y-1">
+      <div>Model output:</div>
+      <div class="text-amber-700">"Action: calculator[3*24*60*60]"</div>
+      <div class="mt-2 text-slate-400">Your regex:</div>
+      <div>/Action:\\s*(\\w+)\\[(.+?)\\]/</div>
+      <div class="mt-2 text-emerald-700">→ tool = "calculator"</div>
+      <div class="text-emerald-700">→ input = "3*24*60*60"</div>
+    </div>`,
+    code: `function parseAction(text) {
+  const m = text.match(/Action:\\s*(\\w+)\\[(.+?)\\]/);
+  if (m) return { tool: m[1], input: m[2] };
+  if (/Final Answer:/i.test(text)) return { tool: "done" };
+  return null;
+}`
+  },
+  {
+    title: "5. Feeding the Observation back",
+    why: "The key mechanic: after running the tool, inject the result back into the conversation as an Observation line. The model reads it on its next turn and can reason on real data instead of guessing.",
+    concept: `<div class="space-y-2 w-full text-sm">
+      <div class="bg-amber-50 border border-amber-200 p-3 rounded">Action: calculator[3*24*60*60] → <em>your code runs this</em></div>
+      <div class="text-center text-slate-400 text-xs">↓ result = "259200"</div>
+      <div class="bg-emerald-50 border border-emerald-200 p-3 rounded">Injected into chat: <code>Observation: 259200</code></div>
+      <div class="text-center text-slate-400 text-xs">↓ model's next turn</div>
+      <div class="bg-blue-50 border border-blue-200 p-3 rounded">Thought: 259,200 seconds. Now divide by 7...</div>
+    </div>`,
+    code: `const result = await runTool(action.tool, action.input);
+messages.push({
+  role: "user",
+  content: \`Observation: \${result}\`
+});
+// call model again — it now has the real answer`
+  },
+  {
+    title: "6. When to stop the loop",
+    why: "Without a stopping condition the agent can loop forever (wasting money or spinning in circles). Stop when: (a) the model writes 'Final Answer', (b) you hit a step cap, or (c) the same action repeats (stuck detection).",
+    concept: `<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full space-y-1">
+      <div>stop conditions:</div>
+      <div class="ml-2 text-emerald-700">✓ "Final Answer:" in reply</div>
+      <div class="ml-2 text-amber-700">✓ step >= MAX_STEPS (e.g. 8)</div>
+      <div class="ml-2 text-amber-700">✓ action repeated 2× (stuck)</div>
+      <div class="ml-2 text-red-600">✗ never let it run unbounded</div>
+    </div>`,
+    code: `for (let step = 0; step < MAX_STEPS; step++) {
+  const reply = await llm(messages);
+  const action = parseAction(reply);
+  if (!action || action.tool === "done") break;
+  // run tool, inject observation...
+}`
+  },
+  {
+    title: "7. Adding a new tool = one small change",
+    why: "The power of this pattern: adding a capability costs two edits — one line in the system prompt (the model learns the tool exists) and one branch in runTool (your code knows how to run it). The loop itself never changes.",
+    concept: `<div class="grid grid-cols-2 gap-2 w-full text-xs">
+      <div class="bg-violet-50 border border-violet-200 p-3 rounded"><b>System prompt</b><br>add one line:<br><code>- send_email[to|subj|body]</code></div>
+      <div class="bg-violet-50 border border-violet-200 p-3 rounded"><b>runTool()</b><br>add one branch:<br><code>if tool === "send_email"</code></div>
+    </div>`,
+    code: `// Nothing else changes.
+// Same loop, same parser, same observation injection.
+// Just extend the tool registry and the executor.`
+  }
+];
+
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev");
+const nextB = document.getElementById("next-btn");
+const autoB = document.getElementById("auto");
+let cur = 0;
+
+STEPS.forEach((s, i) => {
+  const b = document.createElement("button");
+  b.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  b.innerHTML = `<div class="font-semibold">${s.title}</div>`;
+  b.onclick = () => show(i);
+  stepsEl.appendChild(b);
+});
+
+function show(i) {
+  cur = i;
+  const s = STEPS[i];
+  document.getElementById("concept").innerHTML = `<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML = `<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent = s.code;
+  stepsEl.querySelectorAll("button").forEach((b, idx) => {
+    b.className = idx === i
+      ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+      : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+  });
+}
+
+prevB.onclick = () => show(Math.max(0, cur - 1));
+nextB.onclick = () => show(Math.min(STEPS.length - 1, cur + 1));
+let tm = null;
+autoB.onclick = () => {
+  if (tm) { clearInterval(tm); tm = null; autoB.textContent = "▶ Auto-play"; return; }
+  autoB.textContent = "⏸ Pause";
+  show(0);
+  tm = setInterval(() => {
+    if (cur >= STEPS.length - 1) { clearInterval(tm); tm = null; autoB.textContent = "▶ Replay"; return; }
+    show(cur + 1);
+  }, 2800);
+};
+show(0);
+</script>
+</body>
+</html>

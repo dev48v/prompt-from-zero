@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 8 — RAG Rerank</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .doc { transition: all .5s ease; }
+  .bar { height:6px; border-radius:4px; background:#7c3aed; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 8</div>
+      <h1 class="text-xl font-bold">🎚️ RAG Rerank — Float the Right Answer to the Top</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Same documents, much better order</h2>
+      <p class="text-slate-500 text-center mb-6">Vector search is fast but coarse — it often ranks a keyword-y but irrelevant doc above the real answer. A <b>reranker</b> re-reads each (question, doc) pair and fixes the order. Pick a question:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-xs font-bold uppercase text-slate-500 mb-2">① Retrieval (fast, coarse)</div>
+          <div id="retr" class="space-y-2"></div>
+        </div>
+        <div>
+          <div class="text-xs font-bold uppercase text-violet-600 mb-2">② Reranked (slow, precise)</div>
+          <div id="rerank" class="space-y-2"></div>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ The green doc is the truly relevant one. Watch it climb on the right. Only the top 2–3 reranked docs get sent to the LLM.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How reranking works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Add it to your RAG</h2>
+    <p class="text-slate-500 mb-8">Retrieve wide, rerank, keep narrow. Two extra lines around your existing search.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Retrieve MORE than you need</h3></div><pre>// vector search: grab top 25, not top 3
+const candidates = await vectorSearch(query, { k: 25 });</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Score each (query, doc) pair with a cross-encoder</h3></div><pre>const scored = await reranker.rank(query, candidates);
+// e.g. Cohere Rerank, bge-reranker, or an LLM judge</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Keep only the best few</h3></div><pre>const context = scored.sort((a,b)=&gt;b.score-a.score).slice(0, 3);</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">No model? An LLM can rerank too</h3></div><pre>`Rate 0-10 how well this passage answers the question.
+Question: ${q}
+Passage: ${doc}
+Score:`   // run per candidate, sort by the number</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 8 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: HyDE — answer first, then search with that.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== RAG RERANK demo =====
+// Each candidate has the truth (rel = what a cross-encoder finds). Retrieval score = noisy keyword overlap.
+const QUERIES = [
+  { q:"How do I reset my password?", docs:[
+    { t:"Password reset: click 'Forgot password' on the login page and follow the email link.", rel:0.97 },
+    { t:"Our password policy requires 12+ characters and a symbol.", rel:0.35 },
+    { t:"To change your password while logged in, go to Settings → Security.", rel:0.62 },
+    { t:"Reset your billing password separately from your account password.", rel:0.4 },
+    { t:"We hash all passwords with bcrypt; we can never see your password.", rel:0.12 },
+    { t:"Forgot which email you signed up with? Contact support.", rel:0.3 },
+  ]},
+  { q:"Why is my app slow on startup?", docs:[
+    { t:"Cold-start latency is usually caused by large bundles loaded before first paint.", rel:0.93 },
+    { t:"Our app is fast and reliable, used by millions.", rel:0.08 },
+    { t:"Slow startup? Check for synchronous network calls blocking the main thread.", rel:0.9 },
+    { t:"Startup music can be disabled in Settings → Sounds.", rel:0.05 },
+    { t:"Lazy-load heavy routes so the first screen renders quickly.", rel:0.78 },
+    { t:"The app starts automatically on boot unless you disable it.", rel:0.2 },
+  ]},
+  { q:"Is my data encrypted?", docs:[
+    { t:"All data is encrypted in transit (TLS) and at rest (AES-256).", rel:0.96 },
+    { t:"You can export your data anytime as CSV.", rel:0.2 },
+    { t:"We never sell your data to third parties.", rel:0.45 },
+    { t:"Encryption keys are managed in a hardware security module.", rel:0.7 },
+    { t:"Data centers are located in the EU and US.", rel:0.15 },
+    { t:"Two-factor authentication adds an extra layer of account security.", rel:0.35 },
+  ]},
+];
+const STOP = new Set("how do i is my the a an to on of in for why and or with we our you your can never".split(" "));
+const tok = s => s.toLowerCase().replace(/[^a-z0-9 ]/g," ").split(/\s+/).filter(w=>w&&!STOP.has(w));
+function keywordScore(q, t){ const qs=new Set(tok(q)); const ts=tok(t); if(!ts.length) return 0; let hit=0; for(const w of ts) if(qs.has(w)) hit++; return hit / Math.sqrt(ts.length); }
+
+const qsEl = document.getElementById("qs"), retrEl = document.getElementById("retr"), rerankEl = document.getElementById("rerank");
+function card(d, score, max, rank, isTop){
+  return `<div class="doc bg-white rounded-xl border ${isTop?'border-emerald-400':'border-slate-200'} p-3">
+    <div class="flex items-start gap-2">
+      <span class="text-xs font-bold ${isTop?'text-emerald-600':'text-slate-400'} mt-0.5">#${rank}</span>
+      <div class="flex-1">
+        <div class="text-xs text-slate-600 ${isTop?'font-semibold':''}">${d.t}</div>
+        <div class="bar mt-1.5" style="width:${Math.max(6,(score/max)*100)}%; background:${isTop?'#10b981':'#7c3aed'}"></div>
+      </div>
+    </div></div>`;
+}
+function run(qi){
+  const { q, docs } = QUERIES[qi];
+  const withScores = docs.map(d => ({ ...d, kw: keywordScore(q, d.t) }));
+  const truth = Math.max(...docs.map(d=>d.rel));
+  const retr = [...withScores].sort((a,b)=>b.kw-a.kw);
+  const maxKw = Math.max(...retr.map(d=>d.kw))||1;
+  retrEl.innerHTML = retr.map((d,i)=>card(d, d.kw, maxKw, i+1, d.rel===truth)).join("");
+  const reranked = [...withScores].sort((a,b)=>b.rel-a.rel);
+  rerankEl.innerHTML = reranked.map((d,i)=>card(d, d.rel, 1, i+1, d.rel===truth)).join("");
+}
+QUERIES.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Retrieval is fast but blunt", why:"Standard RAG embeds your question and grabs the nearest document vectors. It's lightning fast, but the embedding squashes a whole passage into one vector — so it often ranks a doc that merely shares words above the one that actually answers the question. Good enough for a first pass, not for the final answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">query vector → nearest doc vectors → top-K (coarse)</div>`, code:`const candidates = await vectorSearch(query, { k: 25 });` },
+  { title:"2. Bi-encoder vs cross-encoder", why:"Retrieval uses a BI-encoder: it encodes the query and each doc SEPARATELY, then compares vectors. Fast (docs are pre-encoded once), but it never sees query and doc together. A CROSS-encoder feeds the pair INTO the model together, so it can judge true relevance — at the cost of running once per candidate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div>bi-encoder: encode(q), encode(d) → compare</div><div class="text-violet-600">cross-encoder: model(q + d) → score</div></div>`, code:`// bi:    sim(embed(q), embed(d))
+// cross: rerankModel(q, d) → relevance` },
+  { title:"3. Rerank: re-score the shortlist", why:"You can't run the expensive cross-encoder on millions of docs. So retrieve a wide shortlist (say 25) cheaply, then rerank just those 25 with the cross-encoder. It re-reads each pair and assigns a precise relevance score — surfacing the real answer even if retrieval buried it at #5.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">25 cheap candidates → cross-encoder → precise order</div>`, code:`const scored = await reranker.rank(query, candidates);` },
+  { title:"4. Keep only the best few", why:"After reranking, keep the top 2–4 and throw the rest away. Fewer, higher-quality passages mean a shorter prompt, lower cost, and far less chance the LLM gets distracted by an irrelevant chunk. Quality of context beats quantity every time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">25 reranked → keep top 3 → into the prompt</div>`, code:`const context = scored.sort((a,b)=>b.score-a.score).slice(0, 3);` },
+  { title:"5. No reranker model? Use an LLM", why:"If you don't want a dedicated reranker (Cohere Rerank, bge-reranker, etc.), an LLM can do it: ask it to score 0–10 how well each passage answers the question, then sort. Slower and pricier per query, but zero extra infrastructure and surprisingly good.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">"Rate 0–10 how well this passage answers Q" → sort</div>`, code:`\`Rate 0-10 how well this answers the question.
+Q: \${q}
+Passage: \${doc}\`` },
+  { title:"6. The tradeoff: latency for accuracy", why:"Reranking adds a step, so it costs time and money. But for anything where a wrong answer is expensive — support, legal, medical, search — the accuracy jump is worth it. It's the single highest-leverage upgrade to a basic RAG pipeline.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Retrieve wide, rerank, keep narrow.</p></div>`, code:`// +1 step, +latency, but the right doc
+// now reaches the model. usually worth it.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 6 — Tree of Thoughts</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tot-node { transition: all .3s; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back to PromptFromZero" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 6</div>
+      <h1 class="text-xl font-bold">🌳 Tree of Thoughts — Explore, Then Commit</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Don't answer in one shot — branch, score, prune</h2>
+      <p class="text-slate-500 text-center mb-6">Chain-of-Thought walks ONE path. Tree of Thoughts explores several, scores each, and expands only the best. Step through it.</p>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="text-center text-sm text-slate-500 mb-2">Problem: <b>"Use 4, 9, 10, 13 to make 24"</b> (Game of 24)</div>
+        <div id="tree" class="space-y-4"></div>
+        <div class="flex justify-center gap-2 mt-5">
+          <button id="step" class="bg-violet-600 hover:bg-violet-700 text-white font-bold px-5 py-2 rounded-lg">▶ Next step</button>
+          <button id="reset" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold">Reset</button>
+        </div>
+      </div>
+      <p class="text-xs text-slate-400 text-center mt-6">↑ Green = kept (high score), red = pruned (dead end). Only promising branches get expanded — that's the whole idea.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">Tree of Thoughts, step by step</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">PROMPT / CODE</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Tree of Thoughts = generate ➜ evaluate ➜ keep best ➜ repeat. Three LLM calls in a loop.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Generate k candidate next-steps</h3></div><pre>const thoughts = await llm(`Give ${k} different next steps for: ${state}`, { n: k });</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Have the model SCORE each one</h3></div><pre>const scored = await Promise.all(thoughts.map(t =&gt;
+  llm(`Rate 1-10 how promising this is toward the goal: ${t}`)));</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Keep top-b, prune the rest</h3></div><pre>const frontier = scored.sort((a,b)=&gt;b.score-a.score).slice(0, b); // beam width</pre></li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Repeat until solved</h3></div><p class="text-sm text-slate-600">Expand only the survivors. Stop when one branch reaches the goal — or backtrack if all die.</p></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 6 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: ReAct + tools (reason and act).</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== ToT walkthrough on Game of 24 =====
+const TREE = document.getElementById("tree");
+const LEVELS = [
+  { label:"Step 1 — branch from the start", nodes:[
+    { t:"13 − 9 = 4 → [4,4,10]", s:8, keep:true },
+    { t:"10 + 13 = 23 → [4,9,23]", s:3, keep:false },
+    { t:"9 × 4 = 36 → [10,13,36]", s:4, keep:false } ] },
+  { label:"Step 2 — expand only the kept branch [4,4,10]", nodes:[
+    { t:"4 + 4 = 8 → [8,10]", s:5, keep:false },
+    { t:"4 × 4 = 16 → [10,16]", s:6, keep:false },
+    { t:"10 − 4 = 6 → [4,6]", s:9, keep:true } ] },
+  { label:"Step 3 — expand [4,6] → solved", nodes:[
+    { t:"4 × 6 = 24 ✅", s:10, keep:true } ] }
+];
+let shown = 0;
+function renderTree(){
+  TREE.innerHTML = "";
+  for (let i=0;i<shown;i++){
+    const lvl = LEVELS[i];
+    const wrap = document.createElement("div");
+    wrap.className = "fade-in";
+    wrap.innerHTML = `<div class="text-xs font-bold text-slate-400 uppercase mb-2">${lvl.label}</div>`;
+    const row = document.createElement("div");
+    row.className = "flex flex-wrap gap-3 justify-center";
+    lvl.nodes.forEach(n => {
+      const box = document.createElement("div");
+      box.className = "tot-node rounded-xl border-2 px-4 py-3 text-sm font-mono " + (n.keep ? "border-emerald-400 bg-emerald-50 text-emerald-800" : "border-red-300 bg-red-50 text-red-400 line-through");
+      box.innerHTML = `${n.t}<div class="text-[11px] font-sans ${n.keep?'text-emerald-600':'text-red-400'} mt-1">score ${n.s}/10 ${n.keep?'· keep':'· prune'}</div>`;
+      row.appendChild(box);
+    });
+    wrap.appendChild(row);
+    TREE.appendChild(wrap);
+  }
+  if (!shown) TREE.innerHTML = '<div class="text-slate-400 text-sm text-center py-6">Hit "Next step" to grow the tree.</div>';
+}
+document.getElementById("step").onclick = () => { if (shown < LEVELS.length) { shown++; renderTree(); } };
+document.getElementById("reset").onclick = () => { shown = 0; renderTree(); };
+renderTree();
+
+const STEPS = [
+  { title:"1. The limit of Chain-of-Thought", why:"Chain-of-Thought walks a SINGLE reasoning path start to finish. If the model takes a wrong first step, the whole answer is wrong — there's no going back. Hard puzzles, planning, and math need exploration, not one lucky line.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1"><div>CoT: start → step → step → answer (one path)</div><div class="text-red-600">bad first step → doomed</div></div>`, code:`// Chain-of-Thought: one linear path.
+"Let's think step by step..." // no branching, no backtrack` },
+  { title:"2. Think in a tree", why:"Tree of Thoughts treats each partial solution as a node. From each node you generate SEVERAL possible next thoughts (branches). Now you're searching a tree of possibilities instead of betting on one line.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full space-y-1"><div>state</div><div class="ml-3">├─ thought A</div><div class="ml-3">├─ thought B</div><div class="ml-3">└─ thought C</div></div>`, code:`const branches = await llm(
+  \`Give 3 different next steps for: \${state}\`,
+  { n: 3 }
+);` },
+  { title:"3. Let the model judge itself", why:"The key move: for each branch, ask the LLM to SCORE how promising it is toward the goal (e.g. 1–10, or 'sure / maybe / impossible'). The model becomes its own evaluator — no external solver needed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full space-y-1"><div class="text-emerald-700">"10 − 4 = 6" → 9/10 (promising)</div><div class="text-red-600">"10 + 13 = 23" → 3/10 (dead end)</div></div>`, code:`const score = await llm(
+  \`Rate 1-10 how likely this leads to 24: \${thought}\`
+);` },
+  { title:"4. Prune to a beam", why:"Keep only the top-b highest-scoring branches (the 'beam width') and throw the rest away. This stops the tree exploding exponentially — you spend compute only on paths worth exploring.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full">6 branches → score → keep best 2 → expand only those</div>`, code:`const frontier = scored
+  .sort((a,b) => b.score - a.score)
+  .slice(0, beamWidth);   // e.g. keep top 2` },
+  { title:"5. Search + backtrack", why:"Repeat generate→score→prune on the survivors. Because you kept several options, if the best branch hits a dead end you still have alternatives to fall back on — real backtracking that CoT can't do.", concept:`<div class="bg-slate-100 p-4 rounded text-xs font-mono w-full space-y-1"><div>loop: expand frontier → score → prune</div><div class="text-emerald-700">goal reached → done</div><div class="text-amber-600">all dead → backtrack to next-best</div></div>`, code:`while (!solved && frontier.length) {
+  frontier = expandAndPrune(frontier);
+}` },
+  { title:"6. When to use it", why:"ToT shines on problems with many steps and a checkable goal: puzzles (Game of 24, crosswords), planning, code with tests, math. It costs many more LLM calls than CoT — overkill for simple Q&A, powerful for hard search.", concept:`<div class="grid grid-cols-2 gap-2 text-xs w-full"><div class="bg-emerald-50 border border-emerald-200 p-2 rounded">Use: puzzles, planning, multi-step math</div><div class="bg-red-50 border border-red-200 p-2 rounded">Skip: simple Q&A (too expensive)</div></div>`, code:`// Cost: ToT ≈ (branches × depth) LLM calls
+// vs CoT ≈ 1. Use only when search pays off.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const b=document.createElement("button"); b.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; b.innerHTML=`<div class="font-semibold">${s.title}</div>`; b.onclick=()=>show(i); stepsEl.appendChild(b); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((b,idx)=>{ b.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+</script>
+</body>
+</html>
