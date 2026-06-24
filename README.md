@@ -1,10 +1,10 @@
 # PromptFromZero
 
-50 prompt-engineering & RAG techniques, each an interactive explainer.
+50 prompt-engineering and RAG techniques, each an interactive explainer.
 
 🌐 **Live (all days):** https://dev48v.infy.uk/promptfromzero.php
 
-Every lesson is a single, self-contained HTML file with three tabs — 👁 **LOOK** (an interactive demo), 🧠 **UNDERSTAND** (the concept, step by step), 🔨 **BUILD** (do it yourself). No build tools, no install — open any file in a browser.
+Every lesson is a single, self-contained HTML file with three tabs — 👁 **LOOK** (interactive demo), 🧠 **UNDERSTAND** (the concept, step by step), 🔨 **BUILD** (do it yourself). No build tools, no install — open any file in a browser.
 
 ## Days
 - [PromptFromZero · Day 1 — ReAct Loop (3-tier)](https://dev48v.infy.uk/prompt/day1-react-loop.html) — `day1-react-loop.html`
@@ -21,6 +21,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 12 — Corrective RAG (CRAG)](https://dev48v.infy.uk/prompt/day12-corrective-rag.html) — `day12-corrective-rag.html`
 - [PromptFromZero · Day 13 — HyDE (Hypothetical Document Embeddings)](https://dev48v.infy.uk/prompt/day13-hyde.html) — `day13-hyde.html`
 - [PromptFromZero · Day 14 — Reranking (Retrieve Fast, Then Reorder Precisely)](https://dev48v.infy.uk/prompt/day14-reranking.html) — `day14-reranking.html`
+- [PromptFromZero · Day 15 — Chain-of-Verification (Make the Model Fact-Check Itself)](https://dev48v.infy.uk/prompt/day15-chain-of-verification.html) — `day15-chain-of-verification.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

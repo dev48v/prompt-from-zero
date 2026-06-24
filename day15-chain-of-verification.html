@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 15 — Chain-of-Verification (Make the Model Fact-Check Itself)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 15</div>
+      <h1 class="text-xl font-bold">🔬 Chain-of-Verification — Make the Model Fact-Check Itself</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A confident draft can still be wrong. Make it check its own facts before answering.</h2>
+      <p class="text-slate-500 text-center mb-5">Language models sound certain even when a fact slips. <b>Chain-of-Verification</b> (CoVe) turns that one risky answer into four disciplined moves: <b class="text-rose-700">draft</b> a baseline answer, <b class="text-amber-700">plan</b> one verification question per claim, <b class="text-sky-700">answer each question independently</b> (so the model isn't anchored to its own draft), then <b class="text-emerald-700">revise</b> — dropping or fixing whatever failed. Watch it catch its own hallucination:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-5" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">①&nbsp;Baseline draft — confident, but one claim is wrong</div>
+          <div id="colDraft" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-sky-700 mb-2">②–③&nbsp;Plan &amp; answer verification questions (independently)</div>
+          <div id="colVerify" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Chain-of-Verification works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Wire up a Chain-of-Verification loop</h2>
+    <p class="text-slate-500 mb-8">Draft a baseline answer, generate one verification question per claim, answer each question in a <b>fresh</b> context so the draft can't bias it, then regenerate the answer using only the verified facts.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Get the baseline draft answer</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>const question = "Name 5 politicians born in New York City.";
+
+// Stage 1 — just answer normally. This draft is fast but may
+// contain a slipped fact. We will NOT trust it as final.
+const draft = await llm(`${question}
+Answer with a short numbered list, one name per line.`);
+// e.g. 1. Theodore Roosevelt  2. Franklin D. Roosevelt
+//      3. Donald Trump        4. Hillary Clinton  ← born in Illinois!
+//      5. Jacob Javits</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Plan one verification question per claim</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Stage 2 — turn each factual claim into a check.
+const planPrompt = `Here is a draft answer:
+${draft}
+
+For EACH claim in the draft, write one short, standalone
+verification question that checks just that fact.
+Return a JSON array of questions, nothing else.`;
+
+const questions = JSON.parse(await llm(planPrompt));
+// ["Was Theodore Roosevelt born in New York City?",
+//  "Was Hillary Clinton born in New York City?", ...]</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Answer each question in a FRESH context</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Stage 3 — the heart of CoVe. Answer each question on its
+// OWN, with NO draft in the prompt. Independence is the point:
+// if the model can't see its draft, it can't just repeat the
+// error — it judges the fact from scratch.
+async function verify(q) {
+  return llm(`${q}
+Answer "TRUE" or "FALSE", then one line of justification.`);
+  // ← separate call, separate context, no draft attached
+}
+const checks = await Promise.all(questions.map(verify));</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Collect the verdicts (factored verification)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Pair each claim with its independent verdict.
+const verified = questions.map((q, i) => ({
+  question: q,
+  passed:   /^\s*TRUE/i.test(checks[i]),
+  note:     checks[i]
+}));
+// One comes back FALSE: "Hillary Clinton was born in
+// Chicago, Illinois — not New York City."</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Regenerate the answer from verified facts only</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Stage 4 — revise. Hand the model the original question, the
+// draft, AND the verification results, and tell it to drop or
+// replace any claim that failed.
+const finalPrompt = `Question: ${question}
+Draft answer:
+${draft}
+
+Verification results:
+${verified.map(v => `- ${v.question} → ${v.passed ? "OK" : "FAILED: " + v.note}`).join("\n")}
+
+Rewrite the answer. Remove or correct every claim that FAILED
+verification. Keep only facts that passed.`;
+
+const finalAnswer = await llm(finalPrompt);</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Wrap the whole loop as one helper</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>async function chainOfVerification(question) {
+  const draft     = await llm(`${question}\nNumbered list.`);
+  const questions = JSON.parse(await llm(planQuestions(draft)));
+  const checks    = await Promise.all(            // independent!
+    questions.map(q => llm(`${q}\nTRUE or FALSE + why.`)));
+  const verified  = zipVerdicts(questions, checks);
+  return llm(reviseFromVerified(question, draft, verified));
+}
+// draft → plan → verify (fresh) → revise — one call away.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Keep verifications independent — don't leak the draft</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// ❌ DON'T: pass the draft into the verify call —
+//    the model just agrees with itself (joint, anchored).
+// verify(`Draft said X. Is X true?`)   // confirmation bias
+
+// ✅ DO: ask the bare fact, no draft attached (factored).
+verify(`Was Hillary Clinton born in New York City?`)
+
+// Factored = one fresh call per claim → catches more errors.
+// Joint     = cheaper, fewer calls → but anchors to the draft.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Spend the budget where it pays off</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// CoVe costs several calls: 1 draft + N checks + 1 revise.
+// Use it where facts matter and errors are cheap to check:
+//   ✅ lists of entities, dates, names, citations, specs
+//   ✅ "who/when/where" answers, comparison tables
+// Skip it where verification is as hard as the task:
+//   ❌ open-ended opinions, creative writing, vague summaries
+const useCoVe = isFactHeavy(question) && claimsAreCheckable;</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 15 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Self-Consistency — sample several independent reasoning paths and take the majority answer to beat single-shot mistakes.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Chain-of-Verification demo =====
+// Each question carries a baseline DRAFT (a numbered list of claims). Exactly
+// one claim is deliberately WRONG (`ok:false`). For each claim we have an
+// independent verification question (`vq`) and its honest verdict (`ok`) plus
+// a short justification (`note`). The wrong claim is struck through and
+// replaced by `fix` in the final revised answer.
+const QUESTIONS = [
+  { q:"Name 5 politicians born in New York City.",
+    claims:[
+      { c:"Theodore Roosevelt",  vq:"Was Theodore Roosevelt born in New York City?",  ok:true,  note:"Yes — born in Manhattan, 1858." },
+      { c:"Franklin D. Roosevelt", vq:"Was Franklin D. Roosevelt born in New York City?", ok:true, note:"Yes — born in Hyde Park, New York State (NYC-area / NY)." },
+      { c:"Donald Trump",        vq:"Was Donald Trump born in New York City?",        ok:true,  note:"Yes — born in Queens, NYC, 1946." },
+      { c:"Hillary Clinton",     vq:"Was Hillary Clinton born in New York City?",     ok:false, note:"No — born in Chicago, Illinois, 1947.", fix:"Jacob Javits (born in NYC, 1904)" },
+      { c:"Colin Powell",        vq:"Was Colin Powell born in New York City?",        ok:true,  note:"Yes — born in Harlem, NYC, 1937." },
+    ],
+    answer:"Theodore Roosevelt, Franklin D. Roosevelt, Donald Trump, Jacob Javits, and Colin Powell were all born in New York City." },
+
+  { q:"List 5 chemical elements that are liquid at room temperature.",
+    claims:[
+      { c:"Mercury",  vq:"Is mercury liquid at room temperature?",  ok:true,  note:"Yes — liquid down to about −39 °C." },
+      { c:"Bromine",  vq:"Is bromine liquid at room temperature?",  ok:true,  note:"Yes — one of only two liquid elements." },
+      { c:"Gallium",  vq:"Is gallium liquid at room temperature?",  ok:false, note:"No — gallium melts at 29.8 °C, just above room temp (a near-miss, not liquid).", fix:"(only mercury & bromine qualify — the rest melt just above room temp)" },
+      { c:"Caesium",  vq:"Is caesium liquid at room temperature?",  ok:false, note:"No — caesium melts at 28.5 °C, above typical room temperature.", fix:"(removed — melts above 25 °C)" },
+      { c:"Francium", vq:"Is francium liquid at room temperature?", ok:true,  note:"Predicted liquid/near-liquid, but it's also radioactive and ultra-rare." },
+    ],
+    note:"Two wrong here — CoVe drops both.",
+    answer:"Strictly at 25 °C, only mercury and bromine are liquid elements. Gallium and caesium melt just above room temperature, so they don't qualify, and francium is too rare to count." },
+
+  { q:"Name 5 countries the equator passes through.",
+    claims:[
+      { c:"Ecuador",   vq:"Does the equator pass through Ecuador?",   ok:true,  note:"Yes — the country is literally named for it." },
+      { c:"Kenya",     vq:"Does the equator pass through Kenya?",     ok:true,  note:"Yes — it crosses central Kenya." },
+      { c:"Indonesia", vq:"Does the equator pass through Indonesia?", ok:true,  note:"Yes — across Sumatra, Borneo and Sulawesi." },
+      { c:"Egypt",     vq:"Does the equator pass through Egypt?",     ok:false, note:"No — Egypt sits well north of the equator (~22°–31° N).", fix:"Brazil (the equator crosses the north of the country)" },
+      { c:"Colombia",  vq:"Does the equator pass through Colombia?",  ok:true,  note:"Yes — through the south of the country." },
+    ],
+    answer:"The equator passes through Ecuador, Kenya, Indonesia, Brazil, and Colombia." },
+];
+
+const NODE_NAMES = ["Question","Baseline draft","Plan checks","Verify (independent)","Found a bad claim","Revise","Final answer"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const colDraft=document.getElementById("colDraft"), colVerify=document.getElementById("colVerify");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+// a draft claim row; when `judged` the bad claim turns red, the good ones green
+function draftRowHTML(cl, i, judged){
+  const bad = !cl.ok;
+  const ring = !judged ? 'border-slate-200'
+    : bad ? 'border-rose-300 ring-1 ring-rose-200 fail-glow'
+          : 'border-emerald-200';
+  const badge = !judged ? ''
+    : bad ? `<span class="tok text-[10px] font-bold text-rose-600 ml-1">✗ failed check</span>`
+          : `<span class="tok text-[10px] font-bold text-emerald-600 ml-1">✓ verified</span>`;
+  const textCls = judged && bad ? 'text-rose-700 font-semibold' : 'text-slate-700';
+  return `<div class="bg-white rounded-xl border ${ring} p-3">
+    <div class="flex items-start gap-2">
+      <span class="tok text-xs font-bold text-slate-400 w-6 shrink-0">${i+1}.</span>
+      <span class="text-sm ${textCls}">${cl.c}${badge}</span>
+    </div>
+  </div>`;
+}
+
+// a verification-question row; when `answered` shows the independent TRUE/FALSE verdict
+function verifyRowHTML(cl, answered){
+  const bad = !cl.ok;
+  const verdict = !answered ? `<span class="tok text-[10px] font-bold text-slate-400">checking…</span>`
+    : bad ? `<span class="tok rounded-full px-2 py-0.5 text-[10px] font-bold bg-rose-100 text-rose-700">FALSE</span>`
+          : `<span class="tok rounded-full px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-700">TRUE</span>`;
+  const ring = !answered ? 'border-slate-200' : bad ? 'border-rose-300' : 'border-slate-200';
+  return `<div class="vrow bg-white rounded-xl border ${ring} p-3">
+    <div class="flex items-start gap-2">
+      <span class="text-xs text-slate-600 flex-1">${cl.vq}</span>
+      ${verdict}
+    </div>
+    ${answered ? `<div class="text-[11px] mt-1 ${bad?'text-rose-600':'text-slate-400'} pl-0.5">${cl.note}</div>` : ``}
+  </div>`;
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUESTIONS[qi];
+  colDraft.innerHTML=""; colVerify.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=950; };
+
+  // STAGE 1 — baseline draft (claims shown neutral, not yet judged)
+  step(1, ()=>{
+    colDraft.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">the model drafts a confident answer…</div>`+
+      Q.claims.map((cl,i)=>draftRowHTML(cl,i,false)).join("");
+  });
+
+  // STAGE 2 — plan one verification question per claim
+  step(2, ()=>{
+    colVerify.innerHTML = `<div class="text-xs text-amber-600 font-semibold mb-1">one verification question per claim…</div>`+
+      Q.claims.map(cl=>verifyRowHTML(cl,false)).join("");
+  });
+
+  // STAGE 3 — answer each verification question INDEPENDENTLY (verdicts appear)
+  step(3, ()=>{
+    colVerify.innerHTML = `<div class="text-xs text-sky-600 font-semibold mb-1">…answered independently, with no draft attached</div>`+
+      Q.claims.map(cl=>verifyRowHTML(cl,true)).join("");
+  });
+
+  // STAGE 4 — fold verdicts back onto the draft: bad claim turns red
+  step(4, ()=>{
+    colDraft.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">a claim failed its independent check ⚠</div>`+
+      Q.claims.map((cl,i)=>draftRowHTML(cl,i,true)).join("");
+  });
+
+  // STAGE 5 — revise: strike the wrong claim(s), splice in the fix
+  step(5, ()=>{
+    colDraft.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">revise — strike what failed, keep what passed</div>`+
+      Q.claims.map((cl,i)=>{
+        if(cl.ok) return draftRowHTML(cl,i,true);
+        // wrong claim: struck through, with the correction beside it
+        const replaced = cl.fix
+          ? `<div class="text-xs text-emerald-700 font-semibold pl-8 mt-1 fix-glow rounded-lg">→ ${cl.fix}</div>` : '';
+        return `<div class="bg-white rounded-xl border border-rose-200 p-3">
+          <div class="flex items-start gap-2">
+            <span class="tok text-xs font-bold text-slate-400 w-6 shrink-0">${i+1}.</span>
+            <span class="text-sm text-rose-400 line-through strike-anim">${cl.c}</span>
+            <span class="tok text-[10px] font-bold text-rose-600">removed</span>
+          </div>
+          ${replaced}
+        </div>`;
+      }).join("");
+  });
+
+  // verdict — the revised, fact-checked final answer
+  step(6, ()=>{
+    const bad = Q.claims.filter(c=>!c.ok).length;
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">draft had ${bad} wrong claim${bad>1?'s':''}</span>
+        <span class="text-slate-400 font-bold">→</span>
+        <span class="tok rounded-full px-3 py-1 bg-sky-100 text-sky-700 font-bold">${Q.claims.length} independent checks</span>
+        <span class="text-slate-400 font-bold">→</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">revised &amp; corrected</span>
+      </div>
+      <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Final answer — after verification</div>
+      <div class="text-sm text-slate-800">${Q.answer}</div>
+      <div class="text-xs text-slate-500 mt-3">The model drafted confidently, then each claim was re-checked on its own — independence stopped the model from rubber-stamping its own mistake, so the wrong fact was caught and fixed.</div>
+    </div>`;
+  });
+}
+
+QUESTIONS.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Models sound confident even when they're wrong", why:"A language model predicts fluent, plausible text — and fluency is not the same as truth. It will happily produce a clean, authoritative-sounding list in which one entry is simply false, with no flicker of doubt in its tone. This is the hallucination problem: the surface confidence is identical whether the fact is right or invented. You can't tell a slip from a solid claim just by reading the answer, which is exactly why a separate checking step is worth the effort.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-rose-700">fluent ≠ true</b> — the wrong fact reads just as confident as the right ones 😕</div>`, code:`// "5 politicians born in NYC" → looks perfect…
+// …but one name is actually from Illinois.` },
+  { title:"2. The CoVe idea: draft, then verify your own work", why:"Chain-of-Verification borrows a habit from careful humans: don't ship the first draft, check it. Instead of trusting one answer, the model produces a baseline draft and then deliberately interrogates that draft fact by fact before committing to a final version. The whole method is just four moves — draft, plan questions, answer them, revise — but turning a single risky output into a small review process is what catches the errors a one-shot answer hides.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-rose-700">draft</b> → <b class="text-amber-700">plan checks</b> → <b class="text-sky-700">verify</b> → <b class="text-emerald-700">revise</b></div>`, code:`// 1 draft  ->  N checks  ->  1 revise
+// a tiny built-in review loop around one answer.` },
+  { title:"3. Stage 1 — write the baseline draft", why:"The first stage is the ordinary answer: pose the question and let the model respond as it normally would. This draft is allowed to be imperfect — its only job is to lay out the concrete claims that the rest of the process will scrutinise. Keeping it simple and structured, like a numbered list, makes the next steps easier because each line becomes one thing to verify. You are not trusting this answer yet; you are just collecting its claims.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-slate-700">"Name 5 politicians born in NYC" →</div><div class="text-slate-500 mt-1">1. Roosevelt 2. FDR 3. Trump 4. <b class="text-rose-600">Clinton</b> 5. Powell</div></div>`, code:`const draft = await llm(\`\${question}
+Answer as a short numbered list.\`);` },
+  { title:"4. Stage 2 — plan one verification question per claim", why:"Next, break the draft into its individual factual claims and write a focused yes/no question for each one. A list of five names becomes five questions: \"Was X born in New York City?\" The point of one-question-per-fact is that it isolates each claim so a single wrong entry can't hide inside a generally-correct answer. These questions are short, standalone, and free of the surrounding draft — they're the checklist the next stage will work through.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">each claim → its own check:<br><span class="text-slate-600">"Was Clinton born in NYC?" · "Was Trump born in NYC?" · …</span></div>`, code:`const questions = await llm(\`For each claim in this draft,
+write one standalone verification question:\\n\${draft}\`);` },
+  { title:"5. Stage 3 — answer each question INDEPENDENTLY", why:"This is the move that makes CoVe work. Each verification question is answered in its own fresh context, with the original draft deliberately left out of the prompt. If you showed the model its own draft and asked \"is this right?\", it would tend to agree with itself — confirmation bias baked into one conversation. By asking the bare fact in isolation, the model judges it from scratch, free of the pull of its earlier answer. That's how a wrong claim finally comes back as FALSE instead of being rubber-stamped.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-emerald-700">✅ "Was Clinton born in NYC?" → fresh call → <b>FALSE</b> (Chicago)</div><div class="text-rose-700 mt-1">❌ "My draft said NYC — right?" → agrees with itself</div></div>`, code:`// SEPARATE call, NO draft in the prompt:
+const v = await llm(\`\${q}\\nAnswer TRUE or FALSE + why.\`);` },
+  { title:"6. Why independence beats asking the model to recheck itself", why:"When the draft and its critique live in the same context, the model is anchored: it has already committed to an answer and tends to defend it, so re-reading the draft mostly produces agreement. Pulling each fact out into a clean, draft-free question removes that anchor. The model has nothing to be loyal to, so it answers honestly — and honest, unanchored answers are what surface the mistake. Independence is not a nice-to-have detail here; it's the mechanism that converts self-review from theatre into a real check.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">anchored to draft → agrees with itself · <b class="text-emerald-700">no draft attached → judges honestly</b></div>`, code:`// don't paste the draft into the verify call.
+// the absence of the draft IS the safeguard.` },
+  { title:"7. Stage 4 — revise using only the verified facts", why:"Now fold the verdicts back together. Hand the model the original question, its draft, and the list of which claims passed or failed, and ask it to rewrite the answer keeping only what survived verification. Failed claims are dropped or replaced with a correct fact; passing claims stay. The output is a fresh answer built from checked material rather than from the first guess. This is the moment the wrong entry gets struck out and a real born-in-NYC name takes its place.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div><span class="text-rose-400 line-through">Hillary Clinton</span> <span class="text-emerald-700">→ Jacob Javits ✓</span></div><div class="text-slate-500 mt-1">keep the 4 that passed, fix the 1 that failed.</div></div>`, code:`const final = await llm(\`Question: \${q}
+Draft: \${draft}
+Checks: \${verdicts}
+Rewrite, dropping every FAILED claim.\`);` },
+  { title:"8. Why independence stops errors snowballing", why:"In a normal single answer, one early wrong assumption tends to drag the rest along — the model stays internally consistent with its own mistake, so a small slip can cascade into a confidently-wrong whole. Because CoVe checks each fact in isolation, a bad claim is judged entirely on its own merits and can't recruit the other claims to back it up. Errors are caught one at a time instead of reinforcing each other, which keeps a single hallucination from poisoning the entire answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">isolated checks → one bad fact stays isolated → <b class="text-emerald-700">no cascade</b></div>`, code:`// each claim judged alone → a wrong one can't
+// drag the correct ones down with it.` },
+  { title:"9. Factored vs joint verification", why:"There are two ways to run the checks. Factored verification asks each question in its own separate call — the version this page demonstrates — which is the most accurate because every fact gets a clean, unanchored look. Joint verification batches all the questions into one call to save money and latency, but it reintroduces some of the anchoring you were trying to avoid, since the checks share a context. The trade is simple: factored is pricier but catches more; joint is cheaper but a little weaker. Reach for factored when correctness really matters.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-emerald-700">factored</b> = one call per fact (accurate) · <b class="text-amber-700">joint</b> = one call for all (cheap)</div>`, code:`// factored: questions.map(q => llm(q))   // N calls
+// joint:    llm(allQuestionsTogether)     // 1 call` },
+  { title:"10. The cost, and where CoVe is worth it", why:"CoVe is not free — a single answer becomes one draft, several verification calls, and one revision, so a five-fact answer might cost seven or more model calls. That budget pays off when the answer is fact-heavy and each claim is cheap to check independently: lists of names, dates, citations, specs, \"who/when/where\" questions. It's overkill, or even unhelpful, for open-ended opinions, creative writing, or vague summaries where there's no crisp fact to verify. Use it as a targeted accuracy upgrade, not a default wrapper on every prompt.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Draft, verify each fact alone, revise — the model catches its own hallucinations.</p></div>`, code:`const useCoVe = isFactHeavy(q) && claimsAreCheckable;
+// 1 draft + N checks + 1 revise — spend it where facts matter.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
