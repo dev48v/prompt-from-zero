@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 16 — Structured Output (Make the LLM Return Real JSON)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 16</div>
+      <h1 class="text-xl font-bold">🧱 Structured Output — Make the LLM Return Real JSON</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Your code needs typed JSON — not a paragraph that happens to contain some.</h2>
+      <p class="text-slate-500 text-center mb-5">A model talks to <b>code</b>, not just people, and code needs one exact shape. <b class="text-rose-700">Just asking for JSON in the prose</b> works until the day it wraps the object in chatter, a <span class="tok">```json</span> fence, a trailing comment, or the wrong type — and <span class="tok">JSON.parse</span> throws. <b class="text-emerald-700">Binding the model to a schema</b> (function calling / structured outputs / JSON mode) forces it to emit exactly your fields, with the right types, every time. Pick a sentence and watch both modes try to extract it:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- target schema -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎯 Target schema — what the code expects</div>
+        <div id="schemaBox" class="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">Ⓐ&nbsp;"Please return JSON" in the prompt</div>
+          <div id="colNaive" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">Ⓑ&nbsp;Schema-constrained (function calling / JSON mode)</div>
+          <div id="colSchema" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How structured output works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Bind a model to a schema and get typed JSON back</h2>
+    <p class="text-slate-500 mb-8">Define the shape you want as a schema, hand it to the model as a tool or a <span class="tok">response_format</span>, call the model, then parse and validate the result. If validation fails, retry with the error fed back; once it passes, you hold a typed object your code can trust.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Define the schema you actually want</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>import { z } from "zod";
+
+// Describe the exact shape. Types, enums and required fields
+// are the contract the model must satisfy — not a suggestion.
+const FlightBooking = z.object({
+  name:       z.string(),
+  from:       z.string(),               // origin city
+  to:         z.string(),               // destination city
+  date:       z.string().describe("ISO date, e.g. 2026-03-03"),
+  passengers: z.number().int().min(1),
+  cabin:      z.enum(["economy", "business", "first"]),
+});
+// One source of truth: validation AND the model both read this.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Turn the schema into JSON Schema</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>import { zodToJsonSchema } from "zod-to-json-schema";
+
+// Providers speak JSON Schema. Generate it from the Zod object
+// so the model and your validator never drift apart.
+const jsonSchema = zodToJsonSchema(FlightBooking, "FlightBooking");
+// {
+//   type: "object",
+//   properties: { name:{type:"string"}, passengers:{type:"integer"}, ... },
+//   required: ["name","from","to","date","passengers","cabin"]
+// }</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Pass it as a tool (function calling)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Expose a named function whose arguments ARE your schema.
+// The model "calls" it by filling typed arguments — it can't
+// reply with prose when a tool call is forced.
+const tools = [{
+  type: "function",
+  function: {
+    name: "book_flight",
+    description: "Extract a flight booking request.",
+    parameters: jsonSchema,
+  },
+}];
+
+const res = await client.chat.completions.create({
+  model, tools,
+  tool_choice: { type: "function", function: { name: "book_flight" } },
+  messages: [{ role: "user", content: sentence }],
+});</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Or ask for JSON directly (response_format)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Structured Outputs: hand the schema as the response format and
+// the decoder is constrained to emit ONLY conforming JSON.
+const res = await client.chat.completions.create({
+  model,
+  messages: [{ role: "user", content: sentence }],
+  response_format: {
+    type: "json_schema",
+    json_schema: { name: "FlightBooking", schema: jsonSchema, strict: true },
+  },
+});
+const raw = res.choices[0].message.content;   // guaranteed JSON text</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Parse, then validate against the schema</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Never trust raw text. Parse, then validate so a wrong type or
+// a missing field is caught here, not three layers downstream.
+function parseBooking(raw) {
+  const obj = JSON.parse(raw);          // syntax check
+  return FlightBooking.parse(obj);      // shape + type check (throws on bad)
+}
+const booking = parseBooking(raw);
+// booking.passengers is a real number, booking.cabin is a valid enum.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Retry on invalid — feed the error back</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Even constrained models occasionally trip. Loop a couple of
+// times, handing back the exact validation error each time.
+async function extract(sentence, tries = 3) {
+  let err = "";
+  for (let i = 0; i < tries; i++) {
+    const raw = await callModelWithSchema(sentence, err);
+    try { return FlightBooking.parse(JSON.parse(raw)); }
+    catch (e) { err = `Previous output was invalid: ${e.message}. Fix it.`; }
+  }
+  throw new Error("Could not get valid structured output.");
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Constrain choices with enums &amp; required</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The tighter the schema, the less the model can improvise.
+const Ticket = z.object({
+  priority: z.enum(["low", "medium", "high", "urgent"]),  // closed set
+  category: z.enum(["billing", "bug", "feature", "other"]),
+  customer: z.string().email().optional(),                // optional field
+  summary:  z.string().max(120),                          // bounded length
+});
+// Enums kill free-text drift; required vs optional makes intent explicit.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Use the typed object — and still trust the values</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>const b = await extract(sentence);
+await flightsApi.reserve({               // hand it straight to your code
+  passenger: b.name, origin: b.from, destination: b.to,
+  departureDate: b.date, seats: b.passengers, cabin: b.cabin,
+});
+// ⚠️ The SHAPE is guaranteed; the VALUES are not. Schemas stop
+// "passengers: 'two'" — they don't stop a wrong city. Sanity-check
+// business rules (valid airport, date in the future) yourself.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 16 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Tool Use &amp; Function Calling — let the model decide WHEN to call your typed functions, run them, and feed the results back into the conversation.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Structured Output demo =====
+// Each sentence has the SAME target schema. `fields` is the correct typed
+// extraction (the schema-bound mode always lands here). `naive` is what the
+// "please return JSON" prompt produces — raw text that breaks JSON.parse or
+// validation in a different way each time (`flaw` explains the breakage).
+const SCHEMA = [
+  { key:"name",       type:"string"  },
+  { key:"from",       type:"string"  },
+  { key:"to",         type:"string"  },
+  { key:"date",       type:"string"  },
+  { key:"passengers", type:"number"  },
+];
+
+const QUESTIONS = [
+  { q:'"Book a flight for Devanshu from Mumbai to Tokyo on March 3rd, 2 passengers"',
+    fields:{ name:"Devanshu", from:"Mumbai", to:"Tokyo", date:"2026-03-03", passengers:2 },
+    // naive output: wrapped in chatter + a markdown fence → JSON.parse never even starts
+    naive:'Sure! Here is the booking as JSON:\n\n```json\n{\n  "name": "Devanshu",\n  "from": "Mumbai",\n  "to": "Tokyo",\n  "date": "2026-03-03",\n  "passengers": 2\n}\n```\nLet me know if you need anything else!',
+    flaw:'parse', flawMsg:'JSON.parse failed — output is prose + a ```json fence, not raw JSON.' },
+
+  { q:'"Fly Aisha and her daughter from Berlin to Cairo next Friday"',
+    fields:{ name:"Aisha", from:"Berlin", to:"Cairo", date:"2026-03-06", passengers:2 },
+    // naive output: valid JSON, but passengers is a STRING → schema validation fails
+    naive:'{\n  "name": "Aisha",\n  "from": "Berlin",\n  "to": "Cairo",\n  "date": "next Friday",\n  "passengers": "two"\n}',
+    flaw:'type', flawMsg:'Validation failed — passengers is "two" (string), date is "next Friday" (not ISO).' },
+
+  { q:'"One ticket for Mr. Okafor, São Paulo to Lisbon, leaving 2026-04-12"',
+    fields:{ name:"Mr. Okafor", from:"São Paulo", to:"Lisbon", date:"2026-04-12", passengers:1 },
+    // naive output: trailing comment + a hallucinated extra field, and a trailing comma
+    naive:'{\n  "name": "Mr. Okafor",\n  "from": "Sao Paulo",\n  "to": "Lisbon",\n  "date": "2026-04-12",\n  "passengers": 1,   // single ticket\n  "seatPreference": "window",\n}',
+    flaw:'extra', flawMsg:'JSON.parse failed — // comment, trailing comma, and a hallucinated "seatPreference" field.' },
+
+  { q:'"Get my whole family of four from Toronto down to Cancún on Dec 20"',
+    fields:{ name:"(family contact)", from:"Toronto", to:"Cancún", date:"2026-12-20", passengers:4 },
+    // naive output: missing the required "name" field entirely
+    naive:'{\n  "from": "Toronto",\n  "to": "Cancun",\n  "date": "Dec 20",\n  "passengers": 4\n}',
+    flaw:'missing', flawMsg:'Validation failed — required field "name" is missing; "date" is not ISO.' },
+];
+
+const NODE_NAMES = ["Sentence","Model","Raw output","JSON.parse","Validate schema","Typed object"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const schemaBox=document.getElementById("schemaBox");
+const colNaive=document.getElementById("colNaive"), colSchema=document.getElementById("colSchema");
+const verdictBar=document.getElementById("verdictBar");
+
+// render the fixed target schema once
+schemaBox.innerHTML = SCHEMA.map(f=>`
+  <div class="bg-slate-50 rounded-lg border border-slate-200 px-3 py-2">
+    <span class="tok font-bold text-slate-700">${f.key}</span>
+    <span class="tok text-violet-600 text-[10px] ml-1">: ${f.type}</span>
+  </div>`).join("");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+// escape for safe display inside <pre>
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// render the extracted object as a little struct/form
+function structHTML(fields, good){
+  const ring = good ? 'border-emerald-300' : 'border-rose-300';
+  return `<div class="bg-white rounded-xl border ${ring} p-3 space-y-1">
+    ${SCHEMA.map(f=>{
+      const has = fields && fields[f.key]!==undefined;
+      const val = has ? fields[f.key] : '∅ missing';
+      const valCls = !has ? 'text-rose-500' : (f.type==='number' ? 'text-sky-700' : 'text-slate-800');
+      const typeOk = has && (typeof fields[f.key] === f.type);
+      return `<div class="flex items-center gap-2 text-xs">
+        <span class="tok font-bold text-slate-500 w-24 shrink-0">${f.key}</span>
+        <span class="tok ${valCls}">${typeof val==='string'?'"'+esc(String(val))+'"':val}</span>
+        ${has?`<span class="tok text-[9px] ${typeOk?'text-emerald-500':'text-rose-500'} ml-auto">${f.type}${typeOk?' ✓':' ✗'}</span>`:`<span class="tok text-[9px] text-rose-500 ml-auto">required ✗</span>`}
+      </div>`;
+    }).join("")}
+  </div>`;
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUESTIONS[qi];
+  colNaive.innerHTML=""; colSchema.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=950; };
+
+  // STAGE 1 — the sentence enters the model (both columns)
+  step(1, ()=>{
+    const lead = `<div class="text-xs text-slate-500 font-semibold mb-1">the model reads the sentence…</div>`;
+    colNaive.innerHTML  = lead;
+    colSchema.innerHTML = lead;
+  });
+
+  // STAGE 2 — raw output. Naive = messy text; Schema = clean conforming JSON
+  step(2, ()=>{
+    colNaive.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">Ⓐ "reply with JSON" → free text, no guarantees</div>
+      <pre class="fail-glow">${esc(Q.naive)}</pre>`;
+    const cleanJson = "{\n" + SCHEMA.map(f=>{
+      const v=Q.fields[f.key]; return `  "${f.key}": ${typeof v==='string'?'"'+v+'"':v}`;
+    }).join(",\n") + "\n}";
+    colSchema.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">Ⓑ schema-bound → decoder can only emit conforming JSON</div>
+      <pre class="fix-glow">${esc(cleanJson)}</pre>`;
+  });
+
+  // STAGE 3 — JSON.parse: naive may throw here; schema parses fine
+  step(3, ()=>{
+    const parseFails = (Q.flaw==='parse' || Q.flaw==='extra');
+    colNaive.innerHTML += `<div class="rounded-xl border ${parseFails?'border-rose-300 bg-rose-50':'border-slate-200 bg-white'} p-2 text-xs tok ${parseFails?'text-rose-700':'text-slate-500'}">
+      JSON.parse(raw) → ${parseFails?'❌ SyntaxError':'parsed, but…'}</div>`;
+    colSchema.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs tok text-emerald-700">JSON.parse(raw) → ✓ object</div>`;
+  });
+
+  // STAGE 4 — validate against schema: naive fails (type / missing); schema passes.
+  // For parse-time flaws the object never reaches validation; for type/missing
+  // flaws it parses but the schema check is what rejects it.
+  step(4, ()=>{
+    const parseFails = (Q.flaw==='parse' || Q.flaw==='extra');
+    const head = parseFails ? 'validation never runs' : '✗ schema validation';
+    colNaive.innerHTML += `<div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs">
+      <div class="tok font-bold text-rose-700 mb-1">${head}</div>
+      <div class="text-rose-600">${Q.flawMsg}</div></div>`;
+    colSchema.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs tok text-emerald-700">FlightBooking.parse(obj) → ✓ all fields typed</div>`;
+  });
+
+  // STAGE 5 — the typed struct fills in on the schema side; naive shows nothing usable
+  step(5, ()=>{
+    colNaive.innerHTML += `<div class="rounded-xl border border-rose-200 bg-white p-3 text-center text-xs text-rose-500 font-semibold">no usable object — code gets an exception, not data</div>`;
+    colSchema.innerHTML += `<div class="text-xs text-emerald-600 font-semibold mt-1 mb-1">extracted, typed object → ready for your code:</div>`+
+      structHTML(Q.fields, true);
+  });
+
+  // verdict — the contrast, summarised
+  step(5, ()=>{
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">Ⓐ prose JSON → ${Q.flaw==='type'||Q.flaw==='missing'?'parses, fails validation':'JSON.parse throws'}</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">Ⓑ schema-bound → parses + validates ✓</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">Don't beg for JSON in prose and hope. <b class="text-emerald-700">Bind the model to a schema</b> — function calling, Structured Outputs, or JSON mode — so the output is guaranteed parseable and correctly typed. This is the backbone of tool use and data extraction: code can only consume data that has a known shape.</div>
+    </div>`;
+  });
+}
+
+QUESTIONS.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.textContent=Q.q; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. A model talks to code, not just to people", why:"On its own a language model produces text for a human to read. But most real systems put that output straight into other software — a database insert, an API call, a UI component. Code can't act on a friendly paragraph; it needs a value at a known key with a known type. Structured output is the bridge: it turns the model's natural-language understanding into a clean data object your program can actually use. The whole topic exists because the consumer of the answer is a machine, and machines are unforgiving about shape.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">sentence → <b class="text-violet-700">model</b> → <b class="text-emerald-700">{ typed object }</b> → your code 🖥️</div>`, code:`// humans read prose; code reads fields.
+// booking.passengers must be a NUMBER, not "two".` },
+  { title:"2. The naive way: just ask for JSON in the prompt", why:"The obvious first attempt is to write \"reply only with JSON in this format\" and parse whatever comes back. Sometimes it works perfectly, which is the trap — it lulls you into trusting it. The model is still generating free text token by token, so nothing actually forces the result to be valid JSON or to match your fields. You are relying on the model's good behaviour, and good behaviour is not a guarantee. The moment an edge case shows up, the prompt-only approach breaks in production.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="tok">"reply only with JSON…"</span><br><span class="text-rose-600 mt-1 inline-block">works… until it doesn't</span></div>`, code:`const raw = await llm(\`Extract as JSON:\\n\${sentence}\`);
+const obj = JSON.parse(raw);   // 🤞 hope it's valid` },
+  { title:"3. Why prompt-only JSON breaks", why:"The failures are mundane and constant. The model wraps the object in a friendly sentence (\"Sure, here you go:\"), or fences it in a ```json block, so JSON.parse chokes on the surrounding text. It adds a // comment or a trailing comma, which valid JSON forbids. It returns the right shape but the wrong type — passengers as the string \"two\" instead of the number 2. It invents an extra field you never asked for, or quietly drops a required one. Each of these is enough to crash the code downstream, and you can't predict which one you'll get.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full"><div class="text-rose-700">❌ prose wrapper · ❌ \`\`\`json fence</div><div class="text-rose-700 mt-1">❌ "two" (wrong type) · ❌ trailing comma</div><div class="text-rose-700 mt-1">❌ hallucinated field · ❌ missing required key</div></div>`, code:`// "Sure! \`\`\`json { ... } \`\`\` hope this helps!"
+// JSON.parse(...) → SyntaxError 💥` },
+  { title:"4. JSON mode: guarantee valid JSON syntax", why:"The first real safeguard is JSON mode: a flag that tells the provider to constrain decoding so the output is always syntactically valid JSON. No prose wrapper, no markdown fence, no trailing comma — JSON.parse will always succeed. This solves the syntax half of the problem completely. What it does not do is guarantee your specific fields or types; the model could still return valid JSON with the wrong keys. JSON mode promises \"this is parseable\", not \"this matches what you wanted\".", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-amber-700">JSON mode</b> → always parseable<br><span class="text-slate-500">…but shape is still up to the model</span></div>`, code:`llm({ response_format: { type: "json_object" } });
+// JSON.parse always works — keys/types not yet enforced.` },
+  { title:"5. Function / tool calling: fill a typed function's arguments", why:"The bigger leap is function calling. You declare a named function — say book_flight — with a typed parameter list, and expose it to the model. Instead of replying in prose, the model emits a structured call to that function, filling in each argument according to its declared type. Because the arguments are the thing being produced, you get a typed object by construction rather than by parsing text. This is also how models invoke real tools: the same machinery that extracts a booking can decide to call your search API or your calculator.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">model fills <b class="text-violet-700">book_flight(name, from, to, date, passengers)</b><br><span class="text-emerald-700">→ typed arguments, not a paragraph</span></div>`, code:`tools: [{ type:"function", function:{
+  name:"book_flight", parameters: jsonSchema }}]
+// the model "calls" it with typed args.` },
+  { title:"6. Structured Outputs: guarantee it matches YOUR schema", why:"The strongest option is schema-constrained decoding — often called Structured Outputs. You hand the provider your exact JSON Schema and, with strict mode on, the model is mechanically prevented from generating any token that would violate it. Every required field is present, every type is correct, every enum value is from your allowed set. This goes beyond JSON mode (valid syntax) and beyond plain function calling (typed args, occasionally drifting): the output is guaranteed to conform to the schema you defined, so parse-and-validate becomes a formality rather than a gamble.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-emerald-700">Structured Outputs (strict)</b><br>your schema → decoder physically can't deviate ✓</div>`, code:`response_format: { type:"json_schema",
+  json_schema:{ schema: jsonSchema, strict:true } };
+// conforms to YOUR shape, not just "some JSON".` },
+  { title:"7. Define the schema once — JSON Schema, Zod, or Pydantic", why:"All of these mechanisms need you to describe the shape, and you want a single source of truth. JSON Schema is the lingua franca the providers consume; libraries like Zod (TypeScript) and Pydantic (Python) let you write that shape in your own language with real validation attached. The trick is to define it once and derive everything from it: the model gets the JSON Schema, and your code gets the same object back for runtime validation. One definition keeps the model's contract and your validator from ever drifting apart.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">one schema → <span class="text-violet-700">sent to model</span> + <span class="text-emerald-700">used to validate reply</span></div>`, code:`const Booking = z.object({
+  name:z.string(), passengers:z.number().int().min(1) });
+const jsonSchema = zodToJsonSchema(Booking);` },
+  { title:"8. Always validate — and retry on failure", why:"Even constrained generation can occasionally slip, and JSON-mode-only output certainly can, so you validate every response against the schema before using it. Validation isn't paranoia; it's the line where bad data is caught cheaply instead of corrupting something three layers down. When validation fails, don't just crash — loop a couple of times, handing the model back the exact error message (\"passengers must be a number\") so its next attempt is informed. A short retry loop turns the rare failure into a self-correction instead of an outage.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">parse → validate → <b class="text-rose-700">invalid?</b> → feed error back → retry → ✓</div>`, code:`try { return Booking.parse(JSON.parse(raw)); }
+catch (e) { retry(\`Invalid: \${e.message}. Fix it.\`); }` },
+  { title:"9. Enums & required fields constrain the choices", why:"A schema is most powerful when it's tight. Use enums to pin a field to a closed set of allowed values — a priority that can only be low, medium, high, or urgent — so the model can't invent a fifth option or phrase it three different ways. Mark fields required when they must always appear and optional when they may not, making your intent explicit. The narrower the schema, the less room the model has to improvise, and the more predictable and machine-friendly the output becomes. Tight constraints are how you turn fuzzy language into clean categories.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">priority ∈ <b class="text-violet-700">{low, medium, high, urgent}</b><br><span class="text-slate-500">no free-text drift, no surprise values</span></div>`, code:`priority: z.enum(["low","medium","high","urgent"]),
+customer: z.string().email().optional(),  // may be absent` },
+  { title:"10. The limit: shape is guaranteed, values are not", why:"This is the boundary worth remembering. Schema constraints control the structure of the answer — the keys, the types, the allowed enum values — but they say nothing about whether the content is correct. The model can hand you a perfectly typed object that names the wrong city or an impossible date; the JSON is valid, the fact is not. So structured output solves parsing and typing, not truth. You still apply business-rule checks (is that a real airport, is the date in the future) and, where facts matter, techniques like verification. Use schemas to make the shape reliable, then guard the values yourself.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Bind the model to a schema → the SHAPE is guaranteed. Check the VALUES yourself.</p></div>`, code:`// ✓ passengers is a number (shape guaranteed)
+// ⚠️ "to":"Tokoyo" — typo'd city slips through (value not)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
