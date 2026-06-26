@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 17 — Step-Back Prompting (Ask the Bigger Question First)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 17</div>
+      <h1 class="text-xl font-bold">🪜 Step-Back Prompting — Ask the Bigger Question First</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Charge straight at a tricky question and you miss the forest for the trees.</h2>
+      <p class="text-slate-500 text-center mb-5">A detail-heavy question tempts the model to grab at the numbers and guess. <b class="text-rose-700">Answering directly</b> latches onto specifics and skips the principle that governs them — so it fumbles. <b class="text-emerald-700">Stepping back first</b> asks a more general question ("what rule actually applies here?"), recalls that principle, and only then plugs in the specifics — so it lands the right framework and the right answer. Pick a question and watch both paths run:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- the specific question -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">❓ The specific question</div>
+        <div id="qBox" class="text-sm text-slate-800"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">Ⓐ&nbsp;Direct — answer the specific question now</div>
+          <div id="colDirect" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">Ⓑ&nbsp;Step-Back — ask the general question first</div>
+          <div id="colStep" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How step-back prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build a two-step step-back chain</h2>
+    <p class="text-slate-500 mb-8">Take a hard, specific question. First prompt for a more <b>general</b> "step-back" question. Answer that to surface the governing <span class="tok">principle</span>. Then answer the original question, handing the principle back as context. Two cheap calls turn a blind guess into grounded reasoning.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with the hard, specific question</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A question with lots of concrete detail is exactly the kind
+// that tempts a model to grab the numbers and guess.
+const question =
+  "An ideal gas is at 2 atm. If its temperature triples and its " +
+  "volume is halved, what is the new pressure?";
+
+// Direct answering tends to mash the numbers together and miss
+// the law that actually relates them. We will step back first.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Prompt for the step-back question</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Ask for ONE level of abstraction up — the general principle
+// or concept this specific question is an instance of.
+const stepBackPrompt = `
+You are about to answer a hard, specific question.
+First, do NOT answer it. Instead, write one more GENERAL question
+whose answer is the principle/concept needed to solve it.
+
+Specific question: "${question}"
+Step-back question:`;
+
+const stepBackQ = await llm(stepBackPrompt);
+// → "What law relates the pressure, volume and temperature
+//    of an ideal gas?"</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Answer the step-back question → the principle</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Answering the GENERAL question is easy and reliable — it pulls
+// up clean, high-level knowledge with no specifics to trip on.
+const principlePrompt = `Answer concisely and precisely:
+${stepBackQ}`;
+
+const principle = await llm(principlePrompt);
+// → "The ideal gas law: PV = nRT. For a fixed amount of gas,
+//    P1·V1 / T1 = P2·V2 / T2 (combined gas law)."</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Answer the original USING the principle</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Now feed the principle back as context and ask the original
+// question. The model reasons FROM the rule, not from a guess.
+const finalPrompt = `
+Use this principle to reason step by step, then give the answer.
+
+Principle:
+${principle}
+
+Question:
+${question}`;
+
+const answer = await llm(finalPrompt);
+// P2 = P1 · (V1/V2) · (T2/T1) = 2 · 2 · 3 = 12 atm  ✓</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Wrap it as one reusable function</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The whole pattern is just: abstract → recall → apply.
+async function stepBack(question) {
+  const stepBackQ = await llm(
+    `Write one more GENERAL question whose answer is the ` +
+    `principle needed to solve:\n"${question}"\nGeneral question:`);
+  const principle = await llm(`Answer precisely:\n${stepBackQ}`);
+  const answer = await llm(
+    `Principle:\n${principle}\n\nUse it to answer:\n${question}`);
+  return { stepBackQ, principle, answer };
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pair it with retrieval (RAG)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A general step-back query is also a BETTER search query: it
+// matches the principle in your docs, not a narrow phrasing.
+async function stepBackRAG(question) {
+  const stepBackQ = await llm(
+    `General question for the principle behind:\n"${question}"`);
+  // retrieve on the GENERAL question — higher recall
+  const docs = await vectorStore.search(stepBackQ, { k: 5 });
+  return llm(`Context:\n${docs.join("\n")}\n\nAnswer:\n${question}`);
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Steer it with a few-shot example</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Show one good abstraction so the step-back question lands at
+// the RIGHT altitude — not too vague, not still too specific.
+const stepBackPrompt = `
+Specific: "Which team did Aristotle's tutor's most famous
+           student conquer Persia with?"
+General:  "Who was Aristotle's most famous student, and what
+           did he conquer?"
+
+Specific: "${question}"
+General:`;
+// Few-shot pins the abstraction level; one example is usually enough.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Spend the extra call only where it pays</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Step-back adds one or two calls + latency. Gate it: use it on
+// reasoning / science / multi-hop questions; skip it on lookups.
+async function answer(question) {
+  if (needsReasoning(question)) {
+    return (await stepBack(question)).answer;   // abstract first
+  }
+  return llm(question);                         // simple fact → direct
+}
+// ⚠️ Abstract first when the PRINCIPLE is unclear; not for
+//    "what's the capital of France" — that has no forest to miss.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 17 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Least-to-Most Prompting — break a hard problem into a chain of easier sub-problems and solve them in order, each answer feeding the next.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Step-Back demo =====
+// Each question runs TWO paths. Ⓐ Direct answers the specific question
+// straight away and fumbles a detail (`directWrong` + `directFlaw`).
+// Ⓑ Step-Back derives a more GENERAL question (`stepBackQ`), recalls the
+// governing principle (`principle`), then applies it to land the right
+// answer (`correct`). `apply` is the one-line plug-in of the specifics.
+const QUESTIONS = [
+  { tag:"⚛️ Physics",
+    q:'An ideal gas is at <b>2 atm</b>. If its temperature <b>triples</b> and its volume is <b>halved</b>, what is the new pressure?',
+    directWrong:'"Tripling temperature roughly triples pressure, and halving volume isn’t huge, so the pressure ends up around <b>3 atm</b>."',
+    directFlaw:'Grabbed at "triple" and ignored how volume actually scales pressure — no governing law applied.',
+    stepBackQ:'What law relates the pressure, volume and temperature of a fixed amount of ideal gas?',
+    principle:'The combined gas law: P₁V₁ / T₁ = P₂V₂ / T₂, so P₂ = P₁ · (V₁/V₂) · (T₂/T₁).',
+    apply:'P₂ = 2 · (V/½V) · (3T/T) = 2 · 2 · 3',
+    correct:'<b>12 atm.</b> Halving volume doubles pressure; tripling temperature triples it: 2 × 2 × 3 = 12 atm.' },
+
+  { tag:"📜 History",
+    q:'Which empire did the most famous student of <b>Plato’s most famous student</b> go on to conquer?',
+    directWrong:'"Plato’s famous student was Aristotle, and Aristotle conquered… well, the Greek city-states — so the <b>Greek empire</b>."',
+    directFlaw:'Tried to answer the nested chain in one leap, conflated "student of a student", and stopped at Aristotle.',
+    stepBackQ:'Who was Plato’s most famous student, and who was THAT person’s most famous student?',
+    principle:'Plato’s most famous student was Aristotle; Aristotle’s most famous student was Alexander the Great.',
+    apply:'So the question reduces to: what did Alexander the Great conquer?',
+    correct:'The <b>Persian (Achaemenid) Empire</b> — Alexander the Great, tutored by Aristotle (Plato’s student), conquered Persia.' },
+
+  { tag:"💻 Code",
+    q:'In a loop, you push each item’s callback with <span class="tok">var i</span> into an array, then call them all. Why do they all log the <b>same last index</b>?',
+    directWrong:'"The array probably stores the callbacks in the wrong order, or the loop runs too fast — add a <span class="tok">setTimeout</span> to space them out."',
+    directFlaw:'Pattern-matched on "loop" + "timing" instead of asking what rule decides which <span class="tok">i</span> each closure sees.',
+    stepBackQ:'How does variable scope and closure capture work for <span class="tok">var</span> vs <span class="tok">let</span> in JavaScript?',
+    principle:'<span class="tok">var</span> is function-scoped: every closure captures the SAME variable, read at call time. <span class="tok">let</span> is block-scoped: each iteration gets a fresh binding.',
+    apply:'All callbacks share one <span class="tok">var i</span>, read after the loop ends — so all see the final value.',
+    correct:'They share <b>one function-scoped <span class="tok">i</span></b>, read after the loop finishes. Fix: use <span class="tok">let i</span> so each iteration captures its own binding.' },
+];
+
+const NODE_NAMES = ["Specific Q","Step-back Q","Recall principle","Apply","Correct answer"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const qBox=document.getElementById("qBox");
+const colDirect=document.getElementById("colDirect"), colStep=document.getElementById("colStep");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUESTIONS[qi];
+  colDirect.innerHTML=""; colStep.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  qBox.innerHTML = `<span class="tok text-violet-600 font-bold text-xs mr-1">${Q.tag}</span> ${Q.q}`;
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=1050; };
+
+  // STAGE 1 — the specific question enters both paths
+  step(0, ()=>{
+    const lead = `<div class="text-xs text-slate-500 font-semibold mb-1">reads the specific question…</div>`;
+    colDirect.innerHTML = lead;
+    colStep.innerHTML   = lead;
+  });
+
+  // STAGE 2 — Direct lunges at an answer; Step-Back derives a general question
+  step(1, ()=>{
+    colDirect.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">Ⓐ answer the specific question right now</div>
+      <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 fail-glow">${Q.directWrong}</div>`;
+    colStep.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">Ⓑ first ask one level more general:</div>
+      <div class="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs text-violet-800 fix-glow">🪜 <b>Step-back question:</b><br>${Q.stepBackQ}</div>`;
+  });
+
+  // STAGE 3 — Direct's flaw is exposed; Step-Back recalls the principle
+  step(2, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-rose-700 mb-1">missed the principle</div>
+      <div class="text-rose-600">${Q.directFlaw}</div></div>`;
+    colStep.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-emerald-700 mb-1">📚 recalled principle</div>
+      <div class="text-emerald-800">${Q.principle}</div></div>`;
+  });
+
+  // STAGE 4 — Step-Back applies the principle to the specifics; Direct has nothing to apply
+  step(3, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-200 bg-white p-2 text-center text-xs text-rose-500 font-semibold mt-1">no principle to apply — just a guess</div>`;
+    colStep.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-white p-2 text-xs tok text-emerald-700 mt-1">apply → ${Q.apply}</div>`;
+  });
+
+  // STAGE 5 — verdicts: Direct stays wrong, Step-Back lands the correct answer
+  step(4, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-xs mt-1 strike-anim">
+      <div class="tok font-bold text-rose-700 mb-1">✗ direct answer</div>
+      <div class="text-rose-700">${Q.directWrong}</div></div>`;
+    colStep.innerHTML += `<div class="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-xs mt-1 fix-glow">
+      <div class="tok font-bold text-emerald-700 mb-1">✓ correct answer</div>
+      <div class="text-emerald-800">${Q.correct}</div></div>`;
+  });
+
+  // verdict — the contrast, summarised
+  step(4, ()=>{
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">Ⓐ direct → grabbed the details, missed the rule ✗</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">Ⓑ step-back → principle first, then apply ✓</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">Charging straight at a specific question makes models latch onto the details and miss the forest for the trees. <b class="text-emerald-700">Step back to the general principle first</b> — ask the bigger question, recall the rule, then apply it to the specifics. The abstraction gives the model the right framework to reason from instead of a blind guess.</div>
+    </div>`;
+  });
+}
+
+QUESTIONS.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.innerHTML=`${Q.tag}`; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Specifics trip models up", why:"A question packed with concrete detail — numbers, names, a nested chain of references — invites the model to grab those details and start answering immediately. That is exactly when it stumbles. It pattern-matches on the surface (\"triple\", \"loop\", \"famous student\") and produces something that sounds plausible but skips the rule that actually governs the answer. The detail is a distraction, and answering in one leap means the model never steps far enough back to see which principle applies. The result is a confident, wrong guess.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">specific question 🌲🌲🌲<br><span class="text-rose-600 mt-1 inline-block">model fixates on the trees → misses the forest</span></div>`, code:`// "temp triples, volume halves" → model: "~3 atm?"
+// grabbed the numbers, never applied the gas law.` },
+  { title:"2. The step-back idea: abstract first", why:"Step-back prompting flips the order. Before answering the hard, specific question, you have the model take one deliberate step back and name the bigger, more general question behind it. Instead of \"what is the new pressure here\", it asks \"what law relates pressure, volume and temperature at all\". This is abstraction on purpose: rise one level above the specifics to find the concept they are an instance of. Once the concept is in view, the specific question becomes a simple application of it rather than a standalone puzzle.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">specific Q ↑ <b class="text-violet-700">step back</b> ↑ general principle<br><span class="text-emerald-700 mt-1 inline-block">find the rule before touching the numbers</span></div>`, code:`// Step 1: don't answer. Ask the GENERAL question.
+// Step 2: answer that. Step 3: apply it to specifics.` },
+  { title:"3. Generate a good step-back question", why:"The skill is picking the right altitude. A good step-back question is exactly one level more general than the original — it names the principle, definition or concept needed, without being so vague it loses the thread. \"What is physics?\" is too high; \"what is the new pressure?\" is too low; \"what law relates P, V and T?\" is just right. You prompt for this explicitly: tell the model not to answer yet, and to write one broader question whose answer is the principle. Getting this altitude right is most of the technique.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-slate-400">too vague ←</span> <b class="text-violet-700">one level up</b> <span class="text-slate-400">→ too specific</span><br><span class="text-emerald-700 mt-1 inline-block">name the concept, not the universe</span></div>`, code:`"Write ONE more general question whose answer is the
+ principle needed to solve:\\n" + question` },
+  { title:"4. Recall the principle", why:"With the general question in hand, you answer it — and this part is reliable precisely because there are no fiddly specifics to trip on. Asking \"what is the combined gas law\" or \"who was Aristotle's most famous student\" pulls up clean, high-confidence knowledge the model holds well. You are deliberately separating recall (get the rule right) from application (use the rule on these numbers), so an error in one can't quietly corrupt the other. The output of this step is a crisp statement of the principle you'll reason from.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">general question → <b class="text-emerald-700">clean principle</b><br><span class="text-slate-500 mt-1 inline-block">recall is easy when nothing specific gets in the way</span></div>`, code:`const principle = await llm("Answer precisely:\\n" + stepBackQ);
+// "PV = nRT → P₁V₁/T₁ = P₂V₂/T₂"` },
+  { title:"5. Pairs with retrieval (RAG)", why:"The general step-back question isn't only better for the model's own memory — it's a far better search query too. A narrow, specifics-heavy query (\"new pressure when temp triples and volume halves\") rarely matches the document that states the underlying law, because your knowledge base is written in terms of principles, not your exact phrasing. Retrieving on the broader question (\"the law relating pressure, volume and temperature\") raises recall: it surfaces the right reference passage. Step-back and retrieval reinforce each other — abstract the query, retrieve the principle, then answer the specific.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">narrow query → weak matches ✗<br><b class="text-violet-700">general step-back query</b> → finds the principle doc ✓</div>`, code:`const stepBackQ = await llm("General question behind: " + q);
+const docs = await store.search(stepBackQ, { k: 5 }); // higher recall` },
+  { title:"6. Apply the principle to the specifics", why:"Now you bring the two halves together: hand the recalled principle back as context and ask the original, specific question again. This time the model isn't guessing — it has the rule in front of it and only needs to plug in the numbers or names. \"Using P₁V₁/T₁ = P₂V₂/T₂, with volume halved and temperature tripled…\" becomes a mechanical substitution: 2 × 2 × 3 = 12 atm. The hard, error-prone leap has been replaced by grounded reasoning from a stated framework, which is exactly where models are strongest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">principle + specifics → <b class="text-emerald-700">grounded answer</b><br><span class="tok text-slate-600 mt-1 inline-block">P₂ = 2 · 2 · 3 = 12 atm ✓</span></div>`, code:`llm("Principle:\\n" + principle +
+    "\\n\\nUse it to answer:\\n" + question);` },
+  { title:"7. It's a two-step prompt chain", why:"Mechanically, step-back is a small chain, not a single clever prompt. Call one: produce the step-back question. Call two: answer it to get the principle (this can fold into call one or run separately). Call three: answer the original with the principle attached. Each call has a narrow, well-defined job, and the intermediate outputs — the general question and the principle — are visible and inspectable. That transparency is a bonus: when an answer is wrong you can see whether the abstraction was off, the recall was wrong, or the application slipped.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">abstract</b> → <b class="text-violet-700">recall</b> → <b class="text-violet-700">apply</b><br><span class="text-slate-500 mt-1 inline-block">three small calls, each easy to inspect</span></div>`, code:`const sbQ      = await llm(stepBackPrompt);   // abstract
+const rule     = await llm("Answer: " + sbQ);  // recall
+const answer   = await llm(rule + "\\n" + q);   // apply` },
+  { title:"8. When it helps — and when it doesn't", why:"Step-back earns its keep on questions that hinge on a principle the model might skip: physics and chemistry problems, multi-hop reasoning, layered history questions, anything where the right framework matters more than raw recall. On those it sharply cuts careless errors. It does NOT help — and just wastes a call — on simple lookups (\"capital of France\") where there is no underlying principle to surface and no forest to miss. Gate the technique: detect reasoning-heavy questions and abstract first, but answer plain facts directly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-emerald-700">reasoning / science / multi-hop → step back ✓</span><br><span class="text-rose-600 mt-1 inline-block">simple fact lookup → answer directly ✗</span></div>`, code:`if (needsReasoning(q)) return stepBack(q);
+return llm(q);   // plain fact — no abstraction needed` },
+  { title:"9. Step-back vs chain-of-thought", why:"Both techniques add reasoning, but in different directions. Chain-of-thought reasons FORWARD from the specific question — \"first this, then that\" — working through the details in order. Step-back reasons UP first: it abstracts to the governing principle, then comes back down to apply it. They're complementary, not rivals. You can step back to fix the framework, then run chain-of-thought to work the steps within that framework. Step-back stops the model from confidently reasoning forward down the wrong path — it makes sure the path starts from the right rule.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-slate-600">CoT:</b> reason → forward through steps<br><b class="text-violet-700">Step-back:</b> abstract ↑ first, then reason</div>`, code:`// CoT:       "Let's think step by step…"
+// Step-back: "First, what principle applies?… now think."` },
+  { title:"10. Combine with few-shot, and pay one extra call", why:"Two final levers. First, a single few-shot example pins the abstraction level: show one specific→general pair and the model's step-back questions land at the right altitude far more consistently. Second, mind the cost — step-back means one or two extra model calls and a little more latency per question. That's a fine trade on hard reasoning problems where a wrong answer is expensive, and a poor one on a high-volume stream of trivial lookups. Use few-shot to make the abstraction reliable, and gate the whole pattern so you only pay for it where it changes the answer.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Ask the bigger question first: abstract → recall → apply. One example to aim it, one extra call to afford it.</p></div>`, code:`// few-shot pins altitude; cost = +1–2 calls.
+// Specific: "…" → General: "…"   (one example is enough)` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
