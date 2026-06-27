@@ -24,6 +24,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 15 — Chain-of-Verification (Make the Model Fact-Check Itself)](https://dev48v.infy.uk/prompt/day15-chain-of-verification.html) — `day15-chain-of-verification.html`
 - [PromptFromZero · Day 16 — Structured Output (Make the LLM Return Real JSON)](https://dev48v.infy.uk/prompt/day16-structured-output.html) — `day16-structured-output.html`
 - [PromptFromZero · Day 17 — Step-Back Prompting (Ask the Bigger Question First)](https://dev48v.infy.uk/prompt/day17-step-back.html) — `day17-step-back.html`
+- [PromptFromZero · Day 18 — Least-to-Most Prompting (Decompose, Then Solve in Order)](https://dev48v.infy.uk/prompt/day18-least-to-most.html) — `day18-least-to-most.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

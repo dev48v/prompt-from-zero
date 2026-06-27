@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 18 — Least-to-Most Prompting (Decompose, Then Solve in Order)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 18</div>
+      <h1 class="text-xl font-bold">🧩 Least-to-Most — Decompose, Then Solve in Order</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Leap straight at a multi-step problem and a middle step quietly breaks.</h2>
+      <p class="text-slate-500 text-center mb-5">A problem made of several linked steps tempts the model to jump to the final answer in one go. <b class="text-rose-700">Answering one-shot</b> tries to hold every step in its head at once, slips on a middle one, and the whole answer collapses. <b class="text-emerald-700">Least-to-most</b> first <b>decomposes</b> the problem into an ordered list of easier sub-problems, then <b>solves them in sequence</b> — each sub-answer is fed forward into the next — building up to the correct final answer. Pick a problem and watch both paths run:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- the problem -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">❓ The complex problem</div>
+        <div id="qBox" class="text-sm text-slate-800"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">Ⓐ&nbsp;One-shot — leap to the final answer now</div>
+          <div id="colDirect" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">Ⓑ&nbsp;Least-to-Most — decompose, then solve in order</div>
+          <div id="colStep" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How least-to-most prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build a least-to-most solver</h2>
+    <p class="text-slate-500 mb-8">Take a hard, multi-step problem. First prompt to <b>decompose</b> it into an ordered list of simpler sub-problems. Then loop: solve each sub-problem, <span class="tok">accumulating</span> the prior answers as context so every step builds on the last. The final sub-answer is the solution — and you can inspect every step in between.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with the hard, multi-step problem</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A problem with several linked steps is exactly the kind that
+// tempts a model to leap to the final answer and slip mid-way.
+const problem =
+  "Take the phrase 'machine learning is fun'. Concatenate the " +
+  "LAST letter of each word, in order, into one string.";
+
+// Answering in one shot, the model often drops or reorders a
+// letter. We will decompose it first, then solve step by step.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Stage 1 — prompt to DECOMPOSE</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Don't solve yet. Ask only for an ORDERED list of simpler
+// sub-problems, easiest first, that build up to the solution.
+const decomposePrompt = `
+You are about to solve a hard problem. First, do NOT solve it.
+Break it into an ordered list of simpler sub-problems,
+easiest first, where each later step can use earlier answers.
+Return one sub-problem per line, numbered.
+
+Problem: "${problem}"
+Sub-problems:`;
+
+const planText = await llm(decomposePrompt);
+// 1. Last letter of "machine"?
+// 2. Last letter of "learning"?
+// 3. Last letter of "is"?
+// 4. Last letter of "fun"?
+// 5. Concatenate the four letters in order.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Parse the plan into an ordered list</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Turn the numbered text into an array you can iterate over.
+// Each entry is one easy sub-problem to solve in sequence.
+const subProblems = planText
+  .split("\n")
+  .map(line =&gt; line.replace(/^\s*\d+[.)]\s*/, "").trim())
+  .filter(Boolean);
+
+// subProblems = [
+//   'Last letter of "machine"?',
+//   'Last letter of "learning"?',
+//   'Last letter of "is"?',
+//   'Last letter of "fun"?',
+//   'Concatenate the four letters in order.' ]</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Stage 2 — solve each sub-problem in order</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Loop the sub-problems. Feed every prior answer FORWARD as
+// context, so each step builds on the last instead of guessing.
+let history = "";                 // accumulated solved steps
+for (const sub of subProblems) {
+  const stepPrompt = `
+Original problem: ${problem}
+
+Solved so far:
+${history || "(nothing yet)"}
+
+Now solve ONLY this next sub-problem. Be terse.
+Sub-problem: ${sub}
+Answer:`;
+  const ans = await llm(stepPrompt);
+  history += `- ${sub} -> ${ans}\n`;   // carry it forward
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The last sub-answer is the final answer</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Because the steps build up, the final step's answer IS the
+// solution — and 'history' is a full, inspectable trace.
+// history:
+//   - Last letter of "machine"? -> e
+//   - Last letter of "learning"? -> g
+//   - Last letter of "is"? -> s
+//   - Last letter of "fun"? -> n
+//   - Concatenate the four letters in order. -> "egsn"
+//
+// final answer = "egsn"   ✓  (every middle step survived)</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Wrap it as one reusable function</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The whole pattern is: decompose -> solve-in-order -> last.
+async function leastToMost(problem) {
+  const plan = await llm(
+    `List ordered, easiest-first sub-problems (one per line) ` +
+    `to solve, do NOT solve:\n"${problem}"`);
+  const subs = plan.split("\n")
+    .map(l =&gt; l.replace(/^\s*\d+[.)]\s*/, "").trim()).filter(Boolean);
+
+  let history = "", last = "";
+  for (const sub of subs) {
+    last = await llm(
+      `Problem: ${problem}\nSolved so far:\n${history}\n` +
+      `Solve ONLY:\n${sub}\nAnswer:`);
+    history += `- ${sub} -> ${last}\n`;
+  }
+  return { subs, history, answer: last };
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Steer decomposition with a few-shot example</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Show one good decomposition so the split lands at the right
+// grain — sub-problems the model can each solve in one easy step.
+const decomposePrompt = `
+Problem: "Last letter of each word in 'red hot car', joined."
+Sub-problems:
+1. Last letter of "red"?
+2. Last letter of "hot"?
+3. Last letter of "car"?
+4. Join the three letters in order.
+
+Problem: "${problem}"
+Sub-problems:`;
+// Few-shot pins the grain; one example is usually enough to fix it.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Spend the extra calls only where they pay</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// L2M costs one decompose call + one call per sub-problem.
+// Gate it: use it on compositional / multi-step problems; skip
+// it on single-step questions where there is nothing to split.
+async function solve(problem) {
+  if (isMultiStep(problem)) {
+    return (await leastToMost(problem)).answer;  // decompose first
+  }
+  return llm(problem);                           // one step -> direct
+}
+// ⚠️ Decompose when steps CHAIN; not for "2 + 2" — there is
+//    no middle step to drop, so a single call is cheaper.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 18 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Self-Consistency — sample several independent reasoning paths for the same question and take the majority answer to wash out one-off mistakes.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Least-to-Most demo =====
+// Each problem runs TWO paths. Ⓐ One-shot leaps to the final answer
+// straight away and slips on a middle step (`directWrong` + `directFlaw`).
+// Ⓑ Least-to-Most first DECOMPOSES into an ordered list of sub-problems
+// (`subs`), then SOLVES them in sequence — each `step` carrying a sub-answer
+// that feeds the next — building up to the right `correct` answer.
+const QUESTIONS = [
+  { tag:"🔤 Letters",
+    q:'Take the phrase <b>“machine learning is fun”</b>. Concatenate the <b>last letter of each word</b>, in order, into one string.',
+    directWrong:'"Last letters are roughly e… g… s… and fun ends in n, so the answer is something like <b>“esn”</b>."',
+    directFlaw:'Tried to grab all four letters at once and silently dropped one — only three letters made it out.',
+    subs:['Last letter of “machine”?','Last letter of “learning”?','Last letter of “is”?','Last letter of “fun”?','Concatenate the four letters in order.'],
+    steps:['“machine” → <b>e</b>','“learning” → <b>g</b> (so far: e g)','“is” → <b>s</b> (so far: e g s)','“fun” → <b>n</b> (so far: e g s n)','join in order → <b>“egsn”</b>'],
+    correct:'<b>“egsn”</b>. machine→e, learning→g, is→s, fun→n. Solving one word at a time, no letter gets dropped.' },
+
+  { tag:"🍎 Word problem",
+    q:'A shop has <b>3 baskets</b>, each with <b>12 apples</b>. It sells <b>15 apples</b>, then receives <b>2 more baskets</b> of 12. How many apples now?',
+    directWrong:'"3 baskets of 12 is 36, minus 15 sold is 21, plus 2 more baskets… about <b>33 apples</b>."',
+    directFlaw:'Leapt across every step at once and mis-added the last basket — added 12, not 24, for the two new baskets.',
+    subs:['How many apples start in the 3 baskets?','After selling 15, how many remain?','How many apples are in 2 more baskets?','Add the new baskets to the remainder.'],
+    steps:['3 × 12 = <b>36</b> to start','36 − 15 = <b>21</b> remain','2 × 12 = <b>24</b> new apples','21 + 24 = <b>45</b>'],
+    correct:'<b>45 apples.</b> Start 36, sell 15 → 21, add 2×12 = 24 → 45. Each step is one easy operation.' },
+
+  { tag:"🧮 Sequence",
+    q:'Start at <b>4</b>. <b>Double</b> it, then <b>add 6</b>, then <b>halve</b> the result, then <b>subtract 1</b>. What is the final number?',
+    directWrong:'"Double 4 is 8, add 6 is 14, halve and subtract a bit… roughly <b>6</b>."',
+    directFlaw:'Rushed the back half — halved before fully tracking the running value and fudged the last two operations.',
+    subs:['Double 4.','Add 6 to that.','Halve the result.','Subtract 1.'],
+    steps:['4 × 2 = <b>8</b>','8 + 6 = <b>14</b>','14 ÷ 2 = <b>7</b>','7 − 1 = <b>6</b>'],
+    correct:'<b>6.</b> 4→8→14→7→6. The one-shot guess landed on 6 by luck, but only the ordered chain proves it.' },
+];
+
+const NODE_NAMES = ["Problem","Decompose","Solve sub-1","Solve sub-2…","Final answer"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const qBox=document.getElementById("qBox");
+const colDirect=document.getElementById("colDirect"), colStep=document.getElementById("colStep");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUESTIONS[qi];
+  colDirect.innerHTML=""; colStep.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  qBox.innerHTML = `<span class="tok text-violet-600 font-bold text-xs mr-1">${Q.tag}</span> ${Q.q}`;
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=1050; };
+
+  // STAGE 1 — the problem enters both paths
+  step(0, ()=>{
+    const lead = `<div class="text-xs text-slate-500 font-semibold mb-1">reads the complex problem…</div>`;
+    colDirect.innerHTML = lead;
+    colStep.innerHTML   = lead;
+  });
+
+  // STAGE 2 — One-shot lunges at the final answer; L2M decomposes into sub-problems
+  step(1, ()=>{
+    colDirect.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">Ⓐ leap to the final answer right now</div>
+      <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 fail-glow">${Q.directWrong}</div>`;
+    const list = Q.subs.map((s,i)=>`<div class="text-violet-800"><span class="tok font-bold">${i+1}.</span> ${s}</div>`).join("");
+    colStep.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">Ⓑ first decompose into ordered sub-problems:</div>
+      <div class="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs space-y-0.5 fix-glow">🧩 <b>Decomposition</b><br>${list}</div>`;
+  });
+
+  // STAGE 3 — One-shot's flaw is exposed; L2M solves the first sub-problem
+  step(2, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-rose-700 mb-1">slipped on a middle step</div>
+      <div class="text-rose-600">${Q.directFlaw}</div></div>`;
+    colStep.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-emerald-700 mb-1">▶ solve sub-1</div>
+      <div class="text-emerald-800">${Q.steps[0]}</div></div>`;
+  });
+
+  // STAGE 4 — L2M solves the remaining sub-problems in sequence, each feeding the next
+  step(3, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-200 bg-white p-2 text-center text-xs text-rose-500 font-semibold mt-1">no ordered steps — one shaky leap</div>`;
+    const rest = Q.steps.slice(1).map((s,i)=>`<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-2 text-xs mt-1">
+      <span class="tok font-bold text-emerald-700">▶ sub-${i+2}</span> <span class="text-emerald-800">${s}</span></div>`).join("");
+    colStep.innerHTML += rest;
+  });
+
+  // STAGE 5 — verdicts: One-shot stays wrong, L2M builds to the correct answer
+  step(4, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-xs mt-1 strike-anim">
+      <div class="tok font-bold text-rose-700 mb-1">✗ one-shot answer</div>
+      <div class="text-rose-700">${Q.directWrong}</div></div>`;
+    colStep.innerHTML += `<div class="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-xs mt-1 fix-glow">
+      <div class="tok font-bold text-emerald-700 mb-1">✓ final answer</div>
+      <div class="text-emerald-800">${Q.correct}</div></div>`;
+  });
+
+  // verdict — the contrast, summarised
+  step(4, ()=>{
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">Ⓐ one-shot → leapt the steps, slipped on one ✗</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">Ⓑ least-to-most → decompose, solve in order ✓</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">Hard problems break models because they try to leap to the answer in one go, and a single dropped middle step sinks the whole thing. <b class="text-emerald-700">Least-to-most first asks for the sub-steps</b> — an ordered list of easier sub-problems — then solves them one at a time, each answer feeding the next. Every step is small enough to get right, so the answer builds up reliably instead of collapsing on a guess.</div>
+    </div>`;
+  });
+}
+
+QUESTIONS.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.innerHTML=`${Q.tag}`; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Why multi-step problems fail", why:"A problem made of several linked steps asks the model to do a lot at once: hold the whole chain in mind, carry intermediate results, and not drop or reorder anything. When it tries to leap straight to the final answer, errors compound — a small slip on the second step quietly corrupts every step after it. Often a middle step is skipped entirely because the model is racing toward the conclusion. The output looks confident and finished, but one broken link sinks the whole thing.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">problem → <span class="text-rose-600">one big leap</span> → answer<br><span class="text-rose-600 mt-1 inline-block">a dropped middle step corrupts everything after it</span></div>`, code:`// "last letter of each word" → model: "esn"?
+// raced ahead and silently dropped one letter.` },
+  { title:"2. The least-to-most idea", why:"Least-to-most prompting splits the work into two distinct phases. First you have the model decompose the problem into an ordered list of simpler sub-problems, arranged from easiest to hardest. Then you solve those sub-problems one at a time, in order, instead of all at once. The name says it: go from the least (smallest, easiest piece) to the most (the full problem) gradually. Nothing is leapt over — the hard problem is reached by climbing a ladder of easy ones.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">problem → <b class="text-violet-700">decompose</b> → ordered sub-problems → <b class="text-violet-700">solve in order</b><br><span class="text-emerald-700 mt-1 inline-block">least → most: climb easy steps to the hard answer</span></div>`, code:`// Phase 1: list ordered sub-problems (don't solve).
+// Phase 2: solve each one in sequence, easiest first.` },
+  { title:"3. Stage 1 — decomposition prompt", why:"The first prompt does only one job: produce the plan. You explicitly tell the model NOT to solve the problem yet, and instead to write an ordered list of simpler sub-problems, easiest first, where each later step can lean on earlier answers. Getting the grain right matters — each sub-problem should be small enough to solve in a single, reliable step. A good decomposition turns one scary problem into a short numbered list of obvious little tasks.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">"do NOT solve — list the sub-problems"<br><span class="text-emerald-700 mt-1 inline-block">1. … 2. … 3. … (easiest → hardest)</span></div>`, code:`"Break this into ordered, easiest-first sub-problems.
+ Do NOT solve. One per line, numbered:\\n" + problem` },
+  { title:"4. Stage 2 — sequential solving", why:"With the plan in hand, you solve the sub-problems one by one, in the order they were listed. Each call answers exactly one small sub-problem, so the model only ever faces an easy task it can get right. This is the heart of the method: you never ask for the whole answer at once, only the next little piece. Because the steps were ordered easiest-first, by the time you reach the hardest one all the groundwork is already done and waiting.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">sub-1 ✓ → sub-2 ✓ → sub-3 ✓ → <b class="text-emerald-700">final ✓</b><br><span class="text-slate-500 mt-1 inline-block">one easy sub-problem per call, in order</span></div>`, code:`for (const sub of subProblems) {
+  const ans = await llm("Solve only:\\n" + sub);
+}` },
+  { title:"5. Feed sub-answers forward", why:"The steps are not solved in isolation — each one is handed the answers from all the steps before it. Before solving the next sub-problem, you paste the running list of solved steps into the prompt as context. That way step three can use the result of steps one and two, exactly as the decomposition intended. This forward-feeding is what makes the chain build up rather than fragment: every sub-answer becomes an input for the next, so the final step inherits a fully solved foundation instead of re-deriving everything.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">sub-1 → <b class="text-violet-700">answer</b> ↘<br>sub-2 reads answer-1 → <b class="text-violet-700">answer</b> ↘<br><span class="text-emerald-700 mt-1 inline-block">each step builds on the last</span></div>`, code:`history += sub + " -> " + ans + "\\n";   // carry it
+// next prompt: "Solved so far:\\n" + history + nextSub` },
+  { title:"6. Difference from chain-of-thought", why:"Chain-of-thought and least-to-most both add reasoning, but they differ in structure. Chain-of-thought reasons through the whole problem in ONE pass — \"let's think step by step\" all inside a single answer, with no checkpoint between steps. Least-to-most makes the steps explicit and SEPARATE: it first decomposes the problem, then solves each sub-problem in its own call. That separation means you can inspect and verify each intermediate answer, and a slip on one step does not silently bleed into the next. CoT thinks out loud once; L2M plans, then executes the plan piece by piece.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-slate-600">CoT:</b> reason through it all in one pass<br><b class="text-violet-700">L2M:</b> decompose, then solve each step separately</div>`, code:`// CoT: "Let's think step by step…" (one answer)
+// L2M: plan = decompose(); for(s of plan) solve(s);` },
+  { title:"7. When to use which — step-back & ToT", why:"Three reasoning patterns, three different shapes. Step-back goes UP: it abstracts to the governing principle before answering — best when the right framework or rule is unclear. Tree-of-thoughts goes WIDE: it searches across several candidate branches and backtracks — best when there are many possible paths and you must explore. Least-to-most goes FORWARD in a line: it decomposes into ordered sub-steps and solves them in sequence — best when the problem is naturally compositional, a fixed chain of dependent steps. Reach for step-back for principles, ToT for search, and L2M when a hard task simply breaks into smaller ordered ones.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-violet-700">step-back ↑ principle</span> · <span class="text-violet-700">ToT ⤢ search</span> · <b class="text-emerald-700">L2M → ordered steps</b><br><span class="text-slate-500 mt-1 inline-block">unclear rule? search space? or a fixed chain?</span></div>`, code:`// step-back: abstract first  (which rule applies?)
+// ToT:       branch & search  (try many paths)
+// L2M:       decompose & solve (one chain, in order)` },
+  { title:"8. Good for compositional generalization", why:"Least-to-most shines on compositional problems — ones built by combining simpler operations the model already handles individually. Its real strength is generalizing to harder instances than it ever saw: if it can do a 3-word version, decomposing lets it do a 12-word version too, because each sub-step stays the same easy size no matter how long the chain grows. One-shot answering degrades fast as problems get longer; least-to-most holds up, because length just means more easy steps, not a harder single leap. That is why it was designed for tasks that scale by composition.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">3 steps ✓ … 5 steps ✓ … 12 steps ✓<br><span class="text-emerald-700 mt-1 inline-block">longer problem = more easy steps, not a harder leap</span></div>`, code:`// works on 'red hot car' AND 'machine learning is fun'
+// each extra word is just one more identical easy step.` },
+  { title:"9. Cost — multiple calls", why:"The price of reliability is calls. Least-to-most uses one call to decompose plus one call per sub-problem, so a five-step problem can mean six model calls and the latency that comes with them, versus a single call for a one-shot answer. On hard, multi-step problems where a wrong answer is expensive, that trade is well worth it — six cheap correct steps beat one confident wrong leap. On trivial single-step questions it is pure waste. So gate it: detect when a problem actually decomposes into a chain, and only then pay for the extra calls; otherwise answer directly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">1 decompose call + 1 call per sub-problem<br><span class="text-rose-600 mt-1 inline-block">great on hard chains, wasteful on one-step tasks</span></div>`, code:`if (isMultiStep(problem)) return leastToMost(problem);
+return llm(problem);   // single step — one call is cheaper` },
+  { title:"10. Failure modes", why:"Least-to-most has its own ways to break, and they cluster in stage one. If the decomposition is wrong — steps in the wrong order, a sub-problem still too big, or a needed step left out — the solving phase faithfully executes a flawed plan and lands a clean-looking wrong answer. Dependencies can also be missed, so a later step never actually receives the earlier result it needed. And errors can still propagate forward: a mistake in an early sub-answer is carried into every step after it. The fixes: anchor the decomposition with a few-shot example, keep sub-problems genuinely small, and inspect the intermediate trace so you can see exactly which step went wrong.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-rose-600">bad split · missed dependency · early error carried forward</span><br><span class="text-emerald-700 mt-1 inline-block">few-shot the split · small steps · inspect the trace</span></div>`, code:`// guardrails:
+// 1) few-shot the decomposition  2) keep sub-steps tiny
+// 3) log 'history' — see which step actually broke` },
+  { title:"11. The takeaway", why:"Hard problems break models because they try to leap to the answer and one dropped middle step sinks everything. Least-to-most fixes this by first asking for the sub-steps — an ordered list of easier sub-problems — then solving them one at a time, each answer feeding the next, until the chain builds up to the final correct answer. Decompose, then solve in order. It costs a few extra calls, generalizes to longer problems for free, and leaves an inspectable trace of every step — which is exactly why it is one of the most dependable ways to make a model reason through something complicated.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Decompose, then solve in order. List the sub-steps, solve each easy piece, feed every answer forward — and the hard answer builds itself.</p></div>`, code:`// decompose → solve each in order → feed forward → done.
+// least to most: climb the easy steps to the hard answer.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
