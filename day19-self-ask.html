@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 19 — Self-Ask Prompting (Let the Model Interview Itself)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 19</div>
+      <h1 class="text-xl font-bold">❓ Self-Ask — Let the Model Interview Itself</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Leap to the final answer of a multi-hop question and a hidden middle fact gets skipped.</h2>
+      <p class="text-slate-500 text-center mb-5">A question that hides a fact inside a fact — a <b>multi-hop</b> question — tempts the model to jump straight to the last hop. <b class="text-rose-700">Answering directly</b> guesses the final answer without ever surfacing the intermediate fact it depends on, and lands on the wrong thing. <b class="text-emerald-700">Self-ask</b> first decides <b>“are follow-up questions needed?”</b>, then explicitly asks itself <b>follow-up questions</b> one at a time — answering each before moving on — until the intermediate facts are all on the table, and only then composes them into the final answer. Pick a question and watch both paths run:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="qs"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- the question -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">❓ The multi-hop question</div>
+        <div id="qBox" class="text-sm text-slate-800"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div>
+          <div class="text-center text-sm font-bold text-rose-700 mb-2">Ⓐ&nbsp;Direct — answer the final hop in one leap</div>
+          <div id="colDirect" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-emerald-700 mb-2">Ⓑ&nbsp;Self-Ask — interview yourself, follow-up by follow-up</div>
+          <div id="colStep" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How self-ask prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build a self-ask solver</h2>
+    <p class="text-slate-500 mb-8">Take a multi-hop question. Seed the model with a few-shot example that shows the <span class="tok">Follow-up / Intermediate answer</span> format. Then loop: let it decide if a follow-up is needed, emit one, answer it (optionally via <b>search</b>), feed that answer back, and repeat — until it says <span class="tok">“So the final answer is …”</span>. You end up with the right answer <em>and</em> a clean trace of every intermediate fact.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with the multi-hop question</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A question that hides a fact inside a fact. The model is
+// tempted to leap to the last hop and skip the middle one.
+const question =
+  "Who was U.S. president when the composer of " +
+  "'Rhapsody in Blue' was born?";
+
+// Answering directly, the model jumps to a president and
+// skips two hidden hops: WHO composed it, and WHEN they were born.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Few-shot the self-ask format</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// One worked example teaches the structured Q&amp;A scaffold:
+// the gate, the Follow-up lines, the Intermediate answers,
+// and the closing "So the final answer is".
+const fewShot = `
+Question: Who lived longer, Mozart or Beethoven?
+Are follow-up questions needed here: Yes.
+Follow-up: How long did Mozart live?
+Intermediate answer: 35 years.
+Follow-up: How long did Beethoven live?
+Intermediate answer: 56 years.
+So the final answer is: Beethoven.
+`;
+// The model will now copy this shape for new questions.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The gate — “are follow-ups needed?”</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Build the prompt and let the model answer the gate first.
+// "No" → it can answer directly; "Yes" → it owes a follow-up.
+const prompt = fewShot + `
+Question: ${question}
+Are follow-up questions needed here:`;
+
+const gate = await llm(prompt);     // -> "Yes."
+const needsHops = /yes/i.test(gate);
+// If needsHops is false, just read off the final answer.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Loop: emit a follow-up, then answer it</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Generate up to the next "Follow-up:" line, stop, answer it,
+// paste the intermediate answer back, and continue the trace.
+let trace = prompt + " Yes.\n";
+while (true) {
+  const out = await llm(trace, { stop: ["Intermediate answer:",
+                                        "So the final answer is"] });
+  trace += out;
+  if (/So the final answer is/i.test(out)) break;   // done
+  const followUp = out.match(/Follow-up:(.*)/i)[1].trim();
+  const inter = await answer(followUp);             // step 5
+  trace += `Intermediate answer: ${inter}\n`;
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Answer each follow-up via search (Self-Ask + Search)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Each follow-up is a small, single-fact question — perfect
+// to hand to a search engine for an up-to-date, grounded answer.
+async function answer(followUp) {
+  const hit = await search(followUp);   // web / vector store
+  // distil the top hit into one clean fact
+  return llm(`Question: ${followUp}\nContext: ${hit}\n` +
+             `Give just the answer:`);
+}
+// answer("Who composed 'Rhapsody in Blue'?") -> "George Gershwin"
+// answer("When was George Gershwin born?")    -> "1898"</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Compose the intermediate answers into the final</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// When the model emits "So the final answer is", the hops are
+// all resolved and the last hop reads off the prior facts.
+// trace:
+//   Follow-up: Who composed 'Rhapsody in Blue'?
+//   Intermediate answer: George Gershwin.
+//   Follow-up: When was George Gershwin born?
+//   Intermediate answer: 1898.
+//   Follow-up: Who was U.S. president in 1898?
+//   Intermediate answer: William McKinley.
+//   So the final answer is: William McKinley.
+const final = trace.match(/So the final answer is:?\s*(.+)/i)[1];</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Wrap it as one reusable function</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// decide -> ask follow-up -> answer -> repeat -> final.
+async function selfAsk(question, { useSearch = true } = {}) {
+  let trace = fewShot + `\nQuestion: ${question}\n` +
+              `Are follow-up questions needed here:`;
+  for (let i = 0; i &lt; 8; i++) {            // hop cap = safety net
+    const out = await llm(trace, { stop: ["Intermediate answer:",
+                                          "So the final answer is"] });
+    trace += out;
+    if (/So the final answer is/i.test(out)) break;
+    const fu = (out.match(/Follow-up:(.*)/i) || [])[1];
+    if (!fu) break;
+    trace += `Intermediate answer: ${useSearch
+      ? await answer(fu.trim()) : await llm(fu.trim())}\n`;
+  }
+  return { trace, answer: (trace.match(
+    /So the final answer is:?\s*(.+)/i) || [])[1] };
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Spend the follow-ups only where they pay</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Self-ask costs one call per follow-up (plus a search each).
+// The built-in gate already handles this: a single-hop question
+// answers "No" and exits with zero follow-ups.
+async function solve(question) {
+  const { trace, answer } = await selfAsk(question);
+  // inspect the trace — every intermediate fact is visible,
+  // so a wrong final answer points straight at the bad hop.
+  return answer;
+}
+// ⚠️ Worth it on compositional / multi-hop factual questions;
+//    a one-hop lookup just gates out and costs nothing extra.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 19 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Self-Consistency — sample several independent reasoning paths for the same question and take the majority answer to wash out one-off mistakes.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Self-Ask demo =====
+// Each question runs TWO paths. Ⓐ Direct leaps to the final hop straight
+// away and skips a hidden intermediate fact (`directWrong` + `directFlaw`).
+// Ⓑ Self-Ask first decides follow-ups ARE needed, then asks itself an
+// explicit FOLLOW-UP question (`hops[].fu`), answers it (`hops[].ans`),
+// feeds it forward, and repeats — composing them into the right `correct`.
+const QUESTIONS = [
+  { tag:"🎼 Composer → President",
+    q:'Who was <b>U.S. president</b> when the <b>composer of “Rhapsody in Blue”</b> was born?',
+    directWrong:'"Rhapsody in Blue feels like the 1920s, and a 1920s president is Coolidge, so… <b>Calvin Coolidge</b>."',
+    directFlaw:'Anchored on when the piece is famous, not when its composer was born — it skipped the “who composed it?” and “when were they born?” hops entirely.',
+    hops:[
+      { fu:'Who composed “Rhapsody in Blue”?', ans:'<b>George Gershwin.</b>' },
+      { fu:'When was George Gershwin born?', ans:'<b>1898.</b>' },
+      { fu:'Who was U.S. president in 1898?', ans:'<b>William McKinley.</b>' } ],
+    correct:'<b>William McKinley.</b> Gershwin composed it → born 1898 → president in 1898 was McKinley. Each hidden fact was surfaced before the final hop.' },
+
+  { tag:"🗼 Landmark → Capital",
+    q:'What is the <b>capital</b> of the country where the <b>Eiffel Tower</b> is located?',
+    directWrong:'"The Eiffel Tower is the icon of Paris, so the capital is… <b>Paris</b>."',
+    directFlaw:'Collapsed two hops into one — answered the city of the landmark instead of first finding the country, then that country’s capital. (Here they coincide, but the reasoning is still a lucky shortcut.)',
+    hops:[
+      { fu:'In which country is the Eiffel Tower?', ans:'<b>France.</b>' },
+      { fu:'What is the capital of France?', ans:'<b>Paris.</b>' } ],
+    correct:'<b>Paris.</b> Eiffel Tower → France → capital of France is Paris. The hops are made explicit, so the answer is reasoned, not guessed.' },
+
+  { tag:"🏎️ Inventor → Birthplace",
+    q:'In which <b>country</b> was the <b>inventor of the telephone</b> born?',
+    directWrong:'"The telephone is an American invention and Bell worked in the U.S., so he was born in… <b>the United States</b>."',
+    directFlaw:'Confused where the work happened with where the inventor was born — it skipped the “where was Bell born?” hop and answered the wrong fact.',
+    hops:[
+      { fu:'Who is credited with inventing the telephone?', ans:'<b>Alexander Graham Bell.</b>' },
+      { fu:'Where was Alexander Graham Bell born?', ans:'<b>Edinburgh, Scotland.</b>' },
+      { fu:'Which country is Edinburgh in?', ans:'<b>Scotland (United Kingdom).</b>' } ],
+    correct:'<b>Scotland (United Kingdom).</b> Telephone → Bell → born in Edinburgh → Scotland/UK. The intermediate birthplace fact corrects the leap to the U.S.' },
+];
+
+const NODE_NAMES = ["Question","Follow-ups needed?","Ask follow-up","Answer it","Final answer"];
+const qsEl=document.getElementById("qs"), nodesEl=document.getElementById("nodes");
+const qBox=document.getElementById("qBox");
+const colDirect=document.getElementById("colDirect"), colStep=document.getElementById("colStep");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(qi){
+  const Q=QUESTIONS[qi];
+  colDirect.innerHTML=""; colStep.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  qBox.innerHTML = `<span class="tok text-violet-600 font-bold text-xs mr-1">${Q.tag}</span> ${Q.q}`;
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=1050; };
+
+  // STAGE 1 — the question enters both paths
+  step(0, ()=>{
+    const lead = `<div class="text-xs text-slate-500 font-semibold mb-1">reads the multi-hop question…</div>`;
+    colDirect.innerHTML = lead;
+    colStep.innerHTML   = lead;
+  });
+
+  // STAGE 2 — Direct lunges at the final hop; Self-Ask opens the gate
+  step(1, ()=>{
+    colDirect.innerHTML = `<div class="text-xs text-rose-600 font-semibold mb-1">Ⓐ answer the final hop right now</div>
+      <div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs text-rose-800 fail-glow">${Q.directWrong}</div>`;
+    colStep.innerHTML = `<div class="text-xs text-emerald-600 font-semibold mb-1">Ⓑ first ask the gate, then interview yourself:</div>
+      <div class="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs fix-glow">❓ <b>Are follow-up questions needed here?</b> &nbsp;<span class="tok font-bold text-emerald-700">Yes.</span></div>`;
+  });
+
+  // STAGE 3 — Direct's flaw is exposed; Self-Ask asks + answers its first follow-up
+  step(2, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-300 bg-rose-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-rose-700 mb-1">skipped a hidden hop</div>
+      <div class="text-rose-600">${Q.directFlaw}</div></div>`;
+    const h0 = Q.hops[0];
+    colStep.innerHTML += `<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-emerald-700 mb-1">↳ Follow-up 1</div>
+      <div class="text-slate-700 mb-1">${h0.fu}</div>
+      <div class="text-emerald-800"><span class="tok font-bold">Intermediate answer:</span> ${h0.ans}</div></div>`;
+  });
+
+  // STAGE 4 — Self-Ask asks the remaining follow-ups in sequence, each feeding the next
+  step(3, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border border-rose-200 bg-white p-2 text-center text-xs text-rose-500 font-semibold mt-1">no follow-ups — one shaky leap</div>`;
+    const rest = Q.hops.slice(1).map((h,i)=>`<div class="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs mt-1">
+      <div class="tok font-bold text-emerald-700 mb-1">↳ Follow-up ${i+2}</div>
+      <div class="text-slate-700 mb-1">${h.fu}</div>
+      <div class="text-emerald-800"><span class="tok font-bold">Intermediate answer:</span> ${h.ans}</div></div>`).join("");
+    colStep.innerHTML += rest;
+  });
+
+  // STAGE 5 — verdicts: Direct stays wrong, Self-Ask composes the correct final answer
+  step(4, ()=>{
+    colDirect.innerHTML += `<div class="rounded-xl border-2 border-rose-300 bg-rose-50 p-3 text-xs mt-1 strike-anim">
+      <div class="tok font-bold text-rose-700 mb-1">✗ direct answer</div>
+      <div class="text-rose-700">${Q.directWrong}</div></div>`;
+    colStep.innerHTML += `<div class="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-3 text-xs mt-1 fix-glow">
+      <div class="tok font-bold text-emerald-700 mb-1">✓ So the final answer is…</div>
+      <div class="text-emerald-800">${Q.correct}</div></div>`;
+  });
+
+  // verdict — the contrast, summarised
+  step(4, ()=>{
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">Ⓐ direct → skipped a hidden hop, guessed ✗</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-emerald-100 text-emerald-700 font-bold">Ⓑ self-ask → follow-up, answer, repeat ✓</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">Multi-hop questions break models because they leap to the final hop and never surface the intermediate fact it rests on. <b class="text-emerald-700">Self-ask makes the model interview itself</b> — it decides a follow-up is needed, asks one explicit follow-up question, answers it (and can route each one through a search tool for fresh, grounded facts), feeds the answer forward, and repeats until it can compose the final answer. The hidden hops are surfaced one by one instead of guessed.</div>
+    </div>`;
+  });
+}
+
+QUESTIONS.forEach((Q,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.innerHTML=`${Q.tag}`; b.onclick=()=>{ qsEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; qsEl.appendChild(b); });
+qsEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Why multi-hop questions fail", why:"Some questions hide a fact inside a fact — a multi-hop question, where you can only reach the answer by chaining several lookups. Asked one of these, a model is tempted to leap straight to the final hop and guess, because the wording dangles the last step in front of it. The intermediate facts it actually needs are never surfaced, so the model anchors on a surface association and produces a confident, wrong answer. The output reads as finished even though a hidden hop was silently skipped. This is exactly the gap self-ask is built to close.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">question → <span class="text-rose-600">one leap to the last hop</span> → answer<br><span class="text-rose-600 mt-1 inline-block">the hidden intermediate fact is never surfaced</span></div>`, code:`// "president when 'Rhapsody in Blue' composer was born?"
+// model: "Coolidge"? — skipped WHO + WHEN, guessed the era.` },
+  { title:"2. The self-ask idea", why:"Self-ask prompting has the model interview itself before answering. Instead of replying in one shot, it explicitly asks itself follow-up questions — smaller sub-questions whose answers it needs — and answers each one in turn, then uses those intermediate answers to compose the final reply. The whole exchange is written out as a structured question-and-answer with itself. Turning a hidden hop into an explicit, written-down follow-up is the core move: a fact you have to say out loud is far harder to skip than one you were supposed to infer silently.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">question → <b class="text-violet-700">ask yourself follow-ups</b> → answer each → <b class="text-violet-700">compose final</b><br><span class="text-emerald-700 mt-1 inline-block">surface every hidden hop, one explicit question at a time</span></div>`, code:`// Follow-up: who composed it?      -> Gershwin
+// Follow-up: when was he born?      -> 1898
+// Follow-up: president in 1898?     -> McKinley` },
+  { title:"3. The self-ask format", why:"Self-ask runs on a fixed, recognisable scaffold of lines. After the question it writes \"Are follow-up questions needed here:\" then, while the answer is Yes, repeats a pair: \"Follow-up: <sub-question>\" immediately followed by \"Intermediate answer: <fact>\". When no more are needed it closes with \"So the final answer is: <answer>\". Those exact phrases are not decoration — they are the structure. They give every hop a labelled slot, make the trace trivial to parse, and tell the loop precisely where to stop generation, answer the follow-up, and resume.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-left inline-block"><span class="tok">Are follow-up questions needed: Yes.</span><br><span class="tok text-violet-700">Follow-up:</span> …<br><span class="tok text-emerald-700">Intermediate answer:</span> …<br><span class="tok text-slate-600">So the final answer is:</span> …</div>`, code:`// the four magic lines:
+// "Are follow-up questions needed here:"
+// "Follow-up:"   "Intermediate answer:"
+// "So the final answer is:"` },
+  { title:"4. The “are follow-ups needed?” gate", why:"Before any work happens, self-ask asks a yes/no gate: are follow-up questions needed here at all? A simple, single-hop question answers \"No\" and the model just gives the answer — no extra calls, no overhead. A multi-hop question answers \"Yes\" and commits to producing at least one follow-up. This gate is what keeps the method cheap and self-regulating: it spends the follow-up machinery only when the question genuinely needs decomposing, and quietly steps aside when it does not.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">needed? <span class="text-rose-600 font-bold">No</span> → answer directly<br>needed? <span class="text-emerald-700 font-bold">Yes</span> → start the follow-up loop<br><span class="text-slate-500 mt-1 inline-block">cheap on simple questions, thorough on hard ones</span></div>`, code:`const gate = await llm(prompt +
+  "Are follow-up questions needed here:");
+if (!/yes/i.test(gate)) return readFinalAnswer(gate);` },
+  { title:"5. Answer the follow-ups one at a time", why:"Once a follow-up is on the table you stop and answer it before going further. Each follow-up is deliberately small — a single fact lookup — so it is easy to get right on its own. The answer is written back as an \"Intermediate answer\" line and fed forward into the next round, exactly like passing a baton. Because the loop pauses after every follow-up, you can resolve each fact for real (in your head, or via a tool) instead of letting the model hallucinate the whole chain in one breath. One small question, one solid answer, then the next.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">Follow-up → <b class="text-violet-700">answer</b> ↘<br>next Follow-up reads it → <b class="text-violet-700">answer</b> ↘<br><span class="text-emerald-700 mt-1 inline-block">each intermediate answer feeds the next hop</span></div>`, code:`for each "Follow-up:" the model emits {
+  pause; inter = answer(followUp);   // resolve one fact
+  trace += "Intermediate answer: " + inter;   // carry it
+}` },
+  { title:"6. Compose intermediates into the final", why:"The hops are not the goal — composing them is. After the last needed follow-up is answered, the model writes \"So the final answer is\" and reads the conclusion off the intermediate facts it just gathered. Because every hop is sitting in the trace, the final step is the easy one: it only has to combine known facts, not re-derive them. This is where the wrong leaps get corrected — the surfaced intermediate answer (the composer's real birth year, the inventor's real birthplace) overrides the surface guess the direct path would have made.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">Gershwin + 1898 + McKinley<br>→ <b class="text-emerald-700">So the final answer is: McKinley</b><br><span class="text-slate-500 mt-1 inline-block">combine the surfaced facts, don't guess</span></div>`, code:`const final = trace.match(
+  /So the final answer is:?\\s*(.+)/i)[1];
+// reads off the resolved hops, not a fresh guess.` },
+  { title:"7. Self-Ask + Search", why:"Self-ask pairs naturally with a search tool, and that combo is the whole point of the original method. Each follow-up is a tidy, single-fact question — ideal to hand to a search engine or vector store rather than trusting the model's memory. You intercept every \"Follow-up:\" line, run it as a query, distil the top result into one clean fact, and write that back as the intermediate answer. This grounds each hop in real, current data, so the chain stays correct even for facts past the model's training cutoff or too obscure to recall reliably.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">Follow-up → <b class="text-violet-700">🔎 search</b> → fact → Intermediate answer<br><span class="text-emerald-700 mt-1 inline-block">grounded, up-to-date facts per hop — not memory</span></div>`, code:`// intercept each follow-up, route it to retrieval:
+const hit = await search(followUp);
+const fact = await llm("Question: "+followUp+
+  "\\nContext: "+hit+"\\nAnswer:");` },
+  { title:"8. Difference from chain-of-thought", why:"Chain-of-thought and self-ask both add reasoning, but their shape differs. Chain-of-thought is free-form: \"let's think step by step\" pours out one continuous block of prose with no fixed structure. Self-ask is a structured question-and-answer the model holds with itself — labelled Follow-up and Intermediate-answer lines, each a discrete, inspectable hop. That structure buys you three things: it forces every needed fact to be stated explicitly, it gives clean seams where a tool (like search) can slot in per follow-up, and it makes the trace machine-parseable. CoT thinks out loud; self-ask asks itself precise questions and answers them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-slate-600">CoT:</b> free-form "think step by step" prose<br><b class="text-violet-700">Self-ask:</b> structured Follow-up / Intermediate-answer Q&amp;A</div>`, code:`// CoT:      "Let's think step by step…" (loose prose)
+// Self-ask: Follow-up: … / Intermediate answer: … (labelled)` },
+  { title:"9. Few-shot teaches the format", why:"Self-ask is taught, not assumed. You prime the model with one or two worked examples that show the exact scaffold — the gate line, the Follow-up / Intermediate-answer pairs, the closing \"So the final answer is\". Seeing the format once is usually enough for the model to copy it faithfully on a brand-new question, including emitting the literal phrases your loop relies on to know where to stop and resume. Skip the few-shot and the model tends to drift back to free-form prose, breaking the parsing. The example is what makes the structure reliable and the trace machine-readable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">show 1 worked Q&amp;A in the format<br>→ <span class="text-emerald-700">model copies the exact scaffold</span><br><span class="text-slate-500 mt-1 inline-block">no example → it drifts back to loose prose</span></div>`, code:`const fewShot = \`
+Question: Who lived longer, Mozart or Beethoven?
+Are follow-up questions needed here: Yes.
+Follow-up: How long did Mozart live? …\`;` },
+  { title:"10. When it helps & failure modes", why:"Self-ask shines on compositional, multi-hop factual questions — anything of the form \"the X of the Y of Z\" where the answer chains through intermediate entities. It is far less useful on single-hop lookups (the gate just says No) or on open-ended reasoning with no clean fact chain. Its failure modes mirror the chain: a wrong intermediate answer is carried straight into the final, so one bad hop quietly sinks the result; a malformed follow-up can send search down the wrong path; and a model can loop or stop too early if the format slips. The guardrails: ground hops with search, few-shot the format hard, cap the number of hops, and inspect the trace — because it shows you exactly which hop broke.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-emerald-700">best on multi-hop factual "X of the Y of Z"</span><br><span class="text-rose-600 mt-1 inline-block">wrong intermediate → wrong final · cap hops · inspect trace</span></div>`, code:`// guardrails:
+// 1) search-ground each hop  2) few-shot the format
+// 3) cap maxHops  4) read the trace — find the bad hop` },
+  { title:"11. vs ReAct & Least-to-Most", why:"Three decomposition patterns, three flavours. Least-to-most plans up front: it lists all the ordered sub-problems first, then solves them in sequence — best when the steps are knowable in advance. Self-ask is interleaved but narrow: it generates ONE follow-up at a time, answers it, and only then decides the next — best for multi-hop factual chains where each hop reveals the next, and it slots a search tool in per follow-up. ReAct is the most general: it interleaves free-form Thought / Action / Observation and can call any tool, not just search — best for open-ended, tool-using tasks. Self-ask is essentially a tightly-structured, search-shaped special case of the ReAct loop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-violet-700">L2M: plan all steps, then solve</span><br><b class="text-emerald-700">Self-ask: one follow-up at a time (+ search)</b><br><span class="text-violet-700">ReAct: free Thought/Action/Observation, any tool</span></div>`, code:`// L2M:      list subs up front -> solve in order
+// Self-ask: follow-up -> answer -> repeat (search-shaped)
+// ReAct:    Thought -> Action(any tool) -> Observation` },
+  { title:"12. The takeaway", why:"Multi-hop questions break models because they leap to the final hop and never surface the intermediate fact it rests on. Self-ask fixes this by making the model interview itself: it gates on whether follow-ups are needed, asks one explicit follow-up question at a time, answers each (often by routing it through a search tool for grounded facts), feeds that answer forward, and repeats until it can compose the final answer. Decompose by interrogation, answer hop by hop. It costs one call per follow-up, stays cheap on simple questions thanks to the gate, and leaves a fully inspectable trace — which is why it is one of the most dependable ways to get a model through a chained factual question.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Let the model interview itself. Gate, ask one follow-up, answer it, feed it forward — and the multi-hop answer composes from facts instead of a guess.</p></div>`, code:`// gate -> follow-up -> answer (search) -> repeat -> final.
+// self-ask: surface every hidden hop, one question at a time.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
