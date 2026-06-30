@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 20 — Reflexion (Learn From Your Own Mistakes, Then Retry)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .fail-glow { animation: failGlow 1.4s ease-out 1; }
+  @keyframes failGlow { 0%{ box-shadow:0 0 0 0 rgba(244,63,94,.55);} 60%{ box-shadow:0 0 0 10px rgba(244,63,94,0);} 100%{ box-shadow:0 0 0 0 rgba(244,63,94,0);} }
+  .fix-glow { animation: fixGlow 1.4s ease-out 1; }
+  @keyframes fixGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.55);} 60%{ box-shadow:0 0 0 10px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .reflect-glow { animation: reflectGlow 1.4s ease-out 1; }
+  @keyframes reflectGlow { 0%{ box-shadow:0 0 0 0 rgba(124,58,237,.55);} 60%{ box-shadow:0 0 0 10px rgba(124,58,237,0);} 100%{ box-shadow:0 0 0 0 rgba(124,58,237,0);} }
+  .strike-anim { position:relative; }
+  .strike-anim::after { content:""; position:absolute; left:0; top:50%; height:2px; width:0; background:#e11d48; animation: strikeGrow 1s ease-out forwards; }
+  @keyframes strikeGrow { to { width:100%; } }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 20</div>
+      <h1 class="text-xl font-bold">🪞 Reflexion — Learn From Your Own Mistakes, Then Retry</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">Fail once, then keep failing the same way — unless you write the lesson down first.</h2>
+      <p class="text-slate-500 text-center mb-5">A one-shot agent that gets a task wrong has no idea <em>why</em> — so when you simply tell it to "try again", it confidently repeats the very same mistake. <b class="text-violet-700">Reflexion</b> adds a memory of its own errors: after an attempt is marked <b class="text-rose-700">FAILED</b> by an evaluator (tests, a self-critique, a checker), the agent writes a short <b>verbal reflection</b> — "I assumed X; the failing case shows Y; next time I should Z" — and stores it. The next attempt sees that lesson in its context and stops repeating the error. Pick a task and watch the trial → evaluate → reflect → retry loop climb to success:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="tasks"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- the task -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎯 The task</div>
+        <div id="taskBox" class="text-sm text-slate-800"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2">
+          <div class="text-center text-sm font-bold text-violet-700 mb-2">🔁&nbsp;Attempts — each retry reads the reflections so far</div>
+          <div id="colAttempts" class="space-y-2 relative"></div>
+        </div>
+        <div>
+          <div class="text-center text-sm font-bold text-violet-700 mb-2">🧠&nbsp;Reflection memory</div>
+          <div id="colMemory" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Reflexion works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build a Reflexion loop</h2>
+    <p class="text-slate-500 mb-8">Take a task with a <b>checkable signal</b> — unit tests, a validator, or a self-critique. Then loop: <span class="tok">generate</span> an attempt, <span class="tok">evaluate</span> it, and if it fails, ask for a short <span class="tok">reflection</span> on <em>why</em>, append that lesson to a running <b>reflection memory</b>, and retry with the memory in context — until it passes or you hit a try cap. You end up with a correct solution <em>and</em> a readable log of the lessons it taught itself along the way.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with a task that has a checkable signal</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Reflexion needs a way to know an attempt FAILED. The cleanest
+// signal is automated: unit tests, a validator, an exact match.
+const task = "Write isPalindrome(s): true if s reads the same " +
+             "forwards and backwards, ignoring case and spaces.";
+
+const tests = [
+  ["racecar", true], ["RaceCar", true],
+  ["a man a plan a canal panama", true], ["hello", false],
+];
+// The tests are the evaluator. No tests? Use a self-critique (step 3).</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Generate attempt 1 (no memory yet)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// First pass has an empty reflection memory — it's a plain
+// one-shot attempt. We expect it might miss an edge case.
+let memory = [];                    // verbal lessons accumulate here
+
+function buildPrompt(task, memory) {
+  const lessons = memory.length
+    ? "\nLessons from past attempts:\n- " + memory.join("\n- ")
+    : "";
+  return `Task: ${task}${lessons}\nWrite the solution:`;
+}
+
+let code = await llm(buildPrompt(task, memory));   // attempt 1</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Evaluate it — get a pass/fail + concrete feedback</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The evaluator returns BOTH a verdict and feedback the model
+// can learn from — a failing test case, a stack trace, a critique.
+function evaluate(code, tests) {
+  const fn = compile(code);
+  for (const [input, want] of tests) {
+    const got = fn(input);
+    if (got !== want)
+      return { pass:false,
+        feedback:`fn(${JSON.stringify(input)}) returned ` +
+                 `${got}, expected ${want}` };
+  }
+  return { pass:true };
+}
+// No tests? Ask the model itself: "Critique this solution. Any bug?"</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">On failure, prompt for a verbal reflection</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// This is the heart of Reflexion: turn the failure into a short,
+// written LESSON — "I assumed X; case Y shows it's wrong; do Z."
+async function reflect(task, code, feedback) {
+  return llm(
+`Task: ${task}
+My attempt:
+${code}
+It FAILED this check: ${feedback}
+
+In ONE or two sentences, write a lesson for my next attempt.
+Be concrete: what did I assume, what does the failure prove,
+what should I do differently? Do NOT rewrite the code.`);
+}
+// e.g. -> "I forgot to strip spaces before comparing; normalise
+//          the string (lowercase + remove non-letters) first."</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Append the lesson to reflection memory</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Memory is just a growing list of verbal lessons. Nothing in the
+// model's weights changes — the "learning" lives in the context.
+const lesson = await reflect(task, code, result.feedback);
+memory.push(lesson);
+
+// memory now reads like a notebook of self-taught rules:
+//   1. Strip spaces and lowercase before comparing.
+//   2. Handle the empty string as a valid palindrome.
+// Keep it short — old, stale lessons can be trimmed if it grows.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Retry with the memory in context</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Re-run generate, but now buildPrompt() injects every lesson.
+// The model reads its own past mistakes and avoids repeating them.
+code = await llm(buildPrompt(task, memory));   // attempt 2
+const retry = evaluate(code, tests);
+
+// Prompt the model now sees:
+//   Task: Write isPalindrome(s) ...
+//   Lessons from past attempts:
+//   - Strip spaces and lowercase before comparing.
+//   Write the solution:
+// -> attempt 2 normalises the string first, and passes.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Wrap the whole loop with a try cap</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// generate -> evaluate -> (fail) reflect -> append -> retry,
+// stopping the instant it passes OR we hit maxTries.
+async function reflexion(task, tests, maxTries = 4) {
+  let memory = [];
+  for (let attempt = 1; attempt &lt;= maxTries; attempt++) {
+    const code = await llm(buildPrompt(task, memory));
+    const result = evaluate(code, tests);
+    if (result.pass) return { code, memory, attempt };  // success
+    const lesson = await reflect(task, code, result.feedback);
+    memory.push(lesson);                                // learn
+  }
+  return { code:null, memory, failed:true };   // gave up cleanly
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Use it where there's a real signal — and watch the evaluator</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Reflexion is only as good as its evaluator. A weak or wrong
+// checker breeds confident-but-wrong reflections, so prefer an
+// objective signal (tests, a validator) over pure self-critique.
+const { code, memory, attempt, failed } = await reflexion(task, tests);
+if (!failed) console.log(`Passed on attempt ${attempt}`);
+console.log("Lessons it taught itself:\n- " + memory.join("\n- "));
+
+// ✅ Great for coding, agent tasks, anything you can auto-check.
+// ⚠️ With no checkable signal, or a bad one, it can over-correct
+//    or thrash — cap the tries and keep the reflections short.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 20 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Tree of Thoughts — branch out several lines of reasoning, evaluate them, and search the tree for the most promising path instead of committing to one.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== Reflexion demo =====
+// Each task runs the trial -> evaluate -> reflect -> retry loop. Every
+// `attempts[]` entry has the buggy/fixed `try` summary, a `verdict`
+// (pass/fail) with `feedback` from the evaluator, and — on failure — a
+// `reflection` lesson that gets pushed into the growing reflection memory.
+// The loop stops at the first pass (or the attempt cap).
+const TASKS = [
+  { tag:"🔤 isPalindrome()",
+    goal:'<b>Coding task.</b> Write <span class="tok">isPalindrome(s)</span> — true if <span class="tok">s</span> reads the same forwards and backwards, <b>ignoring case and spaces</b>. Evaluator = unit tests.',
+    attempts:[
+      { code:'return s === s.split("").reverse().join("");',
+        note:'compares the raw string, character for character.',
+        pass:false,
+        feedback:'isPalindrome("RaceCar") returned false, expected true.',
+        reflection:'I compared the raw string, so case breaks it. Next time, lowercase s before comparing.' },
+      { code:'s = s.toLowerCase();\nreturn s === [...s].reverse().join("");',
+        note:'now lowercases first — but still keeps the spaces.',
+        pass:false,
+        feedback:'isPalindrome("a man a plan a canal panama") returned false, expected true.',
+        reflection:'Lowercasing helped, but spaces still differ. Next time, also strip non-letters before comparing.' },
+      { code:'s = s.toLowerCase().replace(/[^a-z]/g, "");\nreturn s === [...s].reverse().join("");',
+        note:'normalises case AND strips non-letters, then compares.',
+        pass:true,
+        feedback:'all 4 tests pass.' } ],
+    final:'<b>Passed on attempt 3.</b> Each failure became a written lesson — "lowercase first", then "strip spaces too" — and attempt 3 read both lessons and normalised the string before comparing. The same mistake was never made twice.' },
+
+  { tag:"🧮 Word problem",
+    goal:'<b>Reasoning task.</b> "A shirt costs $40. It is discounted 25%, then 10% sales tax is added. What is the final price?" Evaluator = a checker that recomputes the arithmetic.',
+    attempts:[
+      { code:'40 − 25% − 10% = 40 − 10 − 4 = $26.',
+        note:'subtracts both percentages off the original $40.',
+        pass:false,
+        feedback:'Wrong: tax is added, not subtracted, and it applies to the discounted price, not $40.',
+        reflection:'I treated tax as a subtraction off the original price. Next time, apply the discount first, then add tax on the discounted amount.' },
+      { code:'discounted = 40 × 0.75 = $30; tax = 30 × 0.10 = $3; total = $33.',
+        note:'discounts first ($30), then adds 10% tax on $30.',
+        pass:true,
+        feedback:'Correct: $33.00.' } ],
+    final:'<b>Passed on attempt 2.</b> The reflection pinned down two errors at once — tax is added (not subtracted) and it applies to the discounted price. Attempt 2 followed that lesson exactly: discount to $30, then +10% tax = $33.' },
+
+  { tag:"🔢 firstDuplicate()",
+    goal:'<b>Coding task.</b> Write <span class="tok">firstDuplicate(arr)</span> — return the first value that appears more than once (by <b>first repeat occurrence</b>), or -1. Evaluator = unit tests.',
+    attempts:[
+      { code:'return arr.find((v,i) => arr.indexOf(v) !== i);',
+        note:'returns the first element whose value appeared earlier.',
+        pass:false,
+        feedback:'firstDuplicate([2,1,3,1,2]) returned 2, expected 1 (1 repeats first).',
+        reflection:'indexOf flags by the value\'s FIRST position, so I returned the earliest-first-seen dup, not the earliest-repeat. Next time, scan left-to-right and return the first value already in a "seen" set.' },
+      { code:'const seen = new Set();\nfor (const v of arr) {\n  if (seen.has(v)) return v;\n  seen.add(v);\n}\nreturn -1;',
+        note:'walks the array; returns the first value already seen.',
+        pass:true,
+        feedback:'all tests pass.' } ],
+    final:'<b>Passed on attempt 2.</b> The evaluator surfaced the exact failing case (<span class="tok">[2,1,3,1,2]</span> → got 2, wanted 1). The reflection diagnosed the subtle "first-seen vs first-repeat" bug, and attempt 2 switched to a left-to-right "seen" set and passed.' },
+];
+
+const NODE_NAMES = ["Task","Attempt","Evaluate","Reflect","Retry","Success"];
+const tasksEl=document.getElementById("tasks"), nodesEl=document.getElementById("nodes");
+const taskBox=document.getElementById("taskBox");
+const colAttempts=document.getElementById("colAttempts"), colMemory=document.getElementById("colMemory");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+let runToken = 0;
+function run(ti){
+  const T=TASKS[ti];
+  colAttempts.innerHTML=""; colMemory.innerHTML=`<div class="text-xs text-slate-400 italic">empty — no lessons yet</div>`; verdictBar.innerHTML=""; drawNodes(-1);
+  taskBox.innerHTML = `<span class="tok text-violet-600 font-bold text-xs mr-1">${T.tag}</span> ${T.goal}`;
+  const myToken = ++runToken;
+  let delay=0; const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=1200; };
+
+  let memCount = 0;   // lessons currently in memory
+
+  T.attempts.forEach((a, ai)=>{
+    const n = ai+1;
+    const isRetry = ai>0;
+
+    // STAGE A — generate the attempt (with the memory it has so far)
+    step(isRetry?4:1, ()=>{
+      const memNote = memCount
+        ? `<div class="text-[11px] text-violet-600 font-semibold mb-1">↺ retry — reading ${memCount} lesson${memCount>1?'s':''} from memory</div>`
+        : `<div class="text-[11px] text-slate-500 font-semibold mb-1">fresh attempt — memory is empty</div>`;
+      colAttempts.innerHTML += `<div class="rounded-xl border border-violet-200 bg-white p-3 text-xs reflect-glow" id="att-${ai}">
+        ${memNote}
+        <div class="tok font-bold text-violet-700 mb-1">Attempt ${n}</div>
+        <div class="text-slate-500 mb-1">${a.note}</div>
+        <pre class="!p-2 !text-[11px] !mb-0">${a.code.replace(/</g,'&lt;')}</pre></div>`;
+    });
+
+    // STAGE B — the evaluator marks it pass / fail (with feedback)
+    step(2, ()=>{
+      const box = document.getElementById(`att-${ai}`);
+      if(a.pass){
+        box.classList.add("fix-glow");
+        box.insertAdjacentHTML("beforeend", `<div class="mt-2 rounded-lg border border-emerald-300 bg-emerald-50 p-2 text-emerald-800">
+          <span class="tok font-bold">✓ evaluator: PASS</span> — ${a.feedback}</div>`);
+      } else {
+        box.classList.add("fail-glow");
+        box.insertAdjacentHTML("beforeend", `<div class="mt-2 rounded-lg border border-rose-300 bg-rose-50 p-2 text-rose-800">
+          <span class="tok font-bold">✗ evaluator: FAIL</span> — ${a.feedback}</div>`);
+      }
+    });
+
+    // STAGE C — on failure, write a reflection and push it into memory
+    if(!a.pass){
+      step(3, ()=>{
+        const box = document.getElementById(`att-${ai}`);
+        box.insertAdjacentHTML("beforeend", `<div class="mt-2 rounded-lg border border-violet-300 bg-violet-50 p-2 text-violet-800 reflect-glow">
+          <span class="tok font-bold">🪞 reflection:</span> "${a.reflection}"</div>`);
+        memCount++;
+        if(memCount===1) colMemory.innerHTML="";
+        colMemory.innerHTML += `<div class="rounded-xl border border-violet-300 bg-violet-50 p-3 text-xs reflect-glow">
+          <div class="tok font-bold text-violet-700 mb-1">Lesson ${memCount} <span class="text-[10px] text-slate-400 font-normal">(from attempt ${n})</span></div>
+          <div class="text-violet-800">${a.reflection}</div></div>`;
+      });
+    }
+  });
+
+  // STAGE D — success verdict + the summary contrast
+  step(5, ()=>{
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">one-shot retry → repeats the same mistake ✗</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-violet-100 text-violet-700 font-bold">reflexion → writes a lesson, then fixes it ✓</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">${T.final}</div>
+      <div class="text-xs text-slate-500 text-center mt-3 border-t border-slate-100 pt-3"><b>Reflexion gives an agent a memory of its own mistakes</b> — after a failure it writes a verbal lesson, then retries with that lesson in context, so it stops repeating the same error (learning without changing the weights).</div>
+    </div>`;
+  });
+}
+
+TASKS.forEach((T,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.innerHTML=`${T.tag}`; b.onclick=()=>{ tasksEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; tasksEl.appendChild(b); });
+tasksEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+const STEPS = [
+  { title:"1. Why one-shot agents get stuck", why:"Ask a model to do a task, get it wrong, and tell it to \"try again\", and it will very often hand you back the exact same mistake. The problem is that it has no record of WHY the first answer was wrong — the failed attempt and the reason it failed are gone the moment the turn ends. Without that signal it just re-rolls the same reasoning that produced the error in the first place. So you get confident repetition instead of improvement, which is maddening on tasks that have one specific bug. Reflexion exists to break exactly this loop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">attempt → <span class="text-rose-600">FAILED</span> → "try again" → <span class="text-rose-600">same mistake</span><br><span class="text-rose-600 mt-1 inline-block">no memory of WHY it failed → endless repetition</span></div>`, code:`// "RaceCar" -> isPalindrome returns false (case bug)
+// "try again" -> returns false again. Nothing learned.` },
+  { title:"2. The Reflexion loop", why:"Reflexion wraps the agent in a four-beat cycle: act, evaluate, reflect, retry. It produces an attempt, an evaluator judges it, and if the attempt fails the model writes a short reflection on why before trying again. That reflection is the new ingredient — it turns a dead-end failure into a usable lesson. The loop repeats, each retry carrying the accumulated lessons, until the attempt passes or a cap is hit. So instead of a single shot, you get an agent that iterates on itself with a feedback signal in hand.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">act → evaluate → reflect → retry</b><br><span class="text-emerald-700 mt-1 inline-block">each loop carries the lessons from the last failure</span></div>`, code:`// for each attempt:
+//   code = generate(task, memory)
+//   if evaluate(code).pass: done
+//   memory.push( reflect(failure) )   // then loop` },
+  { title:"3. The evaluator / feedback signal", why:"Reflexion is only as good as the signal that tells it an attempt failed. The strongest signal is automated and objective: unit tests on a coding task, a validator on structured output, or an exact-match check. When you can't run a hard test, an external check or even a self-critique (\"look at this answer — what's wrong with it?\") can stand in. Crucially, the evaluator should return more than a yes/no — a failing test case, an error trace, or a pointed critique gives the reflection step something concrete to learn from. Garbage feedback yields garbage lessons.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">attempt → <b class="text-violet-700">evaluator</b> → <span class="text-rose-600">FAIL</span> + concrete feedback<br><span class="text-slate-500 mt-1 inline-block">tests · validator · external check · self-critique</span></div>`, code:`// strongest: objective tests
+fn("RaceCar") -> false   // expected true
+// feedback: "fn('RaceCar') returned false, expected true"` },
+  { title:"4. The verbal reflection", why:"The reflection is the move that gives Reflexion its name: after a failure, the model writes a short, plain-language lesson about what went wrong. A good reflection names the wrong assumption, points at the failing case, and says what to do differently next time — \"I assumed X; the failing case shows Y; next time I should Z.\" It is a sentence or two, not a rewrite of the answer. The point is to distil the failure into guidance the next attempt can actually act on, the way a person scribbles a note after getting tripped up by the same bug twice.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-left inline-block"><span class="tok text-violet-700">🪞 reflection:</span><br>"I assumed <b>X</b>;<br>the failing case shows <b>Y</b>;<br>next time I should <b>Z</b>."</div>`, code:`reflect: "I compared the raw string, so case breaks
+it. Next time, lowercase s before comparing."
+// one or two sentences. NOT a rewritten solution.` },
+  { title:"5. Episodic reflection memory", why:"Each lesson is appended to a running list — an episodic memory of the agent's own mistakes on this task. The next attempt's prompt is built with that whole list pasted in, so the model literally reads its past errors before trying again. Over a few rounds the memory reads like a notebook of self-taught rules (\"strip spaces before comparing\", \"tax is added, not subtracted\"). Because it is just text in the context window, it is cheap, transparent, and easy to inspect, trim, or reset — you can see exactly what the agent thinks it learned.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">fail → lesson 1 → fail → lesson 2 → …<br><b class="text-violet-700">memory = [lesson 1, lesson 2, …]</b><br><span class="text-emerald-700 mt-1 inline-block">pasted into the next prompt, every retry</span></div>`, code:`memory.push(lesson);
+// prompt for the retry:
+//   Task: ...
+//   Lessons from past attempts:
+//   - strip spaces and lowercase first
+//   Write the solution:` },
+  { title:"6. Learning at inference time", why:"This is \"learning\" in a specific, important sense: the model's weights never change. All the improvement lives in the context — the reflections fed back into the prompt. That makes it learning at inference time: fast (no training run), reversible (clear the memory and it forgets), and per-task (lessons for one problem don't bleed into the base model). It is in-context adaptation, the same mechanism as few-shot prompting, except the examples are the agent's own freshly-written mistakes rather than examples you supplied. Powerful, but it lasts only as long as you keep that memory in the window.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">weights frozen</b> — learning lives in the context<br><span class="text-emerald-700 mt-1 inline-block">fast · reversible · per-task · in-context</span></div>`, code:`// no fine-tune, no gradient step. Just:
+prompt = task + memory.join("\\n");
+// clear memory -> the agent "forgets" instantly.` },
+  { title:"7. The attempt cap & stopping", why:"A reflection loop needs a brake or it can run forever. Two stopping rules do the job: stop the instant an attempt passes the evaluator (success), and stop after a fixed maximum number of tries (give up cleanly). The cap matters because not every task is solvable, an evaluator can be flaky, and the model can occasionally thrash between two wrong answers without converging. Capping the tries bounds the cost and latency, and returning a clear \"failed after N tries\" — with the reflections attached — is far more useful than spinning silently. Pick the cap to match how hard and how expensive each attempt is.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">stop when: <span class="text-emerald-700 font-bold">PASS</span> ✓<br>or: <span class="text-rose-600 font-bold">attempt &gt; maxTries</span> → give up cleanly<br><span class="text-slate-500 mt-1 inline-block">bounds cost; prevents endless thrashing</span></div>`, code:`for (let attempt = 1; attempt <= maxTries; attempt++) {
+  if (evaluate(code).pass) return code;   // success
+  memory.push(reflect(...));
+}   // fell through -> failed cleanly` },
+  { title:"8. vs ReAct and self-consistency", why:"Reflexion sits alongside two patterns you have already seen. ReAct interleaves Thought / Action / Observation within a SINGLE attempt — it reacts to live observations as it works. Reflexion operates ACROSS attempts: it lets an attempt finish, judges the whole thing, then reflects and starts over wiser — in fact the original work layers Reflexion on top of a ReAct agent. Self-consistency samples many independent attempts and takes the majority, with no feedback between them. Reflexion is the opposite of independent: every retry is deliberately informed by the last failure. Different axis — react-within vs reflect-between vs vote-across.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-slate-600">ReAct: react WITHIN one attempt</span><br><b class="text-violet-700">Reflexion: reflect BETWEEN attempts</b><br><span class="text-slate-600">Self-consistency: vote ACROSS independent attempts</span></div>`, code:`// ReAct:           Thought->Action->Observation (one run)
+// Reflexion:       run -> evaluate -> reflect -> rerun
+// Self-consistency: N independent runs -> majority vote` },
+  { title:"9. Where it shines", why:"Reflexion pays off most when there is a clear, automatic signal of success to reflect against — and that's exactly coding and tool-using agents. Write code, run the test suite, reflect on the failing test, fix it: the loop is tight and the feedback is objective. The same holds for agent tasks with a checkable outcome (a game score, a reached goal state, a passing validation) and for structured generation you can lint or schema-check. Anywhere a machine can grade the attempt for you, Reflexion turns each failure into targeted improvement and often clears tasks a single shot could not. It was first shown beating strong baselines on coding and decision-making benchmarks.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-emerald-700">best when success is auto-checkable</b><br><span class="text-slate-500 mt-1 inline-block">coding (run the tests) · agent goals · validated output</span></div>`, code:`// coding loop, the sweet spot:
+generate -> run tests -> reflect on the
+failing case -> regenerate -> tests pass.` },
+  { title:"10. Limits & failure modes", why:"Reflexion's strength is also its weakness: it leans entirely on the evaluator. A weak or wrong checker produces confident-but-misguided reflections that steer the next attempt further astray — bad feedback is worse than none. It can also over-correct, fixing the one failing case in a way that breaks a case that used to pass, then bouncing between two wrong answers. Reflections can drift vague (\"be more careful\") and add nothing, and a long memory of stale lessons can crowd the context. The guardrails: use the most objective evaluator you can, keep reflections short and concrete, cap the tries, and trim old lessons. Treat the reflection log as a debugging trail — it shows you exactly what the agent believed went wrong.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-rose-600">weak evaluator → confident-but-wrong lessons</span><br><span class="text-rose-600 mt-1 inline-block">over-correct · vague reflections · cap tries, keep lessons short</span></div>`, code:`// guardrails:
+// 1) objective evaluator  2) short, concrete reflections
+// 3) cap maxTries  4) trim stale lessons  5) read the log` },
+  { title:"11. The takeaway", why:"One-shot agents repeat their mistakes because nothing tells them why they were wrong. Reflexion fixes that with a loop: act, let an evaluator judge the attempt, write a short verbal lesson about the failure, store it in an episodic memory, and retry with that memory in context — until it passes or hits a cap. The model's weights never change; the learning lives entirely in the prompt, so it is fast, reversible, and inspectable. Give an agent a checkable signal and a place to write down what it got wrong, and it stops making the same error twice. That is the whole idea — a memory of your own mistakes, fed back in.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🎉</div><p class="font-bold text-slate-700">Act, evaluate, reflect, retry. Write the lesson down, feed it back in — and the agent stops repeating the same mistake, without changing a single weight.</p></div>`, code:`// generate -> evaluate -> (fail) reflect -> remember -> retry.
+// reflexion: a memory of your own mistakes, fed back in.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
