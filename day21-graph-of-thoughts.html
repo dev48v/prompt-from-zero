@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>PromptFromZero · Day 21 — Graph of Thoughts (Branch, Merge & Refine Thoughts in a Graph)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .tok { font-family:ui-monospace,monospace; }
+  .pulse { animation: pulse 1.1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{ box-shadow:0 0 0 0 rgba(124,58,237,.45);} 50%{ box-shadow:0 0 0 8px rgba(124,58,237,0);} }
+  .gen-glow { animation: genGlow 1.4s ease-out 1; }
+  @keyframes genGlow { 0%{ box-shadow:0 0 0 0 rgba(59,130,246,.55);} 60%{ box-shadow:0 0 0 10px rgba(59,130,246,0);} 100%{ box-shadow:0 0 0 0 rgba(59,130,246,0);} }
+  .agg-glow { animation: aggGlow 1.4s ease-out 1; }
+  @keyframes aggGlow { 0%{ box-shadow:0 0 0 0 rgba(124,58,237,.6);} 60%{ box-shadow:0 0 0 12px rgba(124,58,237,0);} 100%{ box-shadow:0 0 0 0 rgba(124,58,237,0);} }
+  .refine-glow { animation: refineGlow 1.4s ease-out 1; }
+  @keyframes refineGlow { 0%{ box-shadow:0 0 0 0 rgba(234,179,8,.6);} 60%{ box-shadow:0 0 0 12px rgba(234,179,8,0);} 100%{ box-shadow:0 0 0 0 rgba(234,179,8,0);} }
+  .final-glow { animation: finalGlow 1.6s ease-out 1; }
+  @keyframes finalGlow { 0%{ box-shadow:0 0 0 0 rgba(16,185,129,.6);} 60%{ box-shadow:0 0 0 14px rgba(16,185,129,0);} 100%{ box-shadow:0 0 0 0 rgba(16,185,129,0);} }
+  .edge { stroke:#c4b5fd; stroke-width:2; fill:none; transition:stroke .3s, stroke-width .3s; }
+  .edge.hot { stroke:#7c3aed; stroke-width:3; }
+  .edge.merge { stroke:#7c3aed; stroke-width:3; stroke-dasharray:5 4; }
+  .edge.loop { stroke:#eab308; stroke-width:3; stroke-dasharray:2 4; }
+  .gnode { transition:transform .25s; }
+  .score-bar { transition: width .5s ease-out; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 21</div>
+      <h1 class="text-xl font-bold">🕸️ Graph of Thoughts — Branch, Merge &amp; Refine Thoughts in a Graph</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <h2 class="text-2xl font-bold mb-1 text-center">A tree can only <em>branch</em>. A graph can branch, then <b class="text-violet-700">merge the best pieces of several branches into one</b>.</h2>
+      <p class="text-slate-500 text-center mb-5">Tree of Thoughts explores many lines of reasoning and picks the single best one — but a winning branch is often <em>partly</em> right in one place and another branch is right somewhere else. <b class="text-violet-700">Graph of Thoughts (GoT)</b> makes each thought a <b>node in a graph</b>, so besides branching you can <b class="text-violet-700">aggregate</b> — feed several thoughts into one merge node that keeps the good pieces of each — and <b class="text-yellow-600">refine</b> — loop a node back on itself to improve it. The task below is <b>merge-sort by thought</b>: split a list, sort the halves as separate branches (each with a lingering bug), then <b>aggregate</b> the two sorted halves into one, and <b>refine</b> the merge until it is genuinely fully sorted — a result no single branch reached. Press play and watch the graph light up:</p>
+      <div class="flex flex-wrap justify-center gap-2 mb-4" id="tasks"></div>
+      <div class="flex flex-wrap justify-center gap-2 mb-5 text-xs font-bold tok" id="nodes"></div>
+
+      <!-- the task -->
+      <div class="max-w-3xl mx-auto bg-white rounded-2xl border border-slate-200 p-4 mb-5">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎯 The task</div>
+        <div id="taskBox" class="text-sm text-slate-800"></div>
+      </div>
+
+      <div class="grid lg:grid-cols-3 gap-4">
+        <!-- the live graph -->
+        <div class="lg:col-span-2">
+          <div class="text-center text-sm font-bold text-violet-700 mb-2">🕸️&nbsp;The thought graph — nodes are thoughts, edges are operations</div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-3">
+            <svg id="graph" viewBox="0 0 640 430" class="w-full" style="height:430px"></svg>
+          </div>
+        </div>
+        <!-- the running log -->
+        <div>
+          <div class="text-center text-sm font-bold text-violet-700 mb-2">🧾&nbsp;What the controller is doing</div>
+          <div id="colLog" class="space-y-2 relative"></div>
+        </div>
+      </div>
+      <div id="verdictBar" class="mt-5"></div>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Graph of Thoughts works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build a Graph of Thoughts pipeline</h2>
+    <p class="text-slate-500 mb-8">Model the reasoning as a <b>graph of operations</b> (a "GoO"): nodes are thoughts, and a small <b>controller</b> applies four operations — <span class="tok">generate</span> (branch), <span class="tok">score</span> (rank), <span class="tok">aggregate</span> (merge several thoughts into one), and <span class="tok">refine</span> (loop a thought to improve it) — until a thought crosses a quality bar. The whole trick over Tree of Thoughts is the <b>aggregate</b> edge: it lets the good pieces of different branches combine, so the final answer can beat every branch it was built from.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Model a thought as a node with content + a score</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A GoT graph is nodes (thoughts) + edges (operations).
+// Each thought carries its content and how good it is.
+let nextId = 0;
+function thought(content, parents = [], op = "generate") {
+  return { id: nextId++, content, parents, op, score: null };
+}
+
+// The graph is just the set of thoughts; edges live in `parents`.
+const graph = [ thought(problem, [], "input") ];</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">generate — branch into several candidate thoughts</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// Same first move as Tree of Thoughts: produce more than one
+// next thought so the search has diverse material to work with.
+async function generate(node, n = 3) {
+  const out = await llm(
+`Thought so far: ${node.content}
+Propose ${n} DIFFERENT next thoughts toward the goal, one per line.`);
+  return out.split("\n")
+    .map(line => thought(line, [node.id], "generate"));
+}
+// For a decomposable task, "generate" can also be a SPLIT:
+// break the input into sub-thoughts solved on separate branches.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">score — rate each thought so you can rank them</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A scorer turns a thought into a number. Objective is best:
+// a validator, a test, a metric. Here: how sorted is a list?
+function score(node) {
+  const xs = node.content;                 // e.g. [1,3,2,4]
+  let inOrder = 0;
+  for (let i = 1; i &lt; xs.length; i++)
+    if (xs[i - 1] &lt;= xs[i]) inOrder++;
+  node.score = inOrder / (xs.length - 1);  // 1.0 = fully sorted
+  return node.score;
+}
+// No hard metric? Ask the model: "Rate 0-10 how good this is."</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">aggregate — merge several thoughts into ONE (the key move)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// This is what a tree can't do. Take multiple thoughts and
+// COMBINE their good parts into a single, better thought.
+function aggregate(nodes) {
+  // e.g. merge two sorted halves into one sorted list
+  const merged = mergeSortedLists(nodes.map(n => n.content));
+  const t = thought(merged, nodes.map(n => n.id), "aggregate");
+  score(t);
+  return t;
+}
+// With an LLM: "Here are 3 partial answers. Write ONE answer that
+// keeps the best of each and fixes their mistakes."</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">refine — loop a thought back on itself to improve it</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// A self-loop edge: feed a thought back in to polish it.
+// Repeat until the score stops improving or hits the bar.
+async function refine(node, maxLoops = 3) {
+  let cur = node;
+  for (let i = 0; i &lt; maxLoops; i++) {
+    const improved = await llm(
+`Improve this, fixing any remaining errors:
+${cur.content}`);
+    const t = thought(improved, [cur.id], "refine");
+    if (score(t) &lt;= cur.score) break;   // no gain -> stop
+    cur = t;
+  }
+  return cur;
+}</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Write the controller — the graph of operations (GoO)</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// The controller executes a plan of operations over the graph.
+// This plan says: split, sort each half, MERGE them, then refine.
+async function got(problem) {
+  const [a, b] = split(problem);          // generate / branch
+  const left  = await refine(await sortBranch(a));
+  const right = await refine(await sortBranch(b));
+  const merged = aggregate([left, right]); // <-- the graph move
+  const final  = await refine(merged);      // polish the merge
+  return final;
+}
+// The plan itself is data — you can reorder or reuse operations.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Keep the best & stop — a quality bar with a budget cap</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>// GoT calls the model a LOT (generate + score + aggregate +
+// refine). Bound it: keep only the top-k thoughts per stage,
+// and stop the moment a thought clears the bar.
+function keepBest(nodes, k = 3) {
+  return nodes.sort((x, y) => y.score - x.score).slice(0, k);
+}
+const CONFIG = { branches: 3, keep: 3, refineLoops: 3, maxNodes: 40 };
+// stop when score >= 1.0 (fully sorted) OR node budget spent.</pre></li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-6"><div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Use it where merging beats branching — and mind the bill</h3></div><button onclick="copy(this)" class="copyBtn float-right -mt-12 text-xs bg-slate-100 hover:bg-violet-100 px-3 py-1 rounded-lg font-semibold">Copy</button><pre>const final = await got(problem);
+console.log("best thought:", final.content, "score:", final.score);
+
+// ✅ Great when a task DECOMPOSES and partial results combine:
+//    sorting/merging, multi-doc summary, keyword extraction,
+//    "gather facts from N sources then reconcile them".
+// ⚠️ If the task is a single straight line, GoT is overkill —
+//    reach for a chain (Day 2) or a tree (Day 6) instead.</pre></li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 21 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">Tomorrow: Skeleton-of-Thought — draft a skeleton of the answer first, then expand every point in parallel for a faster, better-structured result.</p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ============================================================
+// Graph of Thoughts demo — a REAL graph, driven by real JS.
+//
+// Task: merge-sort by thought. We split a list into two halves,
+// each half is sorted on its OWN branch (but every branch leaves
+// a lingering bug so no single branch is fully correct), then an
+// AGGREGATE node merges the two halves into one, and a REFINE
+// loop fixes the residual so the final list is genuinely, fully
+// sorted — a result NO single branch reached.
+//
+// The scorer is objective: sortedness = fraction of adjacent
+// pairs already in order (1.0 == fully sorted). The merge and
+// the refine both run real logic, and we PROVE at the end that
+// the aggregated+refined score beats every branch's score.
+// ============================================================
+
+// --- real, verifiable helpers ---
+function sortedness(a){ if(a.length<2) return 1; let ok=0; for(let i=1;i<a.length;i++) if(a[i-1]<=a[i]) ok++; return ok/(a.length-1); }
+function isSorted(a){ return sortedness(a)===1; }
+// merge two lists keeping order where possible (classic merge; robust even if inputs aren't perfectly sorted)
+function mergeTwo(x,y){ const xs=[...x], ys=[...y], out=[]; let i=0,j=0;
+  while(i<xs.length&&j<ys.length){ if(xs[i]<=ys[j]) out.push(xs[i++]); else out.push(ys[j++]); }
+  while(i<xs.length) out.push(xs[i++]); while(j<ys.length) out.push(ys[j++]); return out; }
+// one refine pass = one adjacent-swap bubble sweep (guaranteed to increase or hold sortedness)
+function refinePass(a){ const r=[...a]; for(let i=1;i<r.length;i++){ if(r[i-1]>r[i]){ [r[i-1],r[i]]=[r[i],r[i-1]]; } } return r; }
+
+const TASKS = [
+  {
+    tag:"🔢 merge-sort by thought",
+    goal:'<b>Decomposable task.</b> Sort <span class="tok">[8, 3, 5, 1, 9, 2, 7, 4]</span>. Split into two halves, sort each on its own branch, then <b>aggregate</b> the halves and <b>refine</b> the merge until fully sorted. Scorer = sortedness (fraction of adjacent pairs in order; 1.0 = perfect).',
+    full:[8,3,5,1,9,2,7,4],
+    left:[8,3,5,1], right:[9,2,7,4],
+    // each branch sorts its half but "stops early" leaving ONE inversion -> partly right only
+    leftBranch:[3,5,1,8],   // bug: 1 landed too late
+    rightBranch:[2,7,4,9],  // bug: 4 landed too late
+    story:'Each half-branch is <em>almost</em> sorted but each leaves one number out of place — neither branch is fully correct on its own. The aggregate node merges the two halves, and a refine loop fixes the residual inversions, ending at a fully sorted list that scores higher than either branch.'
+  },
+  {
+    tag:"🧩 merge partial solutions",
+    goal:'<b>Reconcile task.</b> Two research branches each list keywords for a doc; each has a gap. Model the merge as sorting the combined importance-ranked ids <span class="tok">[6,2,4,1,5,3]</span> into one ordered shortlist, then refine.',
+    full:[6,2,4,1,5,3],
+    left:[6,2,4], right:[1,5,3],
+    leftBranch:[2,6,4],   // one inversion
+    rightBranch:[1,5,3],  // one inversion
+    story:'Branch A ranked one subset, branch B another — each internally imperfect. Aggregating pools both rankings and the refine loop settles the order, producing a single shortlist better than either branch alone.'
+  }
+];
+
+const NODE_NAMES = ["Input","Generate","Score","Aggregate","Refine","Final"];
+const tasksEl=document.getElementById("tasks"), nodesEl=document.getElementById("nodes");
+const taskBox=document.getElementById("taskBox");
+const graphEl=document.getElementById("graph");
+const colLog=document.getElementById("colLog");
+const verdictBar=document.getElementById("verdictBar");
+
+function drawNodes(active){
+  nodesEl.innerHTML = NODE_NAMES.map((n,i)=>{
+    const on = i<=active;
+    const cur = i===active;
+    return `<span class="rounded-lg px-2.5 py-1 ${on?'bg-violet-600 text-white':'bg-white text-slate-400 border border-slate-200'} ${cur?'pulse':''}">${n}</span>`+
+      (i<NODE_NAMES.length-1?`<span class="text-slate-300 px-0.5">→</span>`:``);
+  }).join("");
+}
+
+// SVG node/edge builders ------------------------------------
+const SVGNS="http://www.w3.org/2000/svg";
+function el(tag,attrs){ const e=document.createElementNS(SVGNS,tag); for(const k in attrs) e.setAttribute(k,attrs[k]); return e; }
+function edge(id, x1,y1,x2,y2, cls){ const p=el("path",{id, class:"edge "+(cls||""), d:`M${x1},${y1} C ${x1},${(y1+y2)/2} ${x2},${(y1+y2)/2} ${x2},${y2}`}); graphEl.appendChild(p); return p; }
+function loopEdge(id,x,y){ const p=el("path",{id, class:"edge loop", d:`M${x+34},${y-6} C ${x+74},${y-34} ${x+74},${y+30} ${x+34},${y+6}`}); graphEl.appendChild(p); return p; }
+function node(id, x,y, label, sub){
+  const g=el("g",{id, class:"gnode", transform:`translate(${x},${y})`, opacity:"0"});
+  const w=134,h=54;
+  g.appendChild(el("rect",{x:-w/2,y:-h/2,width:w,height:h,rx:12, fill:"#ffffff", stroke:"#c4b5fd", "stroke-width":"1.5"}));
+  const t1=el("text",{x:0,y:-6,"text-anchor":"middle","font-size":"11","font-weight":"700",fill:"#5b21b6","font-family":"ui-monospace,monospace"}); t1.textContent=label; g.appendChild(t1);
+  const t2=el("text",{x:0,y:11,"text-anchor":"middle","font-size":"10",fill:"#475569","font-family":"ui-monospace,monospace"}); t2.textContent=sub; g.appendChild(t2);
+  // score bar
+  g.appendChild(el("rect",{x:-w/2+8,y:16,width:w-16,height:5,rx:2.5,fill:"#e2e8f0"}));
+  const bar=el("rect",{x:-w/2+8,y:16,width:0,height:5,rx:2.5,fill:"#7c3aed", class:"score-bar"}); g.appendChild(bar);
+  g._bar=bar; g._t2=t2; g._rect=g.firstChild;
+  graphEl.appendChild(g);
+  return g;
+}
+function fmt(a){ return "["+a.join(",")+"]"; }
+function setNode(g, sub, sc){ g._t2.textContent = sub; const w=134-16; g._bar.setAttribute("width", (w*sc).toFixed(1)); g._bar.setAttribute("fill", sc>=1? "#10b981" : sc>=0.6? "#7c3aed" : "#f59e0b"); }
+function appear(g,cls){ g.setAttribute("opacity","1"); g.classList.add(cls); g.classList.add("fade-in"); }
+
+function logRow(html, cls){ colLog.innerHTML += `<div class="rounded-xl border ${cls||'border-slate-200'} bg-white p-3 text-xs fade-in">${html}</div>`; }
+
+let runToken=0;
+function run(ti){
+  const T=TASKS[ti];
+  graphEl.innerHTML=""; colLog.innerHTML=""; verdictBar.innerHTML=""; drawNodes(-1);
+  taskBox.innerHTML = `<span class="tok text-violet-600 font-bold text-xs mr-1">${T.tag}</span> ${T.goal}`;
+
+  // pre-compute the REAL numbers so scores are honest
+  const leftSc  = sortedness(T.leftBranch);
+  const rightSc = sortedness(T.rightBranch);
+  const bestBranch = Math.max(leftSc, rightSc);
+  const merged = mergeTwo(T.leftBranch, T.rightBranch);   // real merge
+  const mergedSc = sortedness(merged);
+  // refine loop until fully sorted (real bubble sweeps)
+  let cur = merged, refined = merged, passes = 0;
+  while(!isSorted(cur) && passes < 12){ cur = refinePass(cur); passes++; }
+  refined = cur; const refinedSc = sortedness(refined);
+
+  // layout
+  const IN={x:320,y:40}, L={x:140,y:150}, R={x:500,y:150}, AGG={x:320,y:270}, FIN={x:320,y:385};
+
+  const myToken=++runToken; let delay=0;
+  const step=(node,fn)=>{ setTimeout(()=>{ if(myToken!==runToken) return; drawNodes(node); fn(); }, delay); delay+=1250; };
+
+  // edges (drawn first, dim) — created up front, lit as we go
+  let eIL,eIR,eLA,eRA,eLoop,eAF;
+
+  // STAGE 0 — input node
+  step(0, ()=>{
+    const inN=node("n-in", IN.x,IN.y, "input", fmt(T.full));
+    setNode(inN, fmt(T.full), sortedness(T.full));
+    appear(inN,"gen-glow");
+    logRow(`<div class="tok font-bold text-slate-700 mb-1">① input</div>list <span class="tok">${fmt(T.full)}</span> — sortedness <b>${(sortedness(T.full)*100|0)}%</b>. Split into two halves for two branches.`);
+  });
+
+  // STAGE 1 — generate/branch: two half-branches
+  step(1, ()=>{
+    eIL=edge("e-il", IN.x-40,IN.y+22, L.x,L.y-28); eIR=edge("e-ir", IN.x+40,IN.y+22, R.x,R.y-28);
+    eIL.classList.add("hot"); eIR.classList.add("hot");
+    const lN=node("n-l", L.x,L.y, "branch A · sort", fmt(T.leftBranch));
+    const rN=node("n-r", R.x,R.y, "branch B · sort", fmt(T.rightBranch));
+    setNode(lN, fmt(T.leftBranch), 0); setNode(rN, fmt(T.rightBranch), 0);
+    appear(lN,"gen-glow"); appear(rN,"gen-glow");
+    logRow(`<div class="tok font-bold text-blue-700 mb-1">② generate / branch</div>halves sorted on separate branches:<br>A <span class="tok">${fmt(T.leftBranch)}</span><br>B <span class="tok">${fmt(T.rightBranch)}</span><br><span class="text-slate-400">each still has one number out of place.</span>`, "border-blue-200");
+  });
+
+  // STAGE 2 — score each branch
+  step(2, ()=>{
+    setNode(document.getElementById("n-l"), fmt(T.leftBranch)+"  "+(leftSc*100|0)+"%", leftSc);
+    setNode(document.getElementById("n-r"), fmt(T.rightBranch)+"  "+(rightSc*100|0)+"%", rightSc);
+    logRow(`<div class="tok font-bold text-violet-700 mb-1">③ score</div>branch A = <b>${(leftSc*100|0)}%</b> sorted, branch B = <b>${(rightSc*100|0)}%</b> sorted. Best single branch = <b>${(bestBranch*100|0)}%</b> — <span class="text-rose-600 font-semibold">neither is fully correct.</span>`, "border-violet-200");
+  });
+
+  // STAGE 3 — AGGREGATE: merge the two branches into one node
+  step(3, ()=>{
+    eLA=edge("e-la", L.x+30,L.y+28, AGG.x-40,AGG.y-28); eRA=edge("e-ra", R.x-30,R.y+28, AGG.x+40,AGG.y-28);
+    eLA.classList.add("merge"); eRA.classList.add("merge");
+    const aN=node("n-agg", AGG.x,AGG.y, "aggregate · merge", fmt(merged)+"  "+(mergedSc*100|0)+"%");
+    setNode(aN, fmt(merged)+"  "+(mergedSc*100|0)+"%", mergedSc);
+    appear(aN,"agg-glow");
+    logRow(`<div class="tok font-bold text-violet-700 mb-1">④ aggregate / merge <span class="text-[10px]">(the graph move)</span></div>merge A &amp; B into ONE thought: <span class="tok">${fmt(merged)}</span> → <b>${(mergedSc*100|0)}%</b>.<br><span class="text-slate-500">This node has TWO parents — impossible in a tree.</span>`, "border-violet-300");
+  });
+
+  // STAGE 4 — REFINE loop on the merged node
+  step(4, ()=>{
+    eLoop=loopEdge("e-loop", AGG.x, AGG.y);
+    setNode(document.getElementById("n-agg"), fmt(refined)+"  "+(refinedSc*100|0)+"%", refinedSc);
+    document.getElementById("n-agg").classList.add("refine-glow");
+    logRow(`<div class="tok font-bold text-yellow-600 mb-1">⑤ refine / loop ×${passes}</div>loop the merge back on itself, fixing residual inversions: <span class="tok">${fmt(refined)}</span> → <b>${(refinedSc*100|0)}%</b>.<br><span class="text-slate-500">self-loop edge = refinement, another tree impossibility.</span>`, "border-yellow-300");
+  });
+
+  // STAGE 5 — FINAL node + proof it beats every branch
+  step(5, ()=>{
+    eAF=edge("e-af", AGG.x,AGG.y+28, FIN.x,FIN.y-28); eAF.classList.add("hot");
+    const fN=node("n-fin", FIN.x,FIN.y, "final", fmt(refined)+"  ✓ sorted");
+    setNode(fN, fmt(refined)+"  "+(refinedSc*100|0)+"%", refinedSc);
+    appear(fN,"final-glow");
+    logRow(`<div class="tok font-bold text-emerald-700 mb-1">⑥ final</div><span class="tok">${fmt(refined)}</span> — <b>${(refinedSc*100|0)}%</b> sorted ${isSorted(refined)?'✓':''}. <b>Beats the best branch (${(bestBranch*100|0)}%).</b>`, "border-emerald-300");
+
+    const better = refinedSc > bestBranch;
+    verdictBar.innerHTML = `<div class="bg-white rounded-2xl border-2 border-emerald-300 p-5 fade-in">
+      <div class="flex items-center justify-center gap-4 flex-wrap text-sm mb-3">
+        <span class="tok rounded-full px-3 py-1 bg-rose-100 text-rose-700 font-bold">Tree of Thoughts → keep best branch = ${(bestBranch*100|0)}% ✗</span>
+        <span class="text-slate-400 font-bold">vs</span>
+        <span class="tok rounded-full px-3 py-1 bg-violet-100 text-violet-700 font-bold">Graph of Thoughts → aggregate + refine = ${(refinedSc*100|0)}% ${better?'✓':''}</span>
+      </div>
+      <div class="text-sm text-slate-700 text-center">${T.story}</div>
+      <div class="text-xs text-center mt-3 border-t border-slate-100 pt-3 ${better?'text-emerald-700':'text-slate-500'}">
+        <b>Verified live:</b> best single branch scored <b>${(bestBranch*100|0)}%</b>; the merged-then-refined thought scored <b>${(refinedSc*100|0)}%</b> — ${better?`a genuine <b>+${((refinedSc-bestBranch)*100)|0} points</b>, and the numbers are computed by real merge + refine logic, not scripted.`:'no gain on this input.'}
+      </div>
+      <div class="text-xs text-slate-500 text-center mt-3 border-t border-slate-100 pt-3"><b>ToT only branches; GoT branches AND aggregates AND refines.</b> Making thoughts nodes in a graph lets the best pieces of separate branches merge into one answer — and a loop polish it — so the result can beat any branch it came from.</div>
+    </div>`;
+  });
+}
+
+TASKS.forEach((T,i)=>{ const b=document.createElement("button"); b.className="text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 hover:border-violet-400"; b.innerHTML=`${T.tag}`; b.onclick=()=>{ tasksEl.querySelectorAll("button").forEach(x=>x.classList.remove("border-violet-500","bg-violet-50","border-2")); b.classList.add("border-violet-500","bg-violet-50","border-2"); run(i); }; tasksEl.appendChild(b); });
+tasksEl.firstChild.classList.add("border-violet-500","bg-violet-50","border-2"); run(0);
+
+// ===================== UNDERSTAND steps =====================
+const STEPS = [
+  { title:"1. Recap: from a chain to a tree", why:"Chain-of-Thought (Day 2) reasons in one straight line — pick a step, then the next, never looking back — which breaks the moment a problem is really a search and one wrong early move dooms the rest. Tree of Thoughts (Day 6) fixed that by branching: at each step it generates several candidate thoughts, scores them, prunes the weak ones, and searches the tree, so it can back out of a dead end and try a sibling. That already turns reasoning into an explorable structure with backtracking. But a tree has a hard limit built into its shape — every node has exactly one parent — so a branch can only ever be extended or abandoned, never combined with another. Graph of Thoughts starts exactly where the tree's shape runs out.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center">chain: <span class="tok">A→B→C</span> (one line)<br>tree: <b class="text-violet-700">A branches to B, C, D</b> (pick one path)<br><span class="text-slate-500 mt-1 inline-block">every tree node has exactly ONE parent</span></div>`, code:`// tree: each thought extends exactly one parent thought
+// generate -> score -> prune -> search -> backtrack
+// but two branches can NEVER be combined.` },
+  { title:"2. The limit of a tree: branches never merge", why:"In a tree search the winner is a single path from root to a leaf. That is fine when exactly one line of reasoning is correct. But very often a problem decomposes, and different branches each get part of the answer right — branch A nails the first half, branch B nails the second, and neither is fully correct on its own. A tree has no way to say \"take the good half of A and the good half of B and put them together,\" because combining would require a node with two parents, which a tree forbids by definition. So the tree is forced to throw away real, useful partial work. Graph of Thoughts removes that restriction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-emerald-700">branch A: first half right</span><br><span class="text-emerald-700">branch B: second half right</span><br><span class="text-rose-600 mt-1 inline-block">tree must pick ONE → discards the other's good half</span></div>`, code:`// tree keeps: max(scoreA, scoreB)  -- the better branch
+// but the IDEAL answer = goodPartOf(A) + goodPartOf(B)
+// a tree literally cannot express that combination.` },
+  { title:"3. The core idea: thoughts are nodes in a graph", why:"Graph of Thoughts reframes the whole process as building a graph. Each vertex is a \"thought\" — a partial solution or intermediate result — and each edge is an operation that produced one thought from one or more others. Because it is a general graph rather than a tree, a thought is allowed to have several parents (many thoughts flowing into one) and edges can even loop back. That single change in data structure is the entire conceptual leap: reasoning becomes a network you can grow in any direction, not a strictly downward-branching tree. Everything else in GoT is just the operations you're now free to run on that network.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">node = a thought (partial solution)</b><br><b class="text-violet-700">edge = an operation</b><br><span class="text-emerald-700 mt-1 inline-block">a node may have MANY parents, and edges may loop</span></div>`, code:`node = { id, content, parents:[...], op, score }
+// parents.length can be > 1  -> aggregation
+// an edge from a node back to itself -> refinement` },
+  { title:"4. Operation 1 — generate (branch)", why:"The first operation is the familiar one, inherited straight from Tree of Thoughts: from a given thought, generate several different next thoughts, fanning out the graph. This is where diversity enters — you want genuinely different candidates, not near-duplicates, because variety is what gives the later aggregate step good raw material to combine. Generate can also take the form of a decomposition, or \"split\": break the input into independent sub-problems that get solved on their own branches (sort each half of a list, summarise each document, rank each subset). Either way, generate is how the graph acquires the multiple partial thoughts that the other operations then work on.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-blue-700">generate: one thought → several thoughts</b><br><span class="text-slate-500 mt-1 inline-block">fan out (candidates) OR split (sub-problems)</span></div>`, code:`generate(node, n=3) -> [t1, t2, t3]   // branch out
+// or split: [8,3,5,1,9,2,7,4] -> [8,3,5,1], [9,2,7,4]
+// diversity matters — near-duplicates waste budget.` },
+  { title:"5. Operation 2 — score / rank", why:"Every thought needs a number so the controller can compare them and decide what to keep, merge, or refine. The strongest scorer is objective — a validator, a unit test, an exact metric — because a reliable score is what makes a small search succeed instead of chasing ghosts. In the demo the scorer is deliberately concrete: the sortedness of a list, the fraction of adjacent pairs already in the right order, where 1.0 means perfectly sorted. When no hard metric exists you fall back to asking the model to rate the thought (\"score 0–10 how good this is\"), just as in ToT. Scoring is the shared currency the aggregate and refine steps both spend.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">score(thought) → a number</b><br><span class="text-slate-500 mt-1 inline-block">objective (test/metric) &gt; model self-rating</span></div>`, code:`score(node){  // sortedness: fraction of pairs in order
+  let ok=0; for(let i=1;i<xs.length;i++)
+    if(xs[i-1]<=xs[i]) ok++;
+  return ok/(xs.length-1);   // 1.0 = fully sorted
+}` },
+  { title:"6. Operation 3 — aggregate / merge (the key move)", why:"This is the operation that a tree simply cannot do and the whole reason Graph of Thoughts exists: take several thoughts and combine them into a single new thought that keeps the good parts of each. Concretely it is a node with more than one parent — two sorted halves merged into one list, three partial answers reconciled into one, several rankings fused into a single shortlist. Because the merge draws from multiple branches at once, the aggregated thought can be strictly better than any individual branch that fed it, since no single branch had all the good pieces. With an LLM the prompt is literally \"here are N partial answers; write one that keeps the best of each and fixes their mistakes.\"", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">aggregate: [A, B, C] → ONE merged thought</b><br><span class="text-emerald-700 mt-1 inline-block">a node with MANY parents — impossible in a tree</span></div>`, code:`aggregate([A,B]) {          // A,B = two sorted halves
+  const merged = mergeSortedLists([A,B]);
+  return thought(merged, [A.id, B.id], "aggregate");
+}  // "keep the best of each, fix the mistakes"` },
+  { title:"7. Operation 4 — refine / loop", why:"The fourth operation is a self-loop: feed a thought back into the model to improve it, then repeat, forming a tiny cycle in the graph. Refinement is how a nearly-right thought gets polished — fix the residual error, tighten the wording, correct the last inversion — usually iterated until the score stops climbing or hits the quality bar. It pairs naturally with aggregate: merging two partial solutions often leaves a small imperfection at the seam, and a refine loop cleans it up. Loops are the second thing a tree cannot represent (a tree has no cycles at all), and together with aggregation they give GoT its expressive power: you can not only combine work but also iterate on the combined result.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-yellow-600">refine: thought → improved thought → …</b><br><span class="text-slate-500 mt-1 inline-block">a self-loop; iterate until the score stops rising</span></div>`, code:`refine(node){
+  let cur = node;
+  while(improves()) cur = llm("improve this: "+cur);
+  return cur;   // loops back on itself — a cycle
+}` },
+  { title:"8. Why aggregation beats pure branching", why:"A pure branching search can only ever return the best single branch — its ceiling is the quality of whichever line of reasoning happened to be strongest. Aggregation lifts that ceiling, because the merged thought is assembled from the best pieces of several branches, so it can outscore every branch it was built from. The demo proves this with real numbers rather than a script: two half-branches are each only partly sorted, but merging them and running a refine loop produces a fully sorted list that scores higher than either branch — and the merge and refine are actual code, so the improvement is genuine. That gap — best-branch score versus merged-and-refined score — is the entire payoff of using a graph instead of a tree.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-rose-600">tree ceiling = best single branch</span><br><b class="text-emerald-700">graph = merge best pieces → beats every branch</b></div>`, code:`bestBranch = max(scoreA, scoreB);      // e.g. 66%
+merged = aggregate([A, B]);
+final  = refine(merged);
+score(final) > bestBranch;              // e.g. 100% -- proven live` },
+  { title:"9. The controller & the Graph of Operations (GoO)", why:"The operations don't run themselves — a controller drives them, executing a plan called the Graph of Operations, or GoO. The GoO is a blueprint that says which operation runs on which thoughts and in what order: split the input, generate candidates on each part, score them, aggregate the survivors, refine the merge, stop. Crucially the plan is data, not hard-coded control flow, so you can reorder, reuse, or parameterise operations for a given task — the same generate/score/aggregate/refine primitives are recomposed into different pipelines for sorting, for multi-document summarisation, for keyword merging. The controller walks this operation graph, maintains the thought graph it produces, and keeps only the top-k thoughts at each stage to stay within budget.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-violet-700">controller runs a Graph of Operations (GoO)</b><br><span class="tok text-slate-600 mt-1 inline-block">split → generate → score → aggregate → refine → stop</span><br><span class="text-slate-500 inline-block">the plan is DATA — reorder & reuse operations</span></div>`, code:`async function got(problem){
+  const [a,b] = split(problem);            // generate
+  const L = refine(await sortBranch(a));   // branch + refine
+  const R = refine(await sortBranch(b));
+  return refine(aggregate([L, R]));        // merge + refine
+}` },
+  { title:"10. Volume & cost — the tradeoff", why:"Every added capability costs model calls. GoT calls the LLM to generate branches, again to score each thought, again to aggregate, and repeatedly to refine — so its \"volume\" of operations is markedly higher than a chain's single pass or even a tree's per-level fan-out. Without discipline the graph explodes, so the same budget dials from ToT return, plus a couple more: branch factor, top-k to keep per stage, number of refine loops, and a hard node cap. Keep only the best thoughts at each stage, cap the refinement iterations, and stop the instant a thought clears the quality bar. The graph structure buys you strictly more expressive reasoning, but you are trading tokens for it, and the controller's pruning is what keeps that trade affordable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><span class="text-rose-600">more ops = more tokens</span><br><span class="text-slate-500 mt-1 inline-block">dials: branch factor · keep top-k · refine loops · node cap</span></div>`, code:`const CONFIG = { branches:3, keep:3, refineLoops:3, maxNodes:40 };
+// keepBest(nodes, k) each stage; stop at score>=1.0
+// or when the node budget is spent.` },
+  { title:"11. When GoT is worth it vs ToT", why:"Reach for Graph of Thoughts only when the task genuinely benefits from combining partial results — when it decomposes into pieces whose good parts should be merged, or when iterating on a merged result matters. Sorting and merging, multi-document summarisation, reconciling facts gathered from several sources, fusing rankings or keyword sets: these are GoT's sweet spot, because aggregation is doing real work the tree couldn't. If the problem is a pure search where exactly one line of reasoning is right and nothing needs merging, a tree (Day 6) is simpler and cheaper; if it's a forced sequence of steps, a plain chain (Day 2) is enough. The honest rule: use the least powerful structure that fits — chain, then tree, then graph — and only pay for aggregation and loops when merging beats branching.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center"><b class="text-emerald-700">GoT when partial results should MERGE</b><br><span class="text-slate-500 mt-1 inline-block">decompose+combine, multi-source reconcile, fuse rankings</span><br><span class="text-slate-400">else: tree (search) or chain (sequence)</span></div>`, code:`// chain < tree < graph  — use the least that fits.
+// GoT pays off when: task decomposes AND partial
+// solutions can be MERGED into a better whole.` },
+  { title:"12. The takeaway", why:"Chain-of-Thought reasons in a line; Tree of Thoughts branches, scores, prunes and backtracks; Graph of Thoughts makes each thought a node in a graph so you can do two things a tree cannot — aggregate several thoughts into one, keeping the best of each, and refine a thought in a loop. A controller executes a Graph of Operations over these primitives (generate, score, aggregate, refine) and keeps only the best thoughts within a budget. The payoff, proven with live numbers in the demo, is that a merged-and-refined thought can beat every single branch it came from, because no one branch ever had all the good pieces. That is the whole idea: reasoning as a graph you can branch, merge, and loop — worth its higher token cost exactly when combining partial answers is the point.", concept:`<div class="text-center w-full"><div class="text-5xl mb-2">🕸️</div><p class="font-bold text-slate-700">Branch like a tree — then MERGE the best pieces of several branches into one, and LOOP to refine it. The final thought can beat every branch it was built from.</p></div>`, code:`// generate (branch) -> score -> aggregate (merge)
+//   -> refine (loop) -> final.
+// Graph of Thoughts: thoughts you can combine, not just extend.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },2800); };
+show(0);
+
+// BUILD copy()
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); const txt=pre.innerText; navigator.clipboard.writeText(txt).then(()=>{ const o=btn.textContent; btn.textContent="✓ Copied"; setTimeout(()=>btn.textContent=o,1200); }); }
+</script>
+</body>
+</html>
