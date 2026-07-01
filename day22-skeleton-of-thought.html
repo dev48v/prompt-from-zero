@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 22 — Skeleton of Thought</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 22</div>
+      <h1 class="text-xl font-bold">🦴 Skeleton of Thought — Outline First, Expand in Parallel</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-4xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Same answer, delivered ~2–3× sooner — by writing all the points at once.</h2>
+        <p class="text-slate-500 mb-5">A normal LLM writes an answer strictly left-to-right, one token after another. <strong>Skeleton of Thought (SoT)</strong> asks the model for a quick bullet-point <em>skeleton</em> first, then expands every bullet <strong>in parallel</strong> as separate calls. Because the expansions run at the same time, the wall-clock finish time is the skeleton plus the <em>slowest single</em> point — not the sum of all of them. Press ▶ and watch the two panels race. The timing is real arithmetic from the tokens/sec slider.</p>
+      </div>
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run both</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="20" max="200" value="80" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">80</span> tok/s
+        <span>· Points</span>
+        <input id="pts" type="range" min="3" max="7" value="5" class="w-24 accent-violet-600">
+        <span id="ptsVal" class="stat text-violet-600">5</span>
+      </div>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="flex items-center justify-between mb-3"><div class="font-bold">Sequential (normal)</div><div class="text-sm font-bold text-slate-500">⏱ <span id="seqT" class="stat">0.00</span>s</div></div>
+          <div id="seqBox" class="space-y-2"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="flex items-center justify-between mb-3"><div class="font-bold text-violet-700">Skeleton of Thought</div><div class="text-sm font-bold text-violet-600">⏱ <span id="sotT" class="stat">0.00</span>s</div></div>
+          <div id="sotBox" class="space-y-2"></div>
+        </div>
+      </div>
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+      <p class="text-xs text-slate-400 mt-3 text-center">Question: <em>"How can I make my website load faster?"</em> — Sequential writes the skeleton then every point one after another (total = sum of all). SoT writes the skeleton, then fires all point-expansions concurrently (total = skeleton + the longest single point). The speedup is real when the points are independent; it shrinks toward 1× when there are few points or one giant point.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Skeleton of Thought works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Two LLM stages: one call for the skeleton, then N parallel calls (one per point), stitched back together. The whole orchestration is a skeleton prompt, a parse, a <code>Promise.all</code>, and a join.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Ask for a skeleton</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First prompt: get a terse, numbered outline — just 3–8 short point titles, no prose. This call is small and fast because you cap it to a few words per point. The skeleton is the plan the parallel workers will each flesh out.</p>
+        <div class="relative"><pre>const skeletonPrompt = `You are answering: "${question}".
+First give ONLY a skeleton: 3-8 numbered point titles,
+&lt;=6 words each, no explanations. One per line.`;
+const skeleton = await llm(skeletonPrompt);
+const points = skeleton.split("\n").filter(Boolean);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Expand every point in parallel</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now fire one expansion call per point — all at once with <code>Promise.all</code>. Each prompt gets the question, the full skeleton (for context/coherence), and the one point it must expand in 1–2 sentences. Because the calls overlap, the wall-clock cost is the slowest single expansion, not the sum.</p>
+        <div class="relative"><pre>const expanded = await Promise.all(points.map((p, i) =&gt;
+  llm(`Question: "${question}".
+Full outline: ${skeleton}
+Expand ONLY point ${i+1} ("${p}") in 1-2 sentences.`)
+));   // all N requests run concurrently</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Stitch the answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Join the point title with its expansion, in skeleton order, and you have the final structured answer. Because the model committed to the structure up front, the result is usually better-organised than a single free-form generation — a nice quality side-effect on top of the speed win.</p>
+        <div class="relative"><pre>const answer = points
+  .map((p, i) =&gt; `**${p}**\n${expanded[i]}`)
+  .join("\n\n");
+return answer;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Guard: only when points are independent</h3></div>
+        <p class="text-sm text-slate-600 mb-3">SoT helps when points don't depend on each other (a listicle, a review, an overview). It <em>hurts</em> chained reasoning — a maths proof or a step-by-step derivation where point 3 needs point 2's result. A cheap classifier (or a rule) decides whether to use SoT or fall back to normal sequential generation.</p>
+        <div class="relative"><pre>const independent = await llm(
+  `Does answering "${question}" need step-by-step
+   dependent reasoning? Answer yes or no.`);
+if (independent.toLowerCase().startsWith("yes"))
+  return normalGenerate(question);   // fall back
+return skeletonOfThought(question);  // safe to parallelise</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 22 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You built Skeleton of Thought: one skeleton call, N parallel expansions with <code>Promise.all</code>, a stitch, and a guard for dependent reasoning. It trades more total tokens for much less wall-clock latency — and often better structure. <strong>👉 Tomorrow — Day 23: ReWOO.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== SoT timing simulation =====
+const POINT_TITLES = [
+  "Compress & resize images","Enable caching & a CDN","Minify JS and CSS",
+  "Lazy-load offscreen media","Reduce third-party scripts","Use HTTP/2 & preconnect","Ship less JavaScript"
+];
+const SKELETON_TOK = 24;                 // tokens to write the outline
+const seqBox = document.getElementById("seqBox");
+const sotBox = document.getElementById("sotBox");
+const seqT = document.getElementById("seqT"), sotT = document.getElementById("sotT");
+const verdict = document.getElementById("verdict");
+const speed = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const ptsR = document.getElementById("pts"), ptsVal = document.getElementById("ptsVal");
+let running = false, pointTokens = [];
+
+function build(){
+  const n = +ptsR.value;
+  ptsVal.textContent = n; speedVal.textContent = speed.value;
+  // deterministic-ish token counts per point (30..60)
+  pointTokens = Array.from({length:n}, (_,i) => 30 + ((i*17+13) % 30));
+  seqBox.innerHTML = ""; sotBox.innerHTML = "";
+  for (let i=0;i<n;i++){
+    seqBox.insertAdjacentHTML("beforeend", `<div class="pt"><div class="mb-1">${POINT_TITLES[i]}</div><div class="bar"><span id="sq${i}"></span></div></div>`);
+    sotBox.insertAdjacentHTML("beforeend", `<div class="pt"><div class="mb-1">${POINT_TITLES[i]}</div><div class="bar"><span id="so${i}"></span></div></div>`);
+  }
+  seqT.textContent = "0.00"; sotT.textContent = "0.00"; verdict.textContent = "";
+}
+speed.oninput = () => { if(!running) build(); };
+ptsR.oninput  = () => { if(!running) build(); };
+
+function run(){
+  if (running) return; running = true; build();
+  const tps = +speed.value;
+  const n = pointTokens.length;
+  const t0 = performance.now();
+  // total "model time" in seconds for planning:
+  const skelSec = SKELETON_TOK / tps;
+  const seqTotal = skelSec + pointTokens.reduce((a,b)=>a+b,0)/tps;      // sum
+  const sotTotal = skelSec + Math.max(...pointTokens)/tps;             // skeleton + slowest
+  const SCALE = 1.0;  // 1s sim = 1s "model"; feels real at these speeds
+
+  function frame(){
+    const elapsed = (performance.now()-t0)/1000 * SCALE;
+    // sequential: fills bars one after another after the skeleton
+    let acc = skelSec;
+    for (let i=0;i<n;i++){
+      const dur = pointTokens[i]/tps;
+      const prog = Math.max(0, Math.min(1, (elapsed-acc)/dur));
+      document.getElementById("sq"+i).style.width = (prog*100)+"%";
+      acc += dur;
+    }
+    seqT.textContent = Math.min(elapsed, seqTotal).toFixed(2);
+    // SoT: all bars fill together, after the skeleton
+    for (let i=0;i<n;i++){
+      const dur = pointTokens[i]/tps;
+      const prog = Math.max(0, Math.min(1, (elapsed-skelSec)/dur));
+      document.getElementById("so"+i).style.width = (prog*100)+"%";
+    }
+    sotT.textContent = Math.min(elapsed, sotTotal).toFixed(2);
+    if (elapsed < Math.max(seqTotal, sotTotal)){ requestAnimationFrame(frame); }
+    else {
+      seqT.textContent = seqTotal.toFixed(2);
+      sotT.textContent = sotTotal.toFixed(2);
+      verdict.textContent = `SoT finished ${(seqTotal/sotTotal).toFixed(1)}× sooner (${seqTotal.toFixed(2)}s → ${sotTotal.toFixed(2)}s) — more tokens overall, far less wall-clock.`;
+      running = false;
+    }
+  }
+  requestAnimationFrame(frame);
+}
+document.getElementById("runBtn").onclick = run;
+build();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. LLMs answer one token at a time", why:"A language model generates text autoregressively: it produces one token, appends it, and feeds the whole sequence back in to produce the next. That means a long answer is fundamentally sequential — token 500 cannot start until token 499 exists. Wall-clock time scales with the number of tokens in the answer, which is why a thorough response feels slow even on fast hardware. Skeleton of Thought attacks exactly this: the sequential length of the critical path.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">tok1 → tok2 → tok3 → ... → tokN<br>each waits for the previous one<br>latency ∝ number of tokens</div>`, code:`// Autoregressive decoding is inherently serial:
+// next = model(prompt + tokensSoFar)
+// A 600-token answer = ~600 sequential steps.` },
+ { title:"2. The idea: outline, then fill in parallel", why:"Most answers are really a list of semi-independent parts: a set of tips, sections of an overview, aspects of a comparison. Skeleton of Thought exploits this. Instead of writing the whole thing linearly, you first ask for a short skeleton — just the point titles — then expand each point as its own request. Since the expansions don't depend on each other, they can all run at the same time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1) skeleton: • A • B • C • D<br>2) expand A, B, C, D — ALL AT ONCE<br>3) stitch back together</div>`, code:`// Stage 1: get "• point titles"
+// Stage 2: expand each point concurrently
+// Stage 3: join in order → final answer` },
+ { title:"3. The skeleton call", why:"The first call is deliberately tiny: you ask only for a numbered list of short point titles, no prose. Capping each point to a few words keeps this call fast, so it adds little to the total. The skeleton doubles as a plan — by committing to structure first, the model tends to produce a more complete, better-organised answer than free-form writing, which often rambles or forgets a section.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prompt: "give ONLY 3-8 point titles,<br>&lt;=6 words each, one per line"<br>→ a fast, tiny generation</div>`, code:`const skeleton = await llm(
+  \`Answer "\${q}" as ONLY 3-8 numbered
+   point titles, &lt;=6 words each.\`);
+const points = skeleton.split("\\n").filter(Boolean);` },
+ { title:"4. Parallel expansion", why:"This is where the speed comes from. Each point becomes its own prompt containing the question, the whole skeleton (so expansions stay coherent with one another), and the single point to flesh out. You issue all N requests concurrently with Promise.all. The server processes them in parallel (or batched), so instead of waiting for point 1, then 2, then 3… you wait once for whichever point takes longest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">expand A ┐<br>expand B ├─ all in flight together<br>expand C ┘<br>wait = MAX(A,B,C), not A+B+C</div>`, code:`const parts = await Promise.all(
+  points.map((p,i) => llm(
+    \`Q: \${q}\\nOutline: \${skeleton}\\n
+     Expand point \${i+1} in 1-2 sentences.\`))
+);` },
+ { title:"5. Why the maths works out to ~2-3×", why:"With sequential generation the total time is the sum of every point's length (plus the skeleton). With SoT the total is the skeleton plus the single longest point — because the others finish underneath it. If you have five points averaging similar length, the sum is roughly five point-times while the SoT critical path is roughly one point-time; the reported speedups in the research are around 2× and up depending on how many points and how even they are.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sequential = skel + Σ points<br>SoT&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;= skel + max(points)<br>more points, more even → bigger speedup</div>`, code:`const seq = skel + points.reduce((a,p)=>a+p.tokens,0)/tps;
+const sot = skel + Math.max(...points.map(p=>p.tokens))/tps;
+// speedup = seq / sot   (≈ 2-3× in practice)` },
+ { title:"6. When NOT to use it", why:"Parallelism is only safe when the points are independent. Chained reasoning breaks it: a maths derivation, a proof, or step-by-step debugging where point 3 relies on point 2's conclusion cannot be split — expanding the points in isolation produces incoherent or wrong output. SoT shines on listicles, overviews, comparisons, and brainstorms; it should be skipped (fall back to normal generation) for tightly dependent reasoning.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">✅ tips / overview / comparison (independent)<br>❌ proof / derivation / debugging (dependent)<br>route: dependent → normal generation</div>`, code:`// A quick gate before choosing SoT:
+if (needsChainedReasoning(question))
+  return normalGenerate(question);   // don't parallelise
+else
+  return skeletonOfThought(question);` },
+ { title:"7. The cost trade-off", why:"SoT is not free. You pay for more total tokens — the skeleton, plus each expansion repeats the question and outline as context, so total input tokens go up. You also make more API requests, which can hit rate limits and add per-request overhead. What you buy with that spend is latency: a user sees a complete, structured answer much sooner. It's the classic distributed-systems trade: spend more total work to shorten the critical path.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost:&nbsp;&nbsp; +total tokens, +N requests<br>benefit: −wall-clock latency<br>= parallelism's usual bargain</div>`, code:`// SoT trades throughput for latency:
+//   total tokens ↑ (repeated context per point)
+//   requests ↑ (1 skeleton + N expansions)
+//   time-to-full-answer ↓↓` },
+ { title:"8. Combining with streaming & structure", why:"SoT pairs naturally with streaming UIs: show the skeleton immediately as a set of headings, then stream each expansion into place as it lands, so the user watches the answer assemble in parallel. The technique came from a 2023 paper ('Skeleton-of-Thought') aimed squarely at latency, and it also tends to lift answer quality via its forced structure. It's a member of the same family as Tree- and Graph-of-Thoughts, but where those add reasoning depth, SoT adds parallel breadth for speed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">skeleton → render headings now<br>stream each expansion into its slot<br>speed + structure together<br>cousin of Tree/Graph-of-Thoughts</div>`, code:`// UX: paint the skeleton as headings instantly,
+// then stream each point's expansion into its slot
+// as its parallel request resolves.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
