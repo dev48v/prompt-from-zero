@@ -32,3 +32,4 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
 - Day 22 — Skeleton of Thought → `day22-skeleton-of-thought.html`
+- Day 23 — ReWOO (Reasoning WithOut Observation) → `day23-rewoo.html`

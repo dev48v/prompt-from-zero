@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 23 — ReWOO</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 23</div>
+      <h1 class="text-xl font-bold">🧩 ReWOO — Reasoning WithOut Observation</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Same answer — but ReWOO calls the model only twice.</h2>
+        <p class="text-slate-500 mb-5">A multi-hop question needs several tool lookups chained together. <strong>ReAct</strong> calls the LLM once per step: think, act, read the observation, think again — the model is invoked every single cycle. <strong>ReWOO</strong> calls the LLM once to write the <em>entire</em> plan of tool calls up front (using <span class="mono">#E1, #E2…</span> placeholders that feed each other), a plain <em>Worker</em> runs the tools with no model in the loop, then one final <em>Solver</em> call turns the evidence into an answer. Press ▶ and watch the LLM-call counters diverge. It's a real deterministic run over a fixed knowledge set — no live model.</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 text-center text-sm">
+        <span class="text-slate-500">Question:</span>
+        <strong class="text-slate-800">"What is the population of the capital of the country that won the 2018 World Cup?"</strong>
+      </div>
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run both</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+      <div class="grid md:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="flex items-center justify-between mb-1"><div class="font-bold">🔁 ReAct — interleaved</div></div>
+          <div class="text-xs text-slate-500 mb-3">Think → Act → Observe, <strong>calling the model every step.</strong></div>
+          <div id="reactBox" class="space-y-2 min-h-[260px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
+            <div><span class="llm-dot"></span>LLM calls: <span id="reactLLM" class="stat font-bold text-slate-800">0</span></div>
+            <div>tool runs: <span id="reactTool" class="stat font-bold text-slate-500">0</span></div>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="flex items-center justify-between mb-1"><div class="font-bold text-violet-700">🧩 ReWOO — plan, work, solve</div></div>
+          <div class="text-xs text-slate-500 mb-3">One <strong>Plan</strong> call, tools run with no model, one <strong>Solve</strong> call.</div>
+          <div id="rewooBox" class="space-y-2 min-h-[260px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 flex items-center justify-between text-sm">
+            <div><span class="llm-dot"></span>LLM calls: <span id="rewooLLM" class="stat font-bold text-violet-700">0</span></div>
+            <div>tool runs: <span id="rewooTool" class="stat font-bold text-slate-500">0</span></div>
+          </div>
+        </div>
+      </div>
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+      <p class="text-xs text-slate-400 mt-3 text-center">Both reach the same final answer. The chain here is 3 hops (winner → capital → population), so ReAct makes <strong>3 reasoning LLM calls + 1 final</strong> = 4, while ReWOO always makes exactly <strong>2</strong> (plan + solve) no matter how many hops — the tool runs are cheap non-model calls. Add hops and ReAct's counter climbs; ReWOO's stays flat at 2. The catch: ReWOO commits to the plan blind, so it can't react if a tool returns a surprise — that's the tradeoff you'll see in UNDERSTAND.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How ReWOO works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">ReWOO is three parts and only two of them touch the model: a <strong>Planner</strong> prompt that emits the whole variable-linked plan, a plain <strong>Worker</strong> loop that runs the tools and substitutes <code>#E1</code>→result, and a <strong>Solver</strong> prompt that turns the collected evidence into the final answer.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Planner call — write the entire plan up front</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One LLM call. Give the model the question and the list of tools, and ask it for a numbered plan where each step assigns a result variable (<code>#E1</code>, <code>#E2</code>…) and may reference earlier ones. Crucially the model never sees a tool <em>result</em> here — it reasons purely from the question, so this is "reasoning without observation".</p>
+        <div class="relative"><pre>const plannerPrompt = `Question: "${question}"
+Tools: Search[query], Population[city]
+Write a plan. For each step output:
+  Plan: &lt;reasoning&gt;
+  #E&lt;n&gt; = Tool[input, may cite #E1..]
+Do NOT solve yet — only plan.`;
+const plan = await llm(plannerPrompt);   // LLM call #1</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Parse the plan into steps</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Turn the text plan into structured steps: variable name, tool, and raw input. A regex per line is enough. You now have an ordered list you can execute — the model's job is done until the very end.</p>
+        <div class="relative"><pre>const steps = [];
+for (const line of plan.split("\n")) {
+  const m = line.match(/^#(E\d+)\s*=\s*(\w+)\[(.+)\]$/);
+  if (m) steps.push({ id: "#"+m[1], tool: m[2], input: m[3] });
+}
+// [{id:"#E1", tool:"Search", input:"2018 World Cup winner"}, ...]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Worker — run the tools, substitute variables (no LLM)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Walk the steps in order. Before calling a tool, replace any <code>#E1</code> token in its input with the stored result of that earlier step. Store each result under its variable. This whole loop is ordinary code — <strong>zero model calls</strong> — which is exactly why ReWOO is cheap.</p>
+        <div class="relative"><pre>const evidence = {};
+for (const s of steps) {
+  let input = s.input;
+  for (const [id, val] of Object.entries(evidence))
+    input = input.replaceAll(id, val);        // #E1 → its result
+  evidence[s.id] = await TOOLS[s.tool](input); // real tool, no LLM
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Solver call — combine evidence into the answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The second and final LLM call. Hand the model the original question plus the plan-with-evidence-filled-in and ask for the answer. Two LLM calls total, regardless of how many tool hops the plan had — that's the constant-call-count win over ReAct.</p>
+        <div class="relative"><pre>let filled = plan;
+for (const [id, val] of Object.entries(evidence))
+  filled = filled.replaceAll(id, val);
+const answer = await llm(`Question: "${question}"
+Plan &amp; evidence:\n${filled}
+Now give the final answer.`);   // LLM call #2 (last)
+return answer;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Guard: fall back to ReAct when the path is uncertain</h3></div>
+        <p class="text-sm text-slate-600 mb-3">ReWOO's blind plan is a liability when a tool result might change what you do next — a dead end, an ambiguous entity, an error. For those, keep ReAct (or a hybrid: plan, but re-plan if the Worker hits a surprise). Route by how predictable the tool chain is.</p>
+        <div class="relative"><pre>if (pathIsPredictable(question))       // fixed multi-hop lookup
+  return reWOO(question);              // 2 LLM calls, cheap
+else
+  return reAct(question);              // adapt step-by-step</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 23 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You built ReWOO: a Planner that writes the whole variable-linked plan, a model-free Worker that runs the tools and substitutes <code>#E1→#E2</code>, and a Solver — exactly two LLM calls no matter the hop count. It's cheaper and faster than ReAct's per-step loop, at the cost of adapting mid-task. <strong>👉 Tomorrow — Day 24: Plan-and-Solve prompting.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: deterministic ReAct vs ReWOO simulation =====
+// Fixed knowledge set — the "tools" are pure lookups, no model.
+const KB = {
+  worldCupWinner: { "2018": "France" },
+  capital:        { "France": "Paris", "Croatia": "Zagreb" },
+  population:     { "Paris": "2.1 million", "Zagreb": "0.77 million" }
+};
+// The scripted chain of tool hops both agents must traverse.
+const CHAIN = [
+  { id:"#E1", tool:"Search",     label:"who won the 2018 World Cup",       run:()=>KB.worldCupWinner["2018"] },
+  { id:"#E2", tool:"Search",     label:"capital of #E1",                   run:(e)=>KB.capital[e["#E1"]] },
+  { id:"#E3", tool:"Population", label:"population of #E2",                run:(e)=>KB.population[e["#E2"]] }
+];
+const HOPS = CHAIN.length;   // 3
+
+const reactBox  = document.getElementById("reactBox");
+const rewooBox  = document.getElementById("rewooBox");
+const reactLLM  = document.getElementById("reactLLM"),  reactTool = document.getElementById("reactTool");
+const rewooLLM  = document.getElementById("rewooLLM"),  rewooTool = document.getElementById("rewooTool");
+const verdict   = document.getElementById("verdict");
+const speed     = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+function reset(){
+  reactBox.innerHTML = ""; rewooBox.innerHTML = "";
+  reactLLM.textContent = "0"; reactTool.textContent = "0";
+  rewooLLM.textContent = "0"; rewooTool.textContent = "0";
+  verdict.textContent = "";
+}
+function delay(){ return 900 / (+speed.value); }  // ms per animated row
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html){
+  box.insertAdjacentHTML("beforeend", `<div class="pt row-appear">${html}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay();
+  let reactCalls = 0, reactTools = 0, rewooCalls = 0, rewooTools = 0;
+  const evidence = {};
+
+  // ---- ReWOO: 1 plan call ----
+  rewooCalls++; rewooLLM.textContent = rewooCalls;
+  row(rewooBox, `<span class="llm-dot"></span><strong>Planner (LLM call 1)</strong> — writes the full plan blind, no tool results yet:`);
+  await sleep(d);
+  for (const step of CHAIN){
+    row(rewooBox, `<span class="mono text-violet-700">${step.id} = ${step.tool}[${step.label}]</span>`);
+    await sleep(d*0.5);
+  }
+
+  // ---- ReAct + ReWOO worker run in parallel visually, but counted separately ----
+  for (let i=0;i<CHAIN.length;i++){
+    const step = CHAIN[i];
+    // ReAct: one LLM call to THINK before each action
+    reactCalls++; reactLLM.textContent = reactCalls;
+    row(reactBox, `<span class="llm-dot"></span><strong>Thought ${i+1} (LLM call ${reactCalls})</strong>: I need ${step.label.replace("#E1", evidence["#E1"]||"…").replace("#E2", evidence["#E2"]||"…")}.`);
+    await sleep(d);
+    // ReAct action = tool run
+    reactTools++; reactTool.textContent = reactTools;
+    const rVal = step.run(evidence);   // deterministic KB lookup
+    row(reactBox, `<span class="llm-dot tool"></span>Action: ${step.tool}[…] → <strong>${rVal}</strong> (observation)`);
+    await sleep(d*0.6);
+
+    // ReWOO worker: same tool run, but NO LLM call
+    rewooTools++; rewooTool.textContent = rewooTools;
+    let inShown = step.label;
+    for (const k of Object.keys(evidence)) inShown = inShown.replaceAll(k, evidence[k]);
+    row(rewooBox, `<span class="llm-dot tool"></span>Worker runs <span class="mono">${step.id}</span>: ${step.tool}[${inShown}] → <strong>${rVal}</strong> <span class="text-slate-400">(no LLM)</span>`);
+    evidence[step.id] = rVal;
+    await sleep(d*0.6);
+  }
+
+  // ---- ReAct: final answer needs one more LLM call ----
+  reactCalls++; reactLLM.textContent = reactCalls;
+  row(reactBox, `<span class="llm-dot"></span><strong>Final (LLM call ${reactCalls})</strong>: The answer is <strong>${evidence["#E3"]}</strong>.`);
+  await sleep(d);
+
+  // ---- ReWOO: 1 solve call ----
+  rewooCalls++; rewooLLM.textContent = rewooCalls;
+  row(rewooBox, `<span class="llm-dot"></span><strong>Solver (LLM call 2)</strong> — combines evidence: capital of ${evidence["#E1"]} is ${evidence["#E2"]}, population <strong>${evidence["#E3"]}</strong>.`);
+  await sleep(d);
+
+  verdict.innerHTML = `Same answer (<strong>${evidence["#E3"]}</strong>). ReAct used <strong>${reactCalls} LLM calls</strong> (${HOPS} thoughts + 1 final); ReWOO used <strong>${rewooCalls}</strong> (plan + solve). Add a 4th hop and ReAct climbs to ${reactCalls+1}; ReWOO stays at 2.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Recap: ReAct calls the model every step", why:"ReAct (Reason+Act) interleaves thinking and acting in a loop: the model emits a Thought, chooses an Action (a tool call), the tool returns an Observation, and that observation is fed back so the model can think again. Every one of those cycles is a fresh, full LLM call — the whole growing transcript is re-sent each time. For a chain of k tool hops you pay roughly k reasoning calls plus a final one. That per-step model cost is exactly what ReWOO sets out to remove.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Thought → Action → Observation<br>↑____________________|<br>each loop = one LLM call<br>k hops ≈ k+1 model calls</div>`, code:`// ReAct loop (interleaved, model in the loop):
+while (!done) {
+  const t = await llm(transcript);   // 1 LLM call PER step
+  const obs = runTool(t.action);
+  transcript += t + obs;             // observation fed back
+}` },
+ { title:"2. The ReWOO idea: split into Plan / Work / Solve", why:"ReWOO — Reasoning WithOut Observation — breaks the agent into three roles. A Planner writes the complete plan of tool calls in one shot; a Worker executes those tools with no model involved; a Solver reads the collected evidence once and produces the answer. The name comes from the key move: the Planner reasons about the whole task before it has seen any tool observation at all. That decoupling is what lets the model be called just twice.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PLAN&nbsp;&nbsp;(LLM #1) → full tool plan<br>WORK&nbsp;&nbsp;(no LLM) → run the tools<br>SOLVE&nbsp;(LLM #2) → final answer</div>`, code:`// ReWOO = 3 stages, only 2 touch the model:
+const plan  = await llm(planPrompt);   // #1
+const ev    = runToolsFrom(plan);      // 0 LLM calls
+const ans   = await llm(solvePrompt(plan, ev)); // #2` },
+ { title:"3. The Planner writes variable-assigned tool calls", why:"The plan isn't prose — it's a list where each step assigns a result variable: #E1 = Search[2018 World Cup winner], #E2 = Search[capital of ...], and so on. Each line names the tool, its input, and the variable that will hold the output. Because the Planner produces this in a single generation, the model commits to the entire shape of the solution before any tool has run. This is the structured artifact the Worker will later execute mechanically.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">#E1 = Search[2018 World Cup winner]<br>#E2 = Search[capital of #E1]<br>#E3 = Population[#E2]<br>(written all at once, blind)</div>`, code:`Plan: find the winner
+#E1 = Search[2018 World Cup winner]
+Plan: find its capital
+#E2 = Search[capital of #E1]
+Plan: find that city's population
+#E3 = Population[#E2]` },
+ { title:"4. Variable substitution: #E1 feeds #E2", why:"The plan encodes dependencies through the variables. #E2's input literally contains the token #E1, and #E3's input contains #E2. When the Worker runs, it executes steps in order and, before each tool call, replaces those tokens with the actual results captured so far. So the model didn't need to know that the winner was France to plan the chain — it only needed to say 'the capital of whatever #E1 is'. The data flow is declared up front and resolved at execution time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">#E1 → "France"<br>#E2 = Search[capital of <b>France</b>] → "Paris"<br>#E3 = Population[<b>Paris</b>] → "2.1M"<br>tokens resolved as results arrive</div>`, code:`for (const s of steps) {
+  let input = s.input;
+  for (const [id, val] of Object.entries(evidence))
+    input = input.replaceAll(id, val);   // #E1 → "France"
+  evidence[s.id] = TOOLS[s.tool](input);
+}` },
+ { title:"5. The Worker runs tools with no model in the loop", why:"This is the heart of the saving. Once the plan exists, running it is ordinary code: loop the steps, substitute variables, call the tool, store the result. No LLM is invoked during this phase — the observations are collected but never sent back to the model mid-run. Compare ReAct, which pauses to call the model after every single observation. Removing the model from the execution loop is what makes ReWOO's LLM-call count independent of the number of hops.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Worker: run #E1, #E2, #E3 …<br>pure code, plain tool calls<br>0 LLM calls here<br>observations stored, not re-sent</div>`, code:`// Worker phase — NOT a single LLM call:
+const evidence = {};
+for (const s of plan.steps)
+  evidence[s.id] = await TOOLS[s.tool](resolve(s.input, evidence));` },
+ { title:"6. Why fewer LLM calls = cheaper and faster", why:"ReWOO makes exactly two model calls — plan and solve — no matter whether the chain is 3 hops or 30. ReAct makes roughly one call per hop plus a final, and each call re-sends an ever-longer transcript, so both the number of calls and the tokens per call grow. Fewer calls means less latency (network round-trips dominate) and lower cost (you're billed per token, and you stop paying to re-read the whole history every step). The published ReWOO work reports large token savings versus ReAct at similar accuracy on multi-hop benchmarks.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ReWOO calls = 2 (constant)<br>ReAct calls ≈ hops + 1 (grows)<br>+ ReAct re-sends transcript each call<br>⇒ ReWOO: fewer calls, fewer tokens</div>`, code:`// Call-count comparison for k tool hops:
+const reactCalls = k + 1;   // k thoughts + 1 final
+const rewooCalls = 2;       // plan + solve, always
+// tokens: ReAct re-sends transcript k times; ReWOO doesn't` },
+ { title:"7. The tradeoff: ReWOO can't adapt mid-plan", why:"Planning blind is also ReWOO's weakness. Because the Planner never sees a tool result, it can't change course if an observation surprises it — a search returns nothing, an entity is ambiguous, a step errors, or the real answer needs a branch the plan didn't anticipate. ReAct, seeing each observation, can rethink and try a different action. So ReWOO trades adaptability for efficiency: it's great when the reasoning path is predictable, risky when the task needs to respond to what it finds along the way.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plan is fixed before any result<br>surprise result ⇒ can't re-route<br>ReAct: sees obs, can rethink<br>ReWOO trades adapt for cheap</div>`, code:`// ReWOO risk: #E1 returns "no result"
+// but the plan already assumes #E2 = Search[capital of #E1]
+// → nothing re-plans it. ReAct would notice and pivot.` },
+ { title:"8. When ReWOO wins vs when ReAct wins", why:"Reach for ReWOO when the tool chain is predictable and multi-hop: fixed lookups, known pipelines, RAG-style retrievals where you know which sources to hit — here you get the same answer at a fraction of the calls. Reach for ReAct when the path is uncertain and must respond to observations: exploratory search, error-prone tools, tasks that branch on what's found. A common compromise is a hybrid — plan like ReWOO, but re-plan (a fresh Planner call) whenever the Worker hits a surprise, so you keep the savings on the common path and the adaptability on the rare one.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">✅ ReWOO: predictable multi-hop lookups<br>✅ ReAct: exploratory / error-prone / branchy<br>⚖ hybrid: plan, re-plan on surprise<br>match strategy to path predictability</div>`, code:`if (pathIsPredictable(question))
+  return reWOO(question);   // 2 calls, cheap
+else
+  return reAct(question);   // adapt step by step
+// hybrid: reWOO, but re-plan when a step fails` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
