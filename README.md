@@ -28,8 +28,8 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 19 — Self-Ask Prompting (Let the Model Interview Itself)](https://dev48v.infy.uk/prompt/day19-self-ask.html) — `day19-self-ask.html`
 - [PromptFromZero · Day 20 — Reflexion (Learn From Your Own Mistakes, Then Retry)](https://dev48v.infy.uk/prompt/day20-reflexion.html) — `day20-reflexion.html`
 - [PromptFromZero · Day 21 — Graph of Thoughts (Branch, Merge & Refine Thoughts in a Graph)](https://dev48v.infy.uk/prompt/day21-graph-of-thoughts.html) — `day21-graph-of-thoughts.html`
+- [PromptFromZero · Day 22 — Skeleton of Thought](https://dev48v.infy.uk/prompt/day22-skeleton-of-thought.html) — `day22-skeleton-of-thought.html`
+- [PromptFromZero · Day 23 — ReWOO](https://dev48v.infy.uk/prompt/day23-rewoo.html) — `day23-rewoo.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
-- Day 22 — Skeleton of Thought → `day22-skeleton-of-thought.html`
-- Day 23 — ReWOO (Reasoning WithOut Observation) → `day23-rewoo.html`
