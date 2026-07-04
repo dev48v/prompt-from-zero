@@ -30,6 +30,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 21 — Graph of Thoughts (Branch, Merge & Refine Thoughts in a Graph)](https://dev48v.infy.uk/prompt/day21-graph-of-thoughts.html) — `day21-graph-of-thoughts.html`
 - [PromptFromZero · Day 22 — Skeleton of Thought](https://dev48v.infy.uk/prompt/day22-skeleton-of-thought.html) — `day22-skeleton-of-thought.html`
 - [PromptFromZero · Day 23 — ReWOO](https://dev48v.infy.uk/prompt/day23-rewoo.html) — `day23-rewoo.html`
+- [PromptFromZero · Day 24 — Plan-and-Solve](https://dev48v.infy.uk/prompt/day24-plan-and-solve.html) — `day24-plan-and-solve.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

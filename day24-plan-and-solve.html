@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 24 — Plan-and-Solve</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 24</div>
+      <h1 class="text-xl font-bold">🗂️ Plan-and-Solve — plan the subtasks, then execute</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Same problem, three prompts — only one keeps every step.</h2>
+        <p class="text-slate-500 mb-5">Multi-step word problems break plain LLMs in two ways: they <strong>skip a step</strong> (missing-step error) or they <strong>fumble the arithmetic</strong> (calculation error). Watch three prompting styles attack the same problem. <strong>(a) Plain</strong> just blurts an answer and quietly drops a step. <strong>(b) Zero-shot CoT</strong> — "let's think step by step" — reasons more but can still slip. <strong>(c) Plan-and-Solve</strong> first writes an explicit <em>PLAN</em> of numbered subtasks, then <em>executes</em> each one while tracking every variable — so no step goes missing and the intermediate numbers are visible. Press ▶ and watch the plan path land the right number while the naive path lands the classic wrong one. Real deterministic arithmetic over a scripted problem — no live model.</p>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 text-center text-sm">
+        <span class="text-slate-500">Problem:</span>
+        <strong id="problemText" class="text-slate-800"></strong>
+      </div>
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run all three</button>
+        <button id="toggleBtn" class="bg-white border border-violet-300 text-violet-700 hover:bg-violet-50 px-5 py-2 rounded-lg font-semibold text-sm">🔀 Toggle problem</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">😐 Plain answer</div>
+          <div class="text-xs text-slate-500 mb-3">Just answer — no reasoning shown.</div>
+          <div id="plainBox" class="space-y-2 min-h-[280px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Result: <span id="plainRes" class="stat font-bold">—</span> <span id="plainFlag"></span></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">🪜 Zero-shot CoT</div>
+          <div class="text-xs text-slate-500 mb-3">"Let's think step by step."</div>
+          <div id="cotBox" class="space-y-2 min-h-[280px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Result: <span id="cotRes" class="stat font-bold">—</span> <span id="cotFlag"></span></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🗂️ Plan-and-Solve</div>
+          <div class="text-xs text-slate-500 mb-3">Devise a PLAN of subtasks, then execute each.</div>
+          <div id="psBox" class="space-y-2 min-h-[280px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Result: <span id="psRes" class="stat font-bold text-violet-700">—</span> <span id="psFlag"></span></div>
+        </div>
+      </div>
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+      <p class="text-xs text-slate-400 mt-3 text-center">The plain path skips the last step and reports an intermediate value — the classic <strong>missing-step error</strong>. Zero-shot CoT reasons out loud but on this problem still trips on the final combine. Plan-and-Solve first lists the subtasks, then works each one while <strong>tracking variables and intermediate results</strong>, so the correct number falls out at the end. Toggle to a second problem and watch the same pattern hold.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Plan-and-Solve works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Plan-and-Solve is not a new architecture — it's a <strong>trigger phrase</strong> you paste after the question, in place of "let's think step by step". You steer one zero-shot call to (1) understand the problem and devise a plan of subtasks, then (2) carry the plan out in order. <strong>PS+</strong> adds two more instructions that kill the two dominant error types: extract the relevant variables/intermediates, and calculate carefully.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Baseline: the zero-shot CoT trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Start from what you already know. Appending <code>Let's think step by step.</code> to a question turns a plain answer into a reasoning chain and beats plain prompting on math word problems — but the chain often <em>drops a step</em> or <em>miscomputes</em>. Plan-and-Solve is a drop-in upgrade to this exact slot.</p>
+        <div class="relative"><pre>const question = "A shop had 120 apples. It sold 40% in the morning\nand 15 in the afternoon. How many are left?";
+
+// Zero-shot CoT — the Day-2 trigger:
+const cotPrompt = question + "\nLet's think step by step.";</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The Plan-and-Solve (PS) trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Swap the trigger. Ask the model to first <em>understand the problem and devise a plan</em>, then <em>carry out the plan</em>. Forcing an explicit plan first makes the model enumerate the subtasks — so it is far less likely to silently skip one.</p>
+        <div class="relative"><pre>const PS = "Let's first understand the problem and devise a plan\n"
+  + "to solve it. Then, let's carry out the plan and solve the\n"
+  + "problem step by step.";
+
+const psPrompt = question + "\n" + PS;   // one zero-shot call</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">PS+ — extract variables & compute intermediates</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The two failure modes are missing steps and bad arithmetic. PS+ patches both by adding explicit instructions: pull out the relevant variables and their numbers, and compute intermediate results as you go. Naming each intermediate keeps the model from losing the thread.</p>
+        <div class="relative"><pre>const PS_PLUS = "Let's first understand the problem, extract relevant\n"
+  + "variables and their corresponding numerals, and devise a\n"
+  + "plan. Then, let's carry out the plan, calculate intermediate\n"
+  + "results (pay attention to calculation and commonsense),\n"
+  + "and solve the problem step by step.";
+
+const psPlusPrompt = question + "\n" + PS_PLUS;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Add "calculate carefully" to fight arithmetic slips</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The parenthetical <code>(pay attention to calculation and commonsense)</code> is doing real work: it nudges the model to double-check each operation instead of rushing the last line. This is the cheapest available guard against the calculation-error failure mode.</p>
+        <div class="relative"><pre>// The clause that reduces calculation errors:
+"...calculate intermediate results "
++ "(pay attention to calculation and commonsense)..."
+// Keep intermediates named so a wrong number is easy to spot.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Parse the plan, then verify each subtask ran</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Because PS makes the plan explicit, you can machine-check it: split the plan into numbered subtasks and confirm the solution addresses each one. A subtask with no matching execution line is your missing-step alarm — catch it and re-ask.</p>
+        <div class="relative"><pre>const out  = await llm(psPlusPrompt);
+const plan = out.match(/(?:Step|Plan)\s*\d+[:.].*/gi) || [];
+const solved = plan.filter(p => out.includes(resultFor(p)));
+if (solved.length &lt; plan.length)
+  retry("A planned subtask was never executed.");</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know the limits — and when to escalate</h3></div>
+        <p class="text-sm text-slate-600 mb-3">PS is still one zero-shot pass: the model executes its own plan and can still err on very long or symbolic problems. When correctness must be higher, escalate — self-consistency (sample many PS chains, vote), least-to-most (solve subproblems in dependency order), or hand the arithmetic to a tool. PS is the cheap, no-example first line of defence.</p>
+        <div class="relative"><pre>// Escalation ladder (cheap → expensive):
+// 1. PS / PS+           (this page — 1 call, no examples)
+// 2. self-consistency   (sample N PS chains, majority vote)
+// 3. least-to-most      (explicit subproblem decomposition)
+// 4. tool / code exec   (offload the actual arithmetic)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 24 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Plan-and-Solve: one zero-shot trigger that makes the model <strong>devise a plan of subtasks first</strong>, then execute each in order — killing the missing-step and calculation errors that plague plain chain-of-thought. PS+ adds "extract the variables" and "calculate carefully" for another lift, all without a single example. <strong>👉 Tomorrow — Day 25: Self-Discover — let the model compose its own reasoning structure.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: deterministic Plain vs CoT vs Plan-and-Solve =====
+// Two scripted multi-step word problems. All arithmetic is real & deterministic.
+// Each problem defines: the text, the correct answer, the naive/skipped answer,
+// the PS plan (numbered subtasks) and the executed steps with intermediate values.
+const PROBLEMS = [
+  {
+    text: `A shop starts with 120 apples. It sells 40% of them in the morning, then sells 15 more in the afternoon. How many apples are left?`,
+    // correct: 120 - (0.4*120=48) - 15 = 57
+    correct: 57,
+    naive: 72,   // classic missing-step: does 120*0.4=48 sold, 120-48=72, FORGETS the 15
+    plan: [
+      "Find how many apples were sold in the morning (40% of 120).",
+      "Subtract the morning sales from the starting count.",
+      "Subtract the 15 apples sold in the afternoon.",
+      "Report the apples left."
+    ],
+    exec: [
+      { label:"morning sold = 40% of 120", calc:()=>0.4*120, note:"= 48" },
+      { label:"after morning = 120 − 48",   calc:()=>120-0.4*120, note:"= 72" },
+      { label:"after afternoon = 72 − 15",  calc:()=>120-0.4*120-15, note:"= 57" }
+    ],
+    plainReason: "40% of 120 is 48 sold, so 120 − 48 = 72 left.",
+    plainSkip: "afternoon sale of 15",
+    cotReason: [
+      "Let's think step by step.",
+      "40% of 120 = 48 sold in the morning.",
+      "120 − 48 = 72 apples remain after the morning.",
+      "So the answer is 72."   // CoT also slips: forgets afternoon
+    ],
+    cotResult: 72,
+    unit: "apples"
+  },
+  {
+    text: `A train travels at 60 km/h for 2 hours, then speeds up to 90 km/h for 3 hours. What is its average speed over the whole trip?`,
+    // dist = 60*2 + 90*3 = 120 + 270 = 390 ; time = 5 ; avg = 78
+    correct: 78,
+    naive: 75,   // classic error: averages the two speeds (60+90)/2 = 75 instead of total dist / total time
+    plan: [
+      "Find distance of leg 1 (speed × time).",
+      "Find distance of leg 2 (speed × time).",
+      "Add the distances for total distance, add the times for total time.",
+      "Average speed = total distance ÷ total time."
+    ],
+    exec: [
+      { label:"leg 1 dist = 60 × 2", calc:()=>60*2, note:"= 120 km" },
+      { label:"leg 2 dist = 90 × 3", calc:()=>90*3, note:"= 270 km" },
+      { label:"total dist = 120 + 270", calc:()=>60*2+90*3, note:"= 390 km" },
+      { label:"total time = 2 + 3", calc:()=>2+3, note:"= 5 h" },
+      { label:"avg = 390 ÷ 5", calc:()=>(60*2+90*3)/(2+3), note:"= 78 km/h" }
+    ],
+    plainReason: "The two speeds are 60 and 90, so the average is (60 + 90) / 2 = 75.",
+    plainSkip: "weighting by time / total-distance-over-total-time",
+    cotReason: [
+      "Let's think step by step.",
+      "First speed is 60 km/h, second speed is 90 km/h.",
+      "Average speed = (60 + 90) / 2 = 75 km/h.",
+      "So the answer is 75 km/h."   // CoT slips into the same shortcut
+    ],
+    cotResult: 75,
+    unit: "km/h"
+  }
+];
+let pIdx = 0;
+
+const plainBox = document.getElementById("plainBox");
+const cotBox   = document.getElementById("cotBox");
+const psBox    = document.getElementById("psBox");
+const plainRes = document.getElementById("plainRes"), plainFlag = document.getElementById("plainFlag");
+const cotRes   = document.getElementById("cotRes"),   cotFlag   = document.getElementById("cotFlag");
+const psRes    = document.getElementById("psRes"),    psFlag    = document.getElementById("psFlag");
+const verdict  = document.getElementById("verdict");
+const speed    = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const problemText = document.getElementById("problemText");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+function showProblem(){ problemText.textContent = '"' + PROBLEMS[pIdx].text + '"'; }
+function reset(){
+  plainBox.innerHTML = ""; cotBox.innerHTML = ""; psBox.innerHTML = "";
+  plainRes.textContent = "—"; cotRes.textContent = "—"; psRes.textContent = "—";
+  plainFlag.textContent = ""; cotFlag.textContent = ""; psFlag.textContent = "";
+  verdict.textContent = "";
+}
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html){
+  box.insertAdjacentHTML("beforeend", `<div class="pt row-appear">${html}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+function badge(ok){ return ok ? `<span class="text-green-600 font-bold">✓ correct</span>` : `<span class="text-red-500 font-bold">✗ wrong</span>`; }
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay();
+  const P = PROBLEMS[pIdx];
+
+  // ---- (a) Plain answer: blurts, skips a step ----
+  row(plainBox, `<span class="text-slate-500">Prompt:</span> just the question.`);
+  await sleep(d);
+  row(plainBox, `${P.plainReason}`);
+  await sleep(d);
+  row(plainBox, `<span class="text-red-500">Silently skips the <strong>${P.plainSkip}</strong>.</span>`);
+  await sleep(d*0.6);
+  const plainOk = (P.naive === P.correct);
+  plainRes.textContent = `${P.naive} ${P.unit}`;
+  plainFlag.innerHTML = badge(plainOk);
+
+  // ---- (b) Zero-shot CoT: reasons, but still slips here ----
+  for (let i=0;i<P.cotReason.length;i++){
+    row(cotBox, `${i===0?'<span class="text-slate-500">Trigger:</span> ' : ''}${P.cotReason[i]}`);
+    await sleep(d*0.8);
+  }
+  const cotOk = (P.cotResult === P.correct);
+  cotRes.textContent = `${P.cotResult} ${P.unit}`;
+  cotFlag.innerHTML = badge(cotOk);
+
+  // ---- (c) Plan-and-Solve: PLAN first, then execute with intermediates ----
+  row(psBox, `<span class="text-slate-500">Trigger:</span> "understand the problem &amp; devise a PLAN, then carry it out."`);
+  await sleep(d);
+  row(psBox, `<strong class="text-violet-700">📋 PLAN — subtasks:</strong>`);
+  await sleep(d*0.4);
+  for (let i=0;i<P.plan.length;i++){
+    row(psBox, `<span class="mono text-violet-700">${i+1}.</span> ${P.plan[i]}`);
+    await sleep(d*0.4);
+  }
+  row(psBox, `<strong class="text-violet-700">▶ EXECUTE — tracking variables:</strong>`);
+  await sleep(d*0.4);
+  let psVal = null;
+  for (const s of P.exec){
+    psVal = s.calc();
+    row(psBox, `<span class="llm-dot tool"></span><span class="mono">${s.label}</span> <strong>${s.note}</strong>`);
+    await sleep(d*0.55);
+  }
+  // final answer = last executed value
+  const psAnswer = Math.round(P.exec[P.exec.length-1].calc()*100)/100;
+  const psOk = (psAnswer === P.correct);
+  psRes.textContent = `${psAnswer} ${P.unit}`;
+  psFlag.innerHTML = badge(psOk);
+  row(psBox, `<span class="text-violet-700 font-bold">Answer: ${psAnswer} ${P.unit}</span> — every subtask executed.`);
+  await sleep(d);
+
+  verdict.innerHTML = `Correct answer is <strong>${P.correct} ${P.unit}</strong>. Plain gave <strong>${P.naive}</strong> ${badge(plainOk)}, CoT gave <strong>${P.cotResult}</strong> ${badge(cotOk)}, Plan-and-Solve gave <strong>${psAnswer}</strong> ${badge(psOk)}. The explicit plan is what keeps the last step from vanishing.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+document.getElementById("toggleBtn").onclick = () => { if(running) return; pIdx = (pIdx+1)%PROBLEMS.length; showProblem(); reset(); };
+showProblem();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Why plain prompting drops steps", why:"Ask a plain LLM a multi-step word problem and it tends to jump straight to an answer, compressing several operations into one leap. With no scaffold that forces each intermediate to be written down, the model can quietly omit an operation — subtract the morning sales but forget the afternoon sale, average two speeds instead of weighting by time. Researchers call this a missing-step error, and it is one of the two dominant reasons plain prompting fails on arithmetic reasoning. The fix is not a smarter model but a prompt that makes every step surface.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plain: question → answer<br>(several ops compressed into one leap)<br>⇒ an operation silently vanishes<br>= "missing-step error"</div>`, code:`// Plain prompting: no scaffold, easy to skip a step
+// 120 apples, sell 40%, then sell 15 more
+// model: "40% of 120 = 48, so 120 - 48 = 72"  ← forgot the 15
+// correct = 57` },
+ { title:"2. Recap: zero-shot CoT and what it fixes", why:"Zero-shot chain-of-thought (Day 2) appends 'Let's think step by step' to the question, and that single phrase makes the model narrate its reasoning before answering. Writing the steps out helps: the model is more likely to perform each operation rather than guess a final number, and accuracy on math word problems jumps sharply over plain prompting. It needs no worked examples, which is why it is 'zero-shot'. Plan-and-Solve builds directly on this idea — same slot, stronger instruction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">question + "Let's think step by step."<br>→ model narrates a reasoning chain<br>→ better than plain, zero examples<br>(the Day-2 trigger)</div>`, code:`const cot = question + "\\nLet's think step by step.";
+// narrates steps, but the chain can still
+// drop a step or miscalculate the last line` },
+ { title:"3. CoT's two failure modes: missing-step & calculation", why:"Even with 'think step by step', two errors persist. A missing-step error is when the chain simply never performs a needed operation — it looks fluent but skips one. A calculation error is when a step performs the right operation but produces the wrong number — 48 minus 15 written as 43, say. The Plan-and-Solve paper measured both on the chains CoT produced and found them common enough to explain most of the remaining gap. PS is engineered specifically to attack these two, not to add cleverness.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT still fails two ways:<br>① MISSING-STEP: never does an op<br>② CALCULATION: right op, wrong number<br>PS targets exactly these two</div>`, code:`// ① missing-step: chain never subtracts the 15
+// ② calculation: "72 - 15 = 63"  (arithmetic slip)
+// Both look like confident, fluent reasoning.` },
+ { title:"4. The Plan-and-Solve idea: plan, then solve", why:"Plan-and-Solve replaces 'let's think step by step' with a two-part instruction: first understand the problem and devise a plan, then carry out the plan step by step. The plan phase forces the model to enumerate the subtasks it will need before it computes anything — much like a human writing '1. find morning sales 2. subtract 3. subtract afternoon 4. report' before touching numbers. Because every subtask is listed, the model is far less likely to forget one, which is precisely the missing-step fix. It is still a single zero-shot call — no examples, just a better trigger.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"understand & devise a PLAN"<br>&nbsp;&nbsp;1. subtask &nbsp; 2. subtask &nbsp; 3. subtask<br>"then carry out the plan step by step"<br>plan first ⇒ no step forgotten</div>`, code:`const PS =
+ "Let's first understand the problem and devise a plan " +
+ "to solve it. Then, let's carry out the plan and " +
+ "solve the problem step by step.";
+const prompt = question + "\\n" + PS;   // one zero-shot call` },
+ { title:"5. Why an explicit plan reduces errors", why:"Enumerating subtasks up front converts an implicit, compressible chain into an explicit checklist the model must then satisfy. When the model can see that step 3 ('subtract the afternoon sale') exists, it is far harder for the generation to glide past it — the plan acts as its own commitment device. It also gives you, the caller, something machine-checkable: you can parse the numbered plan and verify each subtask has a matching execution line. The result is fewer silent omissions and a reasoning trace you can audit.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">implicit chain → explicit checklist<br>plan = commitment device<br>each subtask must be executed<br>⇒ omissions become visible & rare</div>`, code:`const plan = out.match(/(?:Step|Plan)\\s*\\d+/gi) || [];
+// verify each planned subtask actually ran:
+const missing = plan.filter(p => !executed(p, out));
+if (missing.length) retry();` },
+ { title:"6. PS+ : extract variables and compute intermediates", why:"Plain PS fixes missing steps but not arithmetic slips, so the authors add detail — the PS+ trigger. It asks the model to extract the relevant variables and their numerals and to calculate intermediate results as it goes. Naming each quantity ('morning_sold = 48', 'after_morning = 72') pins the numbers down so the model reasons over concrete, tracked values instead of re-deriving them from memory each line. In the paper PS+ beat plain PS and closed most of the gap to few-shot CoT — with zero examples.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PS+ adds:<br>"extract relevant variables + numerals"<br>"calculate intermediate results"<br>morning=48 · after=72 · left=57<br>tracked values ⇒ fewer slips</div>`, code:`const PS_PLUS =
+ "Let's first understand the problem, extract relevant " +
+ "variables and their corresponding numerals, and devise " +
+ "a plan. Then carry out the plan, calculate intermediate " +
+ "results, and solve step by step.";` },
+ { title:"7. The 'calculate carefully' clause", why:"PS+ also inserts a small parenthetical — '(pay attention to calculation and commonsense)' — right before the compute instruction. It is a targeted nudge against the calculation-error mode: it tells the model to double-check each operation and sanity-check the result rather than racing to the final line. Sanity-checks catch impossible answers too (you cannot have negative apples, an average speed cannot exceed the faster leg). It costs nothing and measurably reduces arithmetic mistakes, which is why it is worth keeping in the trigger verbatim.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"(pay attention to calculation<br>&nbsp;and commonsense)"<br>→ double-check each op<br>→ reject impossible results</div>`, code:`// The clause that fights calculation errors:
+"...calculate intermediate results " +
+"(pay attention to calculation and commonsense)..."
+// e.g. reject "left = -3 apples" as impossible` },
+ { title:"8. PS vs least-to-most & decomposition", why:"Plan-and-Solve is one of a family of 'decompose-first' methods. Least-to-most prompting explicitly breaks a problem into ordered subproblems and solves each in dependency order, feeding earlier answers forward — powerful but usually needs examples and multiple calls. Task decomposition frameworks go further, routing subtasks to different tools or agents. PS sits at the cheap end: a single zero-shot call where the plan and its execution live in one generation, no examples and no orchestration. Choose PS when you want most of the decomposition benefit for the least machinery.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">least-to-most: ordered subproblems, multi-call<br>decomposition: route subtasks to tools<br>Plan-and-Solve: plan+solve in ONE call<br>PS = cheapest decompose-first method</div>`, code:`// Decompose-first family, cheap → expensive:
+// PS / PS+        1 zero-shot call, no examples  ← here
+// least-to-most   ordered subproblems, few-shot
+// decomposition   subtasks routed to tools/agents` },
+ { title:"9. Limits — PS is still one zero-shot pass", why:"PS makes the plan explicit, but the same model still executes that plan in the same single generation, so it can still err on very long, symbolic, or adversarial problems, and a flawed plan yields a confidently wrong answer. It is not a correctness guarantee — it is a strong, cheap prior toward complete, tracked reasoning. Treat it as a first line of defence and measure on your own tasks before trusting it blindly. Its huge advantage remains that it needs no worked examples and just one call.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">still ONE zero-shot generation<br>bad plan ⇒ confident wrong answer<br>not a guarantee — a strong prior<br>measure on YOUR tasks</div>`, code:`// PS is a prior, not a proof.
+// A wrong plan executes cleanly to a wrong answer.
+// Always evaluate on a held-out set before trusting.` },
+ { title:"10. When to escalate beyond PS", why:"When PS+ is not accurate enough, climb the ladder. Self-consistency samples many PS chains and takes the majority answer, smoothing over the occasional bad plan. Least-to-most forces strict subproblem ordering for problems with deep dependencies. And for anything numerically heavy, hand the actual arithmetic to a calculator or code-execution tool so the model only has to plan, not compute. PS+ is the right default because it is nearly free; these are what you reach for when the stakes justify more calls or tooling.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">need more accuracy? escalate:<br>self-consistency (vote over PS chains)<br>least-to-most (strict subproblem order)<br>tool / code exec (offload arithmetic)</div>`, code:`if (needHigherAccuracy) {
+  // sample N Plan-and-Solve chains, majority vote
+  const answers = await Promise.all(
+    Array.from({length:N}, () => llm(psPlusPrompt)));
+  return majority(answers.map(parseAnswer));
+}` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
