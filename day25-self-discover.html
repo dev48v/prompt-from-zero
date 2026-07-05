@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 25 — Self-Discover</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre; overflow:auto; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 25</div>
+      <h1 class="text-xl font-bold">🧠 Self-Discover — the model composes its own reasoning structure</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't reason the same way for every task — discover the structure first.</h2>
+        <p class="text-slate-500 mb-5">Plain chain-of-thought applies <strong>one fixed reasoning style</strong> to every problem: "let's think step by step". But different tasks need different reasoning. <strong>Self-Discover</strong> (Google DeepMind, 2024) gives the model a menu of ~39 atomic reasoning modules and runs three meta-steps: <strong>1️⃣ SELECT</strong> the few modules relevant to this task, <strong>2️⃣ ADAPT</strong> their wording to the specific problem, and <strong>3️⃣ IMPLEMENT</strong> them into a task-specific reasoning <em>structure</em> (a small JSON plan). Only then does it <strong>SOLVE</strong> — by filling in that bespoke structure. Press ▶ and watch the structure get built for this task, then executed with real arithmetic — while plain CoT charges ahead with its one-size-fits-all chain and trips on the exact thing the discovered structure was built to catch. Deterministic scripted example — no live model.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <strong id="problemText" class="text-slate-800"></strong>
+      </div>
+
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run Self-Discover</button>
+        <button id="toggleBtn" class="bg-white border border-violet-300 text-violet-700 hover:bg-violet-50 px-5 py-2 rounded-lg font-semibold text-sm">🔀 Toggle task</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
+        <div class="font-bold mb-1">🧰 The seed pool — ~39 atomic reasoning modules</div>
+        <div class="text-xs text-slate-500 mb-3">The same generic toolbox for every task. SELECT lights up only the few this task actually needs.</div>
+        <div id="modulePool" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🧠 Self-Discover — build a bespoke structure, then solve</div>
+          <div class="text-xs text-slate-500 mb-3">SELECT → ADAPT → IMPLEMENT (structure) → SOLVE (fill it in).</div>
+          <div id="sdBox" class="space-y-1.5 min-h-[360px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Result: <span id="sdRes" class="stat font-bold text-violet-700">—</span> <span id="sdFlag"></span></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">🪜 Plain CoT — one fixed reasoning style</div>
+          <div class="text-xs text-slate-500 mb-3">"Let's think step by step." Same chain for every task.</div>
+          <div id="cotBox" class="space-y-1.5 min-h-[360px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Result: <span id="cotRes" class="stat font-bold">—</span> <span id="cotFlag"></span></div>
+        </div>
+      </div>
+
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+      <p class="text-xs text-slate-400 mt-3 text-center">Self-Discover <strong>selects</strong> only the modules that matter, <strong>adapts</strong> them to the numbers in front of it, and <strong>implements</strong> them into a small reasoning structure — including the one module (identify the key assumption / constraint) that plain CoT never thinks to apply. Then it just <strong>fills the structure in</strong>. Plain CoT reasons fluently but with its single generic chain, and walks straight into the trap. Toggle to the second task and watch a <em>different</em> structure get discovered for a <em>different</em> shape of problem.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Self-Discover works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Self-Discover is not a new architecture — it's <strong>three meta-prompts</strong> run once per task type, over a fixed seed pool of reasoning modules. Stage 1 <strong>SELECT</strong> picks the relevant modules, stage 2 <strong>ADAPT</strong> rewrites them for your task, stage 3 <strong>IMPLEMENT</strong> composes them into a JSON reasoning structure. That structure is <em>discovered once</em>; every actual problem instance is then solved cheaply by <strong>filling the structure in</strong>. Here's the whole pipeline.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The seed pool of reasoning modules</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Start from the fixed menu of ~39 generic, task-agnostic reasoning modules from the paper — "break the problem into subproblems", "identify the key assumptions", "consider alternatives", "critical thinking", "step by step plan", and so on. This pool is the raw material; Self-Discover never invents new modules, it only chooses, rewords, and arranges these.</p>
+        <div class="relative"><pre>const MODULES = [
+  "How can I break this problem into smaller parts?",
+  "What are the key assumptions underlying this problem?",
+  "How can I simplify the problem so it is easier to solve?",
+  "What are the alternative perspectives on this problem?",
+  "Critical thinking: question assumptions, weigh evidence.",
+  "Is this an analytical problem requiring computation?",
+  "Let's make a step-by-step plan with good notation.",
+  /* ...~39 generic reasoning modules total... */
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Meta-prompt 1 — SELECT the relevant modules</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Show the model the task (and the whole pool) and ask it to pick the handful of modules that are useful <em>here</em>. Most modules are irrelevant to any given task; the point of SELECT is to throw them away so the eventual structure stays short and focused. One LLM call, returns a small list of module names.</p>
+        <div class="relative"><pre>const selectPrompt =
+ `Select the reasoning modules that are crucial to solve
+  the task below. Do not elaborate — just list them.
+
+  All modules:
+  ${MODULES.join("\n")}
+
+  Task: ${task}`;
+
+const selected = await llm(selectPrompt);  // a short list</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Meta-prompt 2 — ADAPT them to the task</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The generic modules are phrased for any problem. ADAPT rewrites each selected module so it speaks about <em>this</em> task's entities and numbers — "identify the key assumptions" becomes "a bus can't be half-hired, so round the bus count up". This is what makes the reasoning concrete instead of abstract.</p>
+        <div class="relative"><pre>const adaptPrompt =
+ `Rephrase each selected reasoning module so it is specific
+  to the task. Keep the same order.
+
+  Selected modules: ${selected}
+  Task: ${task}`;
+
+const adapted = await llm(adaptPrompt);  // task-specific wording</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Meta-prompt 3 — IMPLEMENT the reasoning structure</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now compose the adapted modules into an actionable, ordered plan — a small JSON key-value structure with a slot for each reasoning step. This structure is the <em>discovered</em> artifact: a bespoke reasoning template for this whole class of task, with empty fields waiting to be filled.</p>
+        <div class="relative"><pre>const implementPrompt =
+ `Turn the adapted modules into a step-by-step reasoning
+  structure as JSON keys (leave the values empty to be
+  filled while solving).
+
+  Adapted modules: ${adapted}
+  Task: ${task}`;
+
+const structure = await llm(implementPrompt);
+// e.g. { identify_quantities, state_assumption,
+//        subtasks, compute_each, combine, final_answer }</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">SOLVE — fill the structure (reuse it per instance)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Stages 1-3 run <em>once</em>. To solve an actual problem, hand the model the empty structure plus the specific instance and ask it to fill every field in order. Because the plan already lists the key assumption and every subtask, the model can't skip the step that plain CoT misses. The same structure is reused for every instance of the task — the discovery cost is amortised.</p>
+        <div class="relative"><pre>function solve(instance) {
+  return llm(`Follow this reasoning structure to solve the
+    task. Fill in every field, then give final_answer.
+
+    Structure: ${JSON.stringify(structure)}
+    Problem: ${instance}`);
+}
+// discover ONCE, then:
+for (const inst of manyInstances) solve(inst);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know the limits — and when to reach for it</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Self-Discover shines on <em>diverse, reasoning-heavy</em> task suites where no single chain fits all — its edge over plain CoT grows as tasks vary. It costs three extra meta-calls up front, so it's overkill for a single one-off question (just use Plan-and-Solve). And the discovered structure is only as good as the pool and the SELECT step; a wrong plan executes cleanly to a wrong answer, so evaluate on held-out instances before trusting it.</p>
+        <div class="relative"><pre>// Cost model:
+//  SELECT + ADAPT + IMPLEMENT  → 3 calls, ONCE per task type
+//  SOLVE(instance)             → 1 call per instance (reused)
+//
+// Use when: many instances of a varied, reasoning-heavy task.
+// Skip when: a single ad-hoc question → Plan-and-Solve (Day 24).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 25 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Self-Discover: instead of forcing one fixed reasoning style on every problem, the model <strong>SELECTs</strong> the relevant reasoning modules, <strong>ADAPTs</strong> them to the task, and <strong>IMPLEMENTs</strong> them into a bespoke reasoning structure — discovered once, then reused to solve every instance by filling it in. <strong>👉 Tomorrow — Day 26: Meta-Prompting — use the model to write and refine its own prompts.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: deterministic Self-Discover (SELECT→ADAPT→IMPLEMENT→SOLVE) vs plain CoT =====
+// The seed pool: ~39 generic reasoning modules (Self-Discover paper, DeepMind 2024).
+const MODULES = [
+ "Devise an experiment to help solve the problem",              // 1
+ "List ideas, then apply each to see what makes progress",      // 2
+ "How could I measure progress on this problem?",               // 3
+ "How can I simplify the problem so it is easier to solve?",    // 4
+ "What are the key assumptions underlying this problem?",       // 5
+ "What are the potential risks and drawbacks of each solution?",// 6
+ "What are the alternative perspectives on this problem?",      // 7
+ "What are the long-term implications of the solution?",        // 8
+ "How can I break this problem into smaller parts?",            // 9
+ "Critical thinking: question assumptions, weigh evidence",     // 10
+ "Creative thinking: generate out-of-the-box ideas",           // 11
+ "Seek input and collaboration from others",                   // 12
+ "Systems thinking: view it as part of a larger system",       // 13
+ "Risk analysis: weigh uncertainties and trade-offs",          // 14
+ "Reflective thinking: examine my own biases",                 // 15
+ "What is the core issue that needs to be addressed?",         // 16
+ "What are the underlying causes of the problem?",             // 17
+ "What solutions have been tried before, and their outcomes?", // 18
+ "What obstacles might arise while solving this?",             // 19
+ "What relevant data can give insight into the problem?",      // 20
+ "Who are the stakeholders affected by the problem?",          // 21
+ "What resources are needed to tackle the problem?",           // 22
+ "How can success be measured or evaluated?",                  // 23
+ "What indicators or metrics can be used?",                    // 24
+ "Does this need specific technical expertise?",               // 25
+ "Does the problem involve a physical constraint?",            // 26
+ "Is the problem related to human behavior?",                  // 27
+ "Is this decision-making under uncertainty?",                 // 28
+ "Is this an analytical problem requiring computation?",       // 29
+ "Is this a design challenge?",                                // 30
+ "Does it require addressing structural issues?",              // 31
+ "Is the problem time-sensitive or urgent?",                   // 32
+ "What kind of solution is typical for this problem?",         // 33
+ "Guess at other possible solutions",                          // 34
+ "Assume the current best answer is wrong — rethink",          // 35
+ "How could I modify the current best solution?",              // 36
+ "Ignore the current solution and create a new one",           // 37
+ "Let's think step by step",                                   // 38
+ "Let's make a step-by-step plan with good notation"           // 39
+];
+
+// Two scripted tasks. Every number is computed by a real calc() — deterministic.
+const PROBLEMS = [
+  {
+    text: `A school trip has 92 students. Each bus seats 40. Each bus costs $150 to hire, plus $2 per student for insurance. What is the total cost?`,
+    correct: 634, fmt: n => "$" + n,
+    selected: [9, 5, 29, 39],
+    adapt: [
+      "Split the total cost into three parts: buses needed, bus-hire cost, insurance cost.",
+      "A bus can't be half-hired — round the number of buses UP to a whole number.",
+      "This is arithmetic: compute each quantity numerically, then add.",
+      "Plan: buses = ⌈92 ÷ 40⌉ → hire = buses × $150 → insurance = 92 × $2 → sum."
+    ],
+    structure: [
+      { key:"identify_quantities", desc:"students=92, seats/bus=40, hire=$150/bus, insurance=$2/student" },
+      { key:"state_assumption",    desc:"buses are whole units -> round UP (ceiling)" },
+      { key:"subtasks",            desc:"[buses_needed, hire_cost, insurance_cost]" },
+      { key:"compute_each",        desc:"buses=ceil(92/40), hire=buses*150, insurance=92*2" },
+      { key:"combine",             desc:"total = hire_cost + insurance_cost" }
+    ],
+    solve: [
+      { label:"buses_needed = ⌈92 ÷ 40⌉",  calc:()=>Math.ceil(92/40),          note:"⌈2.3⌉ = 3 buses" },
+      { label:"hire_cost = 3 × $150",       calc:()=>Math.ceil(92/40)*150,      note:"= $450" },
+      { label:"insurance_cost = 92 × $2",   calc:()=>92*2,                       note:"= $184" },
+      { label:"total = $450 + $184",        calc:()=>Math.ceil(92/40)*150+92*2, note:"= $634" }
+    ],
+    cotReason: [
+      "Let's think step by step.",
+      "Buses needed = 92 ÷ 40 = 2.3 buses.",
+      "Hire cost = 2.3 × $150 = $345.",
+      "Insurance = 92 × $2 = $184.",
+      "So the total is $345 + $184 = $529."
+    ],
+    cotResult: 529,
+    cotMiss: "never rounds the bus count up to a whole bus"
+  },
+  {
+    text: `A factory runs two machines. Machine A makes 30 widgets/hour, Machine B makes 45/hour. They run for 6 hours, but Machine B is down for the first 2 hours. How many widgets in total?`,
+    correct: 360, fmt: n => n + " widgets",
+    selected: [9, 5, 29, 39],
+    adapt: [
+      "Compute each machine's output separately, then sum the two.",
+      "Constraint: Machine B is down for the first 2 hours, so it runs only 4 hours — not 6.",
+      "This is arithmetic: output = rate × active-hours for each machine.",
+      "Plan: A = 30 × 6 → B = 45 × (6 − 2) → total = A + B."
+    ],
+    structure: [
+      { key:"identify_quantities", desc:"A=30/h, B=45/h, total_time=6h, B_downtime=2h" },
+      { key:"state_assumption",    desc:"B active hours = 6 - 2 = 4 (NOT the full 6)" },
+      { key:"subtasks",            desc:"[A_output, B_output]" },
+      { key:"compute_each",        desc:"A=30*6, B=45*(6-2)" },
+      { key:"combine",             desc:"total = A_output + B_output" }
+    ],
+    solve: [
+      { label:"A_output = 30 × 6h",       calc:()=>30*6,          note:"= 180 widgets" },
+      { label:"B_active_hours = 6 − 2",   calc:()=>6-2,           note:"= 4 hours" },
+      { label:"B_output = 45 × 4h",       calc:()=>45*(6-2),      note:"= 180 widgets" },
+      { label:"total = 180 + 180",        calc:()=>30*6+45*(6-2), note:"= 360 widgets" }
+    ],
+    cotReason: [
+      "Let's think step by step.",
+      "Combined rate = 30 + 45 = 75 widgets/hour.",
+      "Run time = 6 hours.",
+      "So the total is 75 × 6 = 450 widgets."
+    ],
+    cotResult: 450,
+    cotMiss: "ignores that Machine B is down for the first 2 hours"
+  }
+];
+let pIdx = 0;
+
+const modulePool = document.getElementById("modulePool");
+const sdBox   = document.getElementById("sdBox");
+const cotBox  = document.getElementById("cotBox");
+const sdRes   = document.getElementById("sdRes"),  sdFlag  = document.getElementById("sdFlag");
+const cotRes  = document.getElementById("cotRes"), cotFlag = document.getElementById("cotFlag");
+const verdict = document.getElementById("verdict");
+const speed   = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const problemText = document.getElementById("problemText");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+// render the fixed pool of 39 chips
+MODULES.forEach((m,i)=>{
+  const id = i+1;
+  const c = document.createElement("span");
+  c.className = "chip"; c.id = "mod-" + id;
+  c.textContent = "#" + id + " " + m.split(":")[0].split(" ").slice(0,4).join(" ");
+  c.title = m;
+  modulePool.appendChild(c);
+});
+
+function showProblem(){ problemText.textContent = '"' + PROBLEMS[pIdx].text + '"'; }
+function resetChips(){ document.querySelectorAll(".chip").forEach(c=>{ c.classList.remove("sel","dim"); }); }
+function reset(){
+  sdBox.innerHTML = ""; cotBox.innerHTML = "";
+  sdRes.textContent = "—"; cotRes.textContent = "—";
+  sdFlag.textContent = ""; cotFlag.textContent = "";
+  verdict.textContent = "";
+  resetChips();
+}
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html){
+  box.insertAdjacentHTML("beforeend", `<div class="pt row-appear">${html}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+function sect(box, txt){
+  box.insertAdjacentHTML("beforeend", `<div class="sect row-appear">${txt}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+function badge(ok){ return ok ? `<span class="text-green-600 font-bold">✓ correct</span>` : `<span class="text-red-500 font-bold">✗ wrong</span>`; }
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay();
+  const P = PROBLEMS[pIdx];
+
+  // ---- Stage 1: SELECT ----
+  sect(sdBox, "1️⃣ SELECT — pick the few relevant modules");
+  await sleep(d*0.6);
+  document.querySelectorAll(".chip").forEach(c=>c.classList.add("dim"));
+  await sleep(d*0.4);
+  for (const id of P.selected){
+    const chip = document.getElementById("mod-" + id);
+    chip.classList.remove("dim"); chip.classList.add("sel");
+    row(sdBox, `<span class="chip sel">#${id}</span> ${MODULES[id-1]}`);
+    await sleep(d*0.7);
+  }
+
+  // ---- Stage 2: ADAPT ----
+  sect(sdBox, "2️⃣ ADAPT — rephrase each module for THIS task");
+  await sleep(d*0.5);
+  for (let i=0;i<P.adapt.length;i++){
+    row(sdBox, `<span class="mono text-violet-700">#${P.selected[i]} →</span> ${P.adapt[i]}`);
+    await sleep(d*0.7);
+  }
+
+  // ---- Stage 3: IMPLEMENT (build the reasoning STRUCTURE) ----
+  sect(sdBox, "3️⃣ IMPLEMENT — compose into a reasoning STRUCTURE");
+  await sleep(d*0.5);
+  sdBox.insertAdjacentHTML("beforeend", `<pre class="struct row-appear" id="structPre">{ }</pre>`);
+  const sp = document.getElementById("structPre");
+  const body = [];
+  for (let i=0;i<P.structure.length;i++){
+    const f = P.structure[i];
+    body.push(`  "${f.key}": "${f.desc}"`);
+    sp.textContent = "{\n" + body.join(",\n") + "\n}";
+    sdBox.scrollTop = sdBox.scrollHeight;
+    await sleep(d*0.7);
+  }
+
+  // ---- Stage 4: SOLVE (fill the structure with real arithmetic) ----
+  sect(sdBox, "4️⃣ SOLVE — fill the structure to reach the answer");
+  await sleep(d*0.5);
+  let val = null;
+  for (const s of P.solve){
+    val = s.calc();
+    row(sdBox, `<span class="llm-dot tool"></span><span class="mono">${s.label}</span> <strong>${s.note}</strong>`);
+    await sleep(d*0.6);
+  }
+  const sdAnswer = P.solve[P.solve.length-1].calc();
+  const sdOk = (sdAnswer === P.correct);
+  sdRes.textContent = P.fmt(sdAnswer);
+  sdFlag.innerHTML = badge(sdOk);
+  row(sdBox, `<span class="text-violet-700 font-bold">Answer: ${P.fmt(sdAnswer)}</span> — structure built for THIS task, then executed.`);
+  await sleep(d);
+
+  // ---- Plain CoT: one fixed chain, walks into the trap ----
+  for (let i=0;i<P.cotReason.length;i++){
+    row(cotBox, `${i===0?'<span class="text-slate-500">Trigger:</span> ' : ''}${P.cotReason[i]}`);
+    await sleep(d*0.7);
+  }
+  row(cotBox, `<span class="text-red-500">Fixed chain — ${P.cotMiss}.</span>`);
+  const cotOk = (P.cotResult === P.correct);
+  cotRes.textContent = P.fmt(P.cotResult);
+  cotFlag.innerHTML = badge(cotOk);
+  await sleep(d*0.5);
+
+  verdict.innerHTML = `Correct answer is <strong>${P.fmt(P.correct)}</strong>. Self-Discover gave <strong>${P.fmt(sdAnswer)}</strong> ${badge(sdOk)}, plain CoT gave <strong>${P.fmt(P.cotResult)}</strong> ${badge(cotOk)}. The discovered structure encoded the key assumption a fixed chain never applies.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+document.getElementById("toggleBtn").onclick = () => { if(running) return; pIdx = (pIdx+1)%PROBLEMS.length; showProblem(); reset(); };
+showProblem();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Why one fixed reasoning style isn't optimal", why:"Chain-of-thought and its cousins hard-code a single reasoning style — 'let's think step by step' — and apply it to every task alike. But tasks differ in shape: a counting puzzle wants decomposition, a constraint problem wants you to surface the hidden assumption, a planning task wants ordered subgoals. Forcing the same chain onto all of them means each task gets a style that may or may not fit, and the mismatch is where fluent-but-wrong answers come from. Self-Discover's premise is that the reasoning approach should be chosen per task, the way a human sizes up a problem before diving in. Instead of one prompt for everything, the model first works out how to reason, then reasons.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT: every task → same chain<br>"let's think step by step"<br>⇒ style may not fit the task<br>Self-Discover: choose the style FIRST</div>`, code:`// One fixed chain for all tasks:
+const cot = task + "\\nLet's think step by step.";
+// A counting task, a constraint task, a planning task
+// all get the SAME reasoning shape — often a mismatch.` },
+ { title:"2. The seed pool — ~39 reasoning modules", why:"Self-Discover starts from a fixed menu of about 39 generic, high-level reasoning modules taken from research on human problem-solving — things like 'break the problem into smaller parts', 'identify the key assumptions', 'consider alternative perspectives', 'critical thinking', and 'make a step-by-step plan'. Each module is task-agnostic: it describes a way to think, not a domain. Crucially the model never invents new modules; the whole method is about choosing, rewording, and arranging these existing ones. This pool is the shared vocabulary from which every task-specific structure is composed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">~39 generic reasoning modules<br>break-into-parts · key-assumptions<br>alternatives · critical-thinking<br>step-by-step-plan · simplify · ...<br>(the fixed toolbox)</div>`, code:`const MODULES = [
+  "How can I break this into smaller parts?",
+  "What are the key assumptions here?",
+  "Consider alternative perspectives.",
+  "Critical thinking: question assumptions.",
+  "Make a step-by-step plan with notation.",
+  /* ...~39 total, all task-agnostic... */
+];` },
+ { title:"3. Stage 1 — SELECT the relevant modules", why:"The first meta-prompt hands the model the task plus the whole pool and asks: which of these modules are actually crucial to solve this? Most modules are irrelevant to any given problem, so SELECT is a filter — it discards the noise and keeps a small, focused set. For our bus problem the model keeps 'break into subproblems', 'identify the key assumptions', 'analytical computation', and 'step-by-step plan', and drops the rest. Selecting few modules keeps the eventual reasoning structure short and prevents the model from padding its reasoning with irrelevant considerations. It is a single LLM call returning a short list.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pool of 39 ──SELECT──▶ a few<br>keep: break-up · assumptions ·<br>compute · step-by-step-plan<br>drop: stakeholders, risks, design...</div>`, code:`const selectPrompt =
+ "Which reasoning modules are crucial for this task?\\n" +
+ MODULES.join("\\n") + "\\nTask: " + task;
+const selected = await llm(selectPrompt);
+// -> [#9 break-up, #5 assumptions, #29 compute, #39 plan]` },
+ { title:"4. Stage 2 — ADAPT them to the task", why:"The selected modules are still phrased generically ('what are the key assumptions?'), which is too abstract to act on. ADAPT is a second meta-prompt that rewrites each chosen module so it talks about this task's actual entities and numbers. 'Identify the key assumptions' becomes 'a bus can't be half-hired, so round the bus count up'; 'break into subproblems' becomes 'split the cost into buses, hire, and insurance'. This grounding is where the method earns its accuracy — the reasoning stops being a generic checklist and starts being a concrete recipe for the problem in front of it. Same order as SELECT, one call.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">generic module ──ADAPT──▶ concrete<br>"key assumptions?" →<br>"a bus can't be half-hired: round UP"<br>grounded in THIS task's numbers</div>`, code:`const adaptPrompt =
+ "Rephrase each module for this specific task:\\n" +
+ selected + "\\nTask: " + task;
+const adapted = await llm(adaptPrompt);
+// "key assumptions" -> "round the bus count UP"` },
+ { title:"5. Stage 3 — IMPLEMENT the reasoning STRUCTURE", why:"The third meta-prompt composes the adapted modules into an ordered, actionable plan expressed as a JSON key-value structure — one slot per reasoning step, values left empty. This structure is the artifact Self-Discover 'discovers': a bespoke reasoning template such as identify_quantities → state_assumption → subtasks → compute_each → combine. It is more than a list; the ordering encodes dependencies (you state the rounding assumption before you compute the bus count). The empty fields are placeholders that the solving phase will fill. Producing a structured plan, rather than free text, is what makes the reasoning reusable and machine-checkable.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">{ identify_quantities: "",<br>&nbsp;&nbsp;state_assumption: "",<br>&nbsp;&nbsp;subtasks: "",<br>&nbsp;&nbsp;compute_each: "",<br>&nbsp;&nbsp;combine: "" }<br>a bespoke reasoning TEMPLATE</div>`, code:`const implementPrompt =
+ "Compose these into a JSON reasoning structure " +
+ "(empty values):\\n" + adapted;
+const structure = await llm(implementPrompt);
+// { identify_quantities, state_assumption,
+//   subtasks, compute_each, combine }` },
+ { title:"6. SOLVE — fill in the discovered structure", why:"Only now does the model solve the actual problem, and it does so by filling every field of the structure in order rather than reasoning freeform. Because the plan already contains a slot for 'state_assumption', the model is forced to write down 'round buses up' before it computes — so it can't skip the step that plain CoT quietly drops. Each field's value is derived from the previous ones, and the last field, final_answer, falls out of combining the computed subtasks. The structure acts as a scaffold and a commitment device at once: every reasoning step has a named place it must appear.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fill the template:<br>quantities: 92,40,150,2<br>assumption: round buses UP<br>buses=⌈92/40⌉=3 · hire=450 · ins=184<br>final_answer = 634 ✓</div>`, code:`const solvePrompt =
+ "Fill in each field of this structure to solve it:\\n" +
+ JSON.stringify(structure) + "\\nProblem: " + instance;
+const answer = await llm(solvePrompt);
+// buses=ceil(92/40)=3 -> 3*150 + 92*2 = 634` },
+ { title:"7. Discover once, reuse across every instance", why:"The three meta-stages (SELECT, ADAPT, IMPLEMENT) are the expensive part, but they run only once per task type — they produce a structure, not an answer. Every subsequent problem of the same kind is solved by the cheap SOLVE step, which just fills the already-discovered structure with new numbers. So a suite of a thousand bus-cost problems pays the three-call discovery cost once and then one call each to solve. This amortisation is what makes Self-Discover practical at scale: unlike self-consistency or tree-search, it doesn't multiply the per-instance cost — it front-loads a fixed, reusable investment.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">SELECT+ADAPT+IMPLEMENT<br>= 3 calls, ONCE per task type<br>────────────────<br>SOLVE(instance) = 1 call each<br>structure reused for all instances</div>`, code:`// discover the structure ONCE:
+const structure = await discover(taskType);
+// then reuse it cheaply on every instance:
+for (const inst of thousandsOfInstances)
+  await solveWith(structure, inst);   // 1 call each` },
+ { title:"8. Self-Discover vs Plan-and-Solve & Tree-of-Thoughts", why:"Plan-and-Solve (Day 24) also plans before solving, but it always plans the same way — 'devise a plan, then carry it out' — inside a single call per question, with no choice of reasoning style. Tree-of-Thoughts explores many reasoning branches per instance and searches over them, which is powerful but multiplies cost on every problem. Self-Discover sits differently: it chooses and composes the reasoning style up front, then reuses that fixed structure cheaply. It is meta-reasoning (reasoning about how to reason) rather than more reasoning. Use PS for a one-off; use Self-Discover when many varied instances justify discovering a tailored structure once.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Plan-and-Solve: same plan style, per call<br>Tree-of-Thoughts: search branches, per instance<br>Self-Discover: choose+compose style ONCE,<br>then reuse the structure (meta-reasoning)</div>`, code:`// Plan-and-Solve : "plan then solve" (fixed, per call)
+// Tree-of-Thoughts: branch + search   (per instance, costly)
+// Self-Discover   : pick & compose the reasoning
+//                   STRUCTURE once, reuse it (meta-level)` },
+ { title:"9. When Self-Discover helps (and when it doesn't)", why:"Its advantage is largest on diverse, reasoning-heavy benchmarks where no single chain fits every task — the paper reports big gains over CoT on such suites (e.g. BIG-Bench Hard) at a fraction of the cost of inference-heavy methods. It helps most when you have many instances of a task whose right reasoning shape isn't obvious. It helps least on a single ad-hoc question — the three discovery calls aren't worth it, and Plan-and-Solve gets you most of the benefit in one call. It also assumes the task really does have a discoverable structure; for pure recall or trivial arithmetic there's nothing to discover.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE: many instances · varied · reasoning-heavy<br>&nbsp;&nbsp;&nbsp;&nbsp;(BIG-Bench Hard, mixed suites)<br>SKIP: one-off question → Plan-and-Solve<br>SKIP: pure recall / trivial arithmetic</div>`, code:`// Worth it:
+if (manyInstances && variedReasoning) useSelfDiscover();
+// Not worth it:
+if (oneOffQuestion)  usePlanAndSolve();   // Day 24
+if (pureRecall)      useDirectAnswer();` },
+ { title:"10. Limits — the structure is only as good as SELECT", why:"Self-Discover is still built on ordinary LLM calls, so it inherits their failure modes. If SELECT picks the wrong modules or ADAPT grounds them poorly, the discovered structure will steer every instance toward a confidently wrong answer — a bad plan executes just as cleanly as a good one. It is a strong prior toward complete, tailored reasoning, not a correctness guarantee. Because the structure is reused, a flaw in it is systematic rather than random, so it pays to eyeball the discovered structure and evaluate it on held-out instances before trusting it in production. Treat discovery as something you review once, then rely on.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">bad SELECT/ADAPT ⇒ bad structure<br>bad structure ⇒ systematic wrong answers<br>(reused, so the error repeats)<br>review the structure · eval held-out</div>`, code:`// The structure is reused -> its flaws are systematic.
+const structure = await discover(taskType);
+review(structure);                 // human eyeball once
+assertAccuracy(structure, heldOut);// eval before trusting` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
