@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 26 — Meta-Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.miss { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 26</div>
+      <h1 class="text-xl font-bold">🎼 Meta-Prompting — use the model to write &amp; refine your own prompts</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't hand-craft the prompt — let the model write the prompt.</h2>
+        <p class="text-slate-500 mb-5">A weak prompt like <em>"write about dogs"</em> isn't wrong, it's <strong>underspecified</strong>: role, audience, format, length and constraints are all left blank, so the model fills each with its blandest default. <strong>Meta-prompting</strong> turns prompt-engineering itself into a task for the model. A reusable <strong>meta-prompt</strong> — a fixed template carrying a quality checklist — <strong>1️⃣ CRITIQUES</strong> your rough ask against every dimension a strong prompt should specify, then <strong>2️⃣ REWRITES</strong> it into a structured prompt (role · context · constraints · format · examples). Press ▶ and watch the meta-prompt diagnose the gaps and compose the strong prompt, then see the <strong>same model, same topic</strong> produce a bland blob from the weak prompt versus a specific, structured answer from the rewritten one. Deterministic scripted example — no live model.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 text-center text-sm">
+        <span class="text-slate-500">Your rough prompt:</span>
+        <strong id="weakPromptText" class="text-slate-800 mono"></strong>
+      </div>
+
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Run the meta-prompt</button>
+        <button id="toggleBtn" class="bg-white border border-violet-300 text-violet-700 hover:bg-violet-50 px-5 py-2 rounded-lg font-semibold text-sm">🔀 Toggle example</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-5 mb-4">
+        <div class="font-bold mb-1">✅ The 10-point checklist the meta-prompt enforces</div>
+        <div class="text-xs text-slate-500 mb-3">Every dimension a strong prompt should pin down. CRITIQUE flags the ones your draft leaves blank (red); REWRITE fills each one (violet).</div>
+        <div id="dimPool" class="flex flex-wrap gap-1.5"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🎼 Meta-prompt — critique, then rewrite</div>
+          <div class="text-xs text-slate-500 mb-3">CRITIQUE (find the gaps) → REWRITE (fill every dimension into a structured prompt).</div>
+          <div id="mpBox" class="space-y-1.5 min-h-[380px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Result: <span id="mpRes" class="stat font-bold text-violet-700">—</span></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">📤 Run both prompts — output comparison</div>
+          <div class="text-xs text-slate-500 mb-3">Same model, same topic. Only the prompt changed.</div>
+          <div class="rounded-lg border border-slate-200 p-3 mb-3">
+            <div class="text-xs font-bold text-slate-500 mb-1">🪫 Weak prompt → weak output</div>
+            <div id="weakOutBox" class="min-h-[90px] text-sm text-slate-400">Press ▶</div>
+            <div id="weakCovFlag" class="mt-2 pt-2 border-t border-slate-100 text-sm text-slate-600"></div>
+          </div>
+          <div class="rounded-lg border border-violet-200 p-3">
+            <div class="text-xs font-bold text-violet-600 mb-1">⚡ Rewritten prompt → strong output</div>
+            <div id="strongOutBox" class="min-h-[120px] text-sm text-slate-400">—</div>
+            <div id="strongCovFlag" class="mt-2 pt-2 border-t border-violet-100 text-sm text-slate-600"></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🎛 Conductor / orchestrator variant.</strong> A meta-prompt doesn't have to rewrite a single prompt. A <strong>conductor prompt</strong> takes a big goal — <em>"launch my product"</em> — decomposes it into several specialised <strong>sub-prompts</strong> (a market-analyst prompt, a copywriter prompt, a checklist-builder prompt), dispatches each to a fresh model instance with its own persona, then merges the results. The conductor never does the object-level work itself; it <em>writes and coordinates the prompts that do</em>. Same idea, one level up — the orchestration pattern behind ReWOO (Day 23) and Graph-of-Thoughts (Day 21), but the units being coordinated are prompts the model wrote for itself.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">The meta-prompt makes every silent default an explicit decision: it <strong>names the ten dimensions</strong> a strong prompt should specify, <strong>flags the ones your draft skipped</strong>, and <strong>rewrites</strong> them into a role/context/constraints/format/example block. The vague ask and the structured ask go to the <em>same model</em> — only the specification quality differs, and that difference is exactly what a meta-prompt automates. Toggle to the second example and watch a different rough ask get hardened the same way.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How meta-prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Meta-prompting is not a new architecture — it's <strong>one reusable prompt</strong> that upgrades other prompts. You encode what a good prompt looks like as a checklist, wrap it in critique-and-rewrite instructions, and feed it your rough ask. The <strong>template flavour</strong> below rewrites once per prompt for a single extra call; the <strong>optimizer flavour</strong> (APE/OPRO) and the <strong>conductor</strong> variant scale the same idea up. Here's the whole pipeline.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Encode what a good prompt looks like</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Write down the dimensions a strong prompt should specify. This checklist is the backbone of the meta-prompt — it turns "make it better" into a concrete list of things to check. Not every task needs all ten, but naming each one forces a deliberate choice instead of a silent default.</p>
+        <div class="relative"><pre>const CHECKLIST = [
+  "ROLE — the persona the model should adopt",
+  "AUDIENCE — who the output is for",
+  "CONTEXT — the situation / where this lives",
+  "TASK — the precise, unambiguous ask",
+  "CONSTRAINTS — scope, bans, must-dos",
+  "FORMAT — the shape of the output",
+  "LENGTH — how long",
+  "TONE — style and voice",
+  "EXAMPLES — a pattern to imitate",
+  "SUCCESS CRITERIA — what 'done' means"
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Write the reusable meta-prompt</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Wrap the checklist in critique-then-rewrite instructions, with one slot for the user's rough ask. This is the whole reusable artifact — a fixed super-prompt you author once and point at any weak prompt. Keep it in your repo like a house style guide.</p>
+        <div class="relative"><pre>const META_PROMPT = `
+You are a prompt engineer. Improve the user's prompt.
+
+STEP 1 — CRITIQUE: for each item in the checklist below,
+say whether the prompt specifies it, and what is missing.
+STEP 2 — REWRITE: output a new prompt that fills every
+gap, as a labelled block (ROLE, AUDIENCE, CONTEXT, TASK,
+CONSTRAINTS, FORMAT, LENGTH, TONE, EXAMPLE, SUCCESS).
+
+Checklist:
+${CHECKLIST.join("\n")}
+
+User's prompt:
+"""{{WEAK_PROMPT}}"""`;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">CRITIQUE — diagnose the gaps first</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Run the meta-prompt and let the model list, explicitly, what the weak prompt leaves unstated. Asking for the diagnosis <em>before</em> the rewrite matters: it makes the model reason about specific defects, so the rewrite is grounded in named gaps rather than a vague urge to improve.</p>
+        <div class="relative"><pre>function metaPrompt(weak) {
+  return META_PROMPT.replace("{{WEAK_PROMPT}}", weak);
+}
+// CRITIQUE output, e.g. for "write about dogs":
+//  ✗ no ROLE  ✗ no AUDIENCE  ✗ TASK vague
+//  ✗ no FORMAT  ✗ no LENGTH  ✗ no SUCCESS CRITERIA
+const critique = await llm(metaPrompt("write about dogs"));</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">REWRITE — emit the structured prompt</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The same call then rewrites the prompt, filling every gap it just found into a labelled block. This structured prompt — not the critique — is the artifact you actually run. It reads like a spec because it is one.</p>
+        <div class="relative"><pre>// REWRITE output (the prompt you'll actually run):
+const strongPrompt = `
+ROLE: You are a veterinary science writer.
+AUDIENCE: First-time dog owners, no prior knowledge.
+CONTEXT: A blog series on responsible pet ownership.
+TASK: Write a beginner's guide to choosing a first breed.
+CONSTRAINTS: Exactly 5 breeds; note energy, size, grooming;
+             no medical advice.
+FORMAT: Markdown — one H2 per breed + a summary table.
+LENGTH: ~600 words.  TONE: warm, practical, jargon-free.
+EXAMPLE: "Labrador — high energy, large, low grooming."
+SUCCESS: Reader can pick a breed matching their lifestyle.`;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Run the improved prompt (and optionally loop)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now send the rewritten prompt to the model to get the real answer. Because the meta-prompt is reusable, you spend just one extra call per prompt. You can even loop it — critique the rewrite and rewrite again — until it stops finding gaps, the same critique→revise idea as self-refine (Day 12) applied to the prompt itself.</p>
+        <div class="relative"><pre>const strong = await metaPrompt(weak);   // 1 extra call
+const answer = await llm(strong);         // run the good prompt
+
+// optional refinement loop:
+let p = weak;
+for (let i = 0; i &lt; 2; i++) p = await metaPrompt(p);
+const best = await llm(p);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Scale it up — optimizer &amp; conductor, and the limits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The template flavour rewrites once with no data. To go further, the <strong>optimizer</strong> flavour (APE, OPRO) proposes many candidate prompts and iterates toward the best-scoring one against an eval set; the <strong>conductor</strong> flavour decomposes a goal into sub-prompts and orchestrates them. Both are still ordinary LLM calls, so review the output: a rewrite can invent constraints you never wanted, or just get longer without getting better, and a meta-prompt is only as good as its checklist.</p>
+        <div class="relative"><pre>// Optimizer (needs a scored eval set):
+let history = [];
+for (let i = 0; i &lt; N; i++) {
+  const cand  = await llm(`Propose a better prompt.\n${history}`);
+  const score = evaluate(cand, examples);
+  history.push({ cand, score });     // OPRO/APE search
+}
+// Conductor: goal -> sub-prompts -> merge (Day 21/23).
+// Always: review(strong) — did it invent constraints?</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 26 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Meta-Prompting: instead of hand-crafting a prompt, you let the model do the prompt engineering — a reusable <strong>meta-prompt</strong> <strong>CRITIQUES</strong> your rough ask against a quality checklist and <strong>REWRITES</strong> it into a structured prompt (role · context · constraints · format · examples), and the same idea scales up into LLM-as-optimizer search and conductor orchestration. <strong>👉 Tomorrow — Day 27: Program-Aided Language Models (PAL) — let the model write code and run it for exact answers.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: deterministic meta-prompting (CRITIQUE -> REWRITE -> run both) =====
+// The 10-point checklist every strong prompt should specify. The meta-prompt walks it.
+const DIMS = ["Role","Audience","Context","Task","Constraints","Format","Length","Tone","Examples","Success criteria"];
+
+// Two scripted examples. Each critique[i] / strong[i] lines up with DIMS[i].
+const EXAMPLES = [
+  {
+    weak: "write about dogs",
+    critique: [
+      "No ROLE — no persona, so the voice defaults to bland encyclopedia.",
+      "No AUDIENCE — a vet and a 6-year-old need very different text.",
+      "No CONTEXT — where this lives or what it's for is unknown.",
+      "TASK is vague — 'about dogs' has no verb, scope or angle.",
+      "No CONSTRAINTS — nothing bounds the scope or bans guesswork.",
+      "No FORMAT — prose, list or table? the model just picks.",
+      "No LENGTH — could be 3 lines or 3 pages.",
+      "No TONE — academic? playful? unspecified.",
+      "No EXAMPLE — no pattern to imitate.",
+      "No SUCCESS CRITERIA — 'done' is undefined."
+    ],
+    strong: [
+      { k:"ROLE",        v:"You are a veterinary science writer." },
+      { k:"AUDIENCE",    v:"First-time dog owners with no prior knowledge." },
+      { k:"CONTEXT",     v:"Part of a blog series on responsible pet ownership." },
+      { k:"TASK",        v:"Write a beginner's guide to choosing a first breed." },
+      { k:"CONSTRAINTS", v:"Cover exactly 5 breeds; note energy, size & grooming; give no medical advice." },
+      { k:"FORMAT",      v:"Markdown: one H2 per breed plus a single summary table." },
+      { k:"LENGTH",      v:"About 600 words." },
+      { k:"TONE",        v:"Warm, practical, jargon-free." },
+      { k:"EXAMPLE",     v:"e.g. \"Labrador — high energy, large, low grooming.\"" },
+      { k:"SUCCESS",     v:"Reader can pick a breed that fits their lifestyle." }
+    ],
+    weakOut: "Dogs are wonderful animals and one of the most popular pets in the world. There are many different breeds, and they are known for being loyal and friendly. People keep dogs for company and protection. Dogs need food, exercise and love to stay happy.",
+    strongOut: [
+      "## Choosing Your First Dog: 5 Beginner-Friendly Breeds",
+      "",
+      "| Breed | Energy | Size | Grooming |",
+      "|-------|--------|------|----------|",
+      "| Labrador Retriever   | High   | Large | Low    |",
+      "| Cavalier King Charles| Medium | Small | Medium |",
+      "| Greyhound            | Low    | Large | Low    |",
+      "",
+      "### Labrador Retriever",
+      "A great fit for active families with space to spare...",
+      "",
+      "(~600 words · warm tone · 5 breeds · no medical advice)"
+    ],
+    checks: ["breed","## ","energy","grooming","600 words"]
+  },
+  {
+    weak: "make me a workout plan",
+    critique: [
+      "No ROLE — no coach persona to anchor the advice.",
+      "No AUDIENCE — beginner or athlete? age? injuries?",
+      "No CONTEXT — gym or home? what equipment? how many days?",
+      "TASK is vague — a plan for what goal, over what period?",
+      "No CONSTRAINTS — time per session, equipment limits, safety?",
+      "No FORMAT — a wall of text, or a usable schedule?",
+      "No LENGTH — one line or ten pages?",
+      "No TONE — drill-sergeant or gentle encouragement?",
+      "No EXAMPLE — no sample day to imitate.",
+      "No SUCCESS CRITERIA — how would I know it worked?"
+    ],
+    strong: [
+      { k:"ROLE",        v:"You are a certified strength & conditioning coach." },
+      { k:"AUDIENCE",    v:"A 30-year-old desk worker, complete beginner, no injuries." },
+      { k:"CONTEXT",     v:"Training at home, 3 days a week, one pair of dumbbells." },
+      { k:"TASK",        v:"Design a 4-week full-body plan that builds a habit." },
+      { k:"CONSTRAINTS", v:"Max 45 min/session; no barbell; include warm-up & weekly progression." },
+      { k:"FORMAT",      v:"A week-by-week table: day × exercise × sets × reps." },
+      { k:"LENGTH",      v:"Fits on one printed page." },
+      { k:"TONE",        v:"Encouraging and plain — no jargon." },
+      { k:"EXAMPLE",     v:"e.g. \"Day 1 — Goblet squat 3×10.\"" },
+      { k:"SUCCESS",     v:"I can follow it at home with no trainer." }
+    ],
+    weakOut: "To get in shape, try to work out most days of the week. Do some cardio and lift weights when you can. Remember to warm up first, stay consistent, and drink plenty of water. Over time you will start to see results.",
+    strongOut: [
+      "## 4-Week Beginner Full-Body Plan (3 days/week, dumbbells)",
+      "",
+      "| Week | Day   | Exercise      | Sets × Reps |",
+      "|------|-------|---------------|-------------|",
+      "| 1    | Day 1 | Goblet squat  | 3 × 10      |",
+      "| 1    | Day 1 | Dumbbell row  | 3 × 10      |",
+      "| 1    | Day 2 | Rest / walk   | —           |",
+      "",
+      "Warm-up: 5 min mobility. Progress +1 rep each week.",
+      "",
+      "(one page · ≤45 min · no barbell · encouraging tone)"
+    ],
+    checks: ["day 1","sets","warm","week","goblet"]
+  }
+];
+/* ==DATA_END== */
+let exIdx = 0;
+
+const dimPool     = document.getElementById("dimPool");
+const mpBox       = document.getElementById("mpBox");
+const mpRes       = document.getElementById("mpRes");
+const weakOutBox  = document.getElementById("weakOutBox");
+const strongOutBox= document.getElementById("strongOutBox");
+const weakCovFlag = document.getElementById("weakCovFlag");
+const strongCovFlag=document.getElementById("strongCovFlag");
+const verdict     = document.getElementById("verdict");
+const speed       = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const weakPromptText = document.getElementById("weakPromptText");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+// render the 10 checklist chips
+DIMS.forEach((m,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip"; c.id = "dim-" + i;
+  c.textContent = "#" + (i+1) + " " + m;
+  c.title = m;
+  dimPool.appendChild(c);
+});
+
+function coverage(text, checks){ const t = text.toLowerCase(); return checks.filter(c => t.includes(c)).length; }
+function showExample(){ weakPromptText.textContent = '"' + EXAMPLES[exIdx].weak + '"'; }
+function resetChips(){ document.querySelectorAll(".chip").forEach(c=>{ c.classList.remove("sel","dim","miss"); }); }
+function reset(){
+  mpBox.innerHTML = "";
+  mpRes.textContent = "—";
+  weakOutBox.innerHTML = '<span class="text-slate-400">Press ▶</span>';
+  strongOutBox.innerHTML = '<span class="text-slate-400">—</span>';
+  weakCovFlag.textContent = ""; strongCovFlag.textContent = "";
+  verdict.textContent = "";
+  resetChips();
+}
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html){
+  box.insertAdjacentHTML("beforeend", `<div class="pt row-appear">${html}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+function sect(box, txt){
+  box.insertAdjacentHTML("beforeend", `<div class="sect row-appear">${txt}</div>`);
+  box.scrollTop = box.scrollHeight;
+}
+function badge(ok){ return ok ? `<span class="text-green-600 font-bold">✓ complete</span>` : `<span class="text-amber-500 font-bold">△ partial</span>`; }
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay();
+  const E = EXAMPLES[exIdx];
+
+  // ---- Stage 1: CRITIQUE ----
+  sect(mpBox, "1️⃣ CRITIQUE — what is this prompt missing?");
+  await sleep(d*0.6);
+  document.querySelectorAll(".chip").forEach(c=>c.classList.add("dim"));
+  await sleep(d*0.4);
+  for (let i=0;i<DIMS.length;i++){
+    const chip = document.getElementById("dim-" + i);
+    chip.classList.remove("dim"); chip.classList.add("miss");
+    row(mpBox, `<span class="chip miss">✗ ${DIMS[i]}</span> ${E.critique[i]}`);
+    await sleep(d*0.42);
+  }
+
+  // ---- Stage 2: REWRITE (compose the structured prompt) ----
+  sect(mpBox, "2️⃣ REWRITE — fill every dimension into a structured prompt");
+  await sleep(d*0.5);
+  mpBox.insertAdjacentHTML("beforeend", `<pre class="struct row-appear" id="structPre"></pre>`);
+  const sp = document.getElementById("structPre");
+  const body = [];
+  for (let i=0;i<E.strong.length;i++){
+    const f = E.strong[i];
+    body.push(f.k + ": " + f.v);
+    sp.textContent = body.join("\n");
+    const chip = document.getElementById("dim-" + i);
+    chip.classList.remove("miss"); chip.classList.add("sel");
+    mpBox.scrollTop = mpBox.scrollHeight;
+    await sleep(d*0.55);
+  }
+  mpRes.innerHTML = `<span class="text-violet-700">${E.strong.length}/${DIMS.length} dimensions specified</span> — vague ask → structured prompt.`;
+  await sleep(d);
+
+  // ---- Stage 3: RUN BOTH PROMPTS (mock outputs, deterministic coverage) ----
+  const total = E.checks.length;
+  const weakCov = coverage(E.weakOut, E.checks);
+  weakOutBox.innerHTML = `<div class="text-slate-500 text-xs mb-1 mono">prompt: "${E.weak}"</div><div class="text-slate-600">${E.weakOut}</div>`;
+  weakCovFlag.innerHTML = `requirements met: <strong>${weakCov}/${total}</strong> ${badge(weakCov===total)}`;
+  await sleep(d);
+
+  const strongCov = coverage(E.strongOut.join("\n"), E.checks);
+  strongOutBox.innerHTML = `<pre class="struct">${E.strongOut.join("\n")}</pre>`;
+  strongCovFlag.innerHTML = `requirements met: <strong>${strongCov}/${total}</strong> ${badge(strongCov===total)}`;
+  await sleep(d*0.5);
+
+  verdict.innerHTML = `Same model, same topic — only the prompt changed. The weak prompt met <strong>${weakCov}/${total}</strong> requirements; the meta-prompt's rewrite met <strong>${strongCov}/${total}</strong>. Specifying role, constraints and format up front is exactly what a meta-prompt automates.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+document.getElementById("toggleBtn").onclick = () => { if(running) return; exIdx = (exIdx+1)%EXAMPLES.length; showExample(); reset(); };
+showExample();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Prompting the prompt — the core idea", why:"Meta-prompting means using the model to write or improve the prompt you'll actually run, instead of hand-crafting it yourself. You hand the model your rough, half-formed request plus a fixed set of instructions on what a good prompt looks like, and it returns a sharper one. The insight is that turning a vague intent into a precise, well-structured instruction is itself a language task — exactly the kind LLMs are good at. So you let the model do the prompt engineering: it critiques your draft, spots what's underspecified, and rewrites it. The prompt that does this — the reusable instructions carrying the quality checklist — is the <em>meta-prompt</em>; its output is the <em>task prompt</em> you then send to get your answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">you: rough ask "write about dogs"<br>&nbsp;&nbsp;&nbsp;&nbsp;│<br>&nbsp;&nbsp;▼ [ META-PROMPT ]<br>sharp task prompt (role, format, ...)<br>&nbsp;&nbsp;&nbsp;&nbsp;│ ▼ [ model ]<br>a specific, structured answer</div>`, code:`// A meta-prompt takes a weak prompt and returns a strong one.
+const strongPrompt = await llm(META_PROMPT + weakPrompt);
+const answer       = await llm(strongPrompt);  // now run it` },
+ { title:"2. Why weak prompts fail — underspecification", why:"'Write about dogs' isn't wrong, it's <em>underspecified</em>. It leaves the role, audience, scope, format, length and tone all unstated, so the model fills every blank with the blandest safe default — a generic encyclopedia paragraph. Every unstated dimension is a decision the model makes for you, and with nothing to go on it drifts toward the average of its training data. Underspecification is the single biggest reason prompts disappoint: the model answered the prompt you wrote, not the one you meant. Meta-prompting attacks this directly by making the missing dimensions explicit and forcing a deliberate choice for each one, instead of letting them be silently defaulted.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"write about dogs"<br>role? audience? format? length? tone?<br>= 9 blanks the model guesses<br>⇒ bland training-data average</div>`, code:`// Each blank the model silently fills for you:
+//   role?  audience?  format?  length?  tone?  scope?
+// With nothing specified it defaults to the average
+// of its training data = safe, generic, forgettable.` },
+ { title:"3. The structure a strong prompt has", why:"A strong prompt reliably specifies a handful of dimensions: ROLE (the persona), AUDIENCE (who it's for), CONTEXT (the situation), TASK (the precise ask), CONSTRAINTS (scope, bans, must-dos), FORMAT (output shape), LENGTH, TONE, EXAMPLES (a pattern to imitate) and SUCCESS CRITERIA (what 'done' means). This checklist is the backbone of the meta-prompt: it encodes what 'good' looks like so the rewrite isn't guesswork. Not every task needs all ten, but naming each one forces a deliberate decision instead of a silent default. The meta-prompt's job is to walk this list and make sure the rewritten prompt answers each item — that's what converts a topic into a specification.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ROLE · AUDIENCE · CONTEXT · TASK<br>CONSTRAINTS · FORMAT · LENGTH<br>TONE · EXAMPLES · SUCCESS CRITERIA<br>(the 10 dimensions of a good prompt)</div>`, code:`const CHECKLIST = [
+  "ROLE", "AUDIENCE", "CONTEXT", "TASK",
+  "CONSTRAINTS", "FORMAT", "LENGTH", "TONE",
+  "EXAMPLES", "SUCCESS CRITERIA"
+];  // the meta-prompt walks every item` },
+ { title:"4. Critique-then-rewrite — the meta-prompt loop", why:"The meta-prompt works in two moves. First CRITIQUE: given the weak prompt and the checklist, the model diagnoses what's missing or ambiguous — 'no role, no format, length unbounded'. Then REWRITE: it produces a new prompt that fills every gap it just named. Splitting diagnosis from generation matters — asking for the critique first makes the model reason about the flaws explicitly, so the rewrite is grounded in specific defects rather than a vague 'make it better'. It's the same critique→revise pattern as self-refine (Day 12), but applied to the <em>prompt</em> instead of the answer. You can even loop it: critique the rewrite, rewrite again, until it stops finding gaps.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">weak prompt<br>──CRITIQUE──▶ list the gaps<br>──REWRITE───▶ fill every gap<br>strong prompt&nbsp;&nbsp;(optionally loop ↺)</div>`, code:`const gaps   = await llm(
+  "Critique this prompt against the checklist:\\n" + weak);
+const strong = await llm(
+  "Rewrite it, fixing every gap you listed:\\n" + gaps);` },
+ { title:"5. The reusable meta-prompt template", why:"The whole value is that the meta-prompt is <em>reusable</em>. You write the critique-and-rewrite instructions once, embedding the quality checklist, then feed it any weak prompt through a single slot. This is the 'template' flavour of meta-prompting: a static, human-authored super-prompt that upgrades whatever you give it, for the cost of one extra call and no training data. Teams keep a house meta-prompt so every prompt that ships meets the same bar — the same way a linter enforces a code style. It's the cheapest, most portable form of the technique, and the one to reach for first.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">META_PROMPT = fixed instructions<br>+ checklist + one slot:<br>"""{{WEAK_PROMPT}}"""<br>author once · reuse on any prompt</div>`, code:`const META_PROMPT = \`You are a prompt engineer.
+Critique the user's prompt against the checklist,
+then rewrite it filling every gap as a labelled block.
+Checklist: \${CHECKLIST.join(", ")}
+User's prompt: """{{WEAK_PROMPT}}"""\`;` },
+ { title:"6. Template vs LLM-as-optimizer (APE / OPRO)", why:"There are two flavours of meta-prompting. The one we've built is a <em>template</em>: a fixed human-written meta-prompt that rewrites once. The other is <em>LLM-as-optimizer</em>: the model proposes many candidate prompts, you score each against real labelled examples, feed the scores back, and let it iterate toward the best-performing prompt — automated prompt search. APE (Automatic Prompt Engineer, 2022) generates and ranks instruction candidates; OPRO (Large Language Models as Optimizers, 2023) treats the model as an optimizer that reads past prompt+score pairs and proposes better ones, famously surfacing 'Take a deep breath and work step by step.' The template flavour is cheap and needs no data; the optimizer flavour is more powerful but needs a scored eval set and many calls.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Template: 1 call · no data · human-written<br>─────────────<br>Optimizer (APE / OPRO):<br>propose → score → iterate<br>needs a labelled eval set</div>`, code:`// Optimizer loop (APE / OPRO):
+let history = [];
+for (let i = 0; i < N; i++) {
+  const cand  = await llm("Propose a better prompt:\\n" + history);
+  const score = evaluate(cand, examples);  // needs labels
+  history.push({ cand, score });
+}` },
+ { title:"7. The conductor / orchestrator pattern", why:"Meta-prompting scales up in a second direction: instead of improving one prompt, a <em>conductor</em> prompt decomposes a big goal into several specialised sub-prompts and dispatches each. Ask a conductor to 'launch my product' and it might spin up a market-analyst prompt, a copywriter prompt and a checklist-builder prompt, run each (often as a fresh model instance with its own persona), then merge the outputs. The conductor never does the object-level work itself — it writes and coordinates the prompts that do. Suzgun & Kalai's 'Meta-Prompting' (2024) formalises this: one conductor model orchestrates multiple expert instances. It's the same orchestration idea as ReWOO (Day 23) and Graph-of-Thoughts (Day 21), but the units being coordinated are prompts the model wrote for itself.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GOAL "launch my product"<br>&nbsp;&nbsp;▼ [ CONDUCTOR ]<br>sub-prompt A (analyst)<br>sub-prompt B (copywriter)<br>sub-prompt C (checker)<br>&nbsp;&nbsp;▼ merge → deliverable</div>`, code:`const plan  = await llm(CONDUCTOR + goal);  // -> sub-prompts
+const parts = await Promise.all(
+  plan.subPrompts.map(p => llm(p)));        // experts
+const final = await llm(
+  "Combine these expert outputs:\\n" + parts);` },
+ { title:"8. When it helps, and the cost", why:"Meta-prompting earns its keep when a prompt will be reused a lot (a production template, a customer-facing feature), when the task is fiddly enough that specification quality drives output quality, or when non-experts are writing the prompts and need a safety net. It costs one extra LLM call for the template flavour — trivial — and many calls plus an eval set for the optimizer flavour. It's overkill for a throwaway one-off question you can just phrase carefully yourself. Rule of thumb: if you'll run a prompt more than a few times, or hand it to others, it's worth having the model harden it first; if it's a single ad-hoc ask, spend the thirty seconds to write it well by hand.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE: reused prompts · fiddly tasks<br>&nbsp;&nbsp;&nbsp;&nbsp;· non-expert authors<br>SKIP: a careful one-off you<br>&nbsp;&nbsp;&nbsp;&nbsp;could just write yourself</div>`, code:`if (promptReusedOften || nonExpertAuthors)
+  useMetaPrompt();          // 1 extra call, big payoff
+if (throwawayOneOff)
+  justWriteItCarefully();   // not worth the overhead` },
+ { title:"9. Limits & pitfalls", why:"Meta-prompting is still ordinary LLM calls, so it inherits their flaws. The rewritten prompt can be confidently over-specified — the model may invent constraints or an audience you never wanted — so read the rewrite before trusting it. It can also make prompts longer and more expensive without making outputs better, mistaking verbosity for quality. And a meta-prompt is only as good as its checklist: if your notion of a 'good prompt' is wrong, it will enforce the wrong thing consistently, on every prompt. For the optimizer flavour, prompts tuned hard on one eval set can overfit and transfer poorly to real inputs. Treat the rewrite as a strong first draft you review, not an oracle — the model is helping you engineer the prompt, not relieving you of judgment.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">risks: invented constraints ·<br>longer ≠ better · checklist bias ·<br>optimizer overfits its eval set<br>⇒ always review the rewrite</div>`, code:`const strong = await metaPrompt(weak);
+review(strong);                 // did it invent constraints?
+assertClearerNotJustLonger(strong, weak);
+// checklist bias -> a wrong bar is enforced everywhere.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

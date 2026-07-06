@@ -32,6 +32,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 23 — ReWOO](https://dev48v.infy.uk/prompt/day23-rewoo.html) — `day23-rewoo.html`
 - [PromptFromZero · Day 24 — Plan-and-Solve](https://dev48v.infy.uk/prompt/day24-plan-and-solve.html) — `day24-plan-and-solve.html`
 - [PromptFromZero · Day 25 — Self-Discover](https://dev48v.infy.uk/prompt/day25-self-discover.html) — `day25-self-discover.html`
+- [PromptFromZero · Day 26 — Meta-Prompting](https://dev48v.infy.uk/prompt/day26-meta-prompting.html) — `day26-meta-prompting.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
