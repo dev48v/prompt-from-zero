@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 27 — Program-Aided Language Models (PAL)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.miss { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .term { background:#0b1220; color:#86efac; border-radius:8px; padding:10px; font-size:12px; min-height:40px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow:auto; }
+  .term .cmt { color:#64748b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 27</div>
+      <h1 class="text-xl font-bold">🖩 Program-Aided Language Models (PAL) — write the code, let a real interpreter compute the answer</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't make the model do the arithmetic. Make it write a program.</h2>
+        <p class="text-slate-500 mb-5">A language model predicts the next <em>token</em>, so when a problem needs exact arithmetic or bookkeeping it produces a <strong>plausible-looking number</strong> rather than a computed one — and plain <strong>Chain-of-Thought</strong> often slips a step: it treats compound interest as simple interest, rounds a conversion factor, or miscounts letters. <strong>Program-Aided Language Models (PAL)</strong> split the job in two: the model does the <strong>reasoning in code</strong> — it emits an actual program with named variables and real operations — and a <strong>deterministic interpreter does the computing</strong>. Press ▶ and watch the same problem solved both ways: CoT reasons in words and lands on the wrong number, while PAL emits a program that a <strong>real JavaScript interpreter runs live in your browser</strong> and returns the exact answer. The PAL result below is not scripted — it is whatever the code actually computes when executed.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-4 text-center text-sm">
+        <span class="text-slate-500">Problem:</span>
+        <strong id="questionText" class="text-slate-800"></strong>
+      </div>
+
+      <div class="flex justify-center items-center gap-4 mb-4 text-sm font-bold text-slate-600 flex-wrap">
+        <div id="probChips" class="flex gap-1.5"></div>
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Solve both ways</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">🧠 Chain-of-Thought — arithmetic in the model's head</div>
+          <div class="text-xs text-slate-500 mb-3">The model reasons in natural language and computes the numbers itself. Fine for the logic, fragile on the exact math.</div>
+          <div id="cotBox" class="space-y-1.5 min-h-[220px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Answer: <span id="cotAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🖩 PAL — reason in code, run it for the answer</div>
+          <div class="text-xs text-slate-500 mb-3">The model emits a program; a real interpreter executes it. Same logic, but the numbers are computed, not guessed.</div>
+          <div class="text-xs font-bold text-slate-500 mb-1">💻 the program the model wrote</div>
+          <pre id="progPre" class="struct min-h-[130px]">—</pre>
+          <div class="text-xs font-bold text-slate-500 mt-3 mb-1">🖥 interpreter output <span class="text-slate-400 font-normal">(executed live in your browser)</span></div>
+          <div id="interpBox" class="term">Press ▶</div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Answer: <span id="palAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+      </div>
+
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The split is the whole trick.</strong> Chain-of-Thought asks one system — the language model — to do <em>both</em> the reasoning and the calculation, and calculation is exactly the part token-prediction is worst at. PAL keeps the reasoning inside the model (it decides <em>what</em> to compute and writes the program) but hands the calculation to an <strong>interpreter that is exact by construction</strong>. The model never states the final number; it states the <em>method</em>, and the runtime produces the number. That is why the PAL column above is always right and always reproducible: run it a hundred times and the interpreter returns the same value, because arithmetic in a real runtime is deterministic.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Toggle between the three problems — compound interest, unit conversion, letter counting. Each is a case where CoT tends to slip a single step: it drops the compounding, rounds a conversion factor, or miscounts a repeated letter. In every case PAL emits a short program and the browser really runs it — the answer you see in the PAL column is the interpreter's return value, computed at that moment, not a stored string.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How PAL works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">PAL is a three-move pipeline: <strong>prompt the model for code</strong>, <strong>run the code</strong> in a real interpreter, and <strong>return the interpreter's result</strong> as the answer. The model handles the reasoning — turning a messy word problem into named variables and operations — and the runtime handles the exact computation. Here is the whole loop, plus how to make running model-written code safe.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Write a PAL prompt with code exemplars</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Show the model a couple of examples where a word problem is turned into a <em>program</em>, not a prose answer. The reasoning lives in comments and variable names; the last line produces the result. This few-shot pattern teaches the model to answer <em>in code</em>.</p>
+        <div class="relative"><pre>const PAL_PROMPT = `Solve the problem by writing a program.
+Put your reasoning in # comments and variable names.
+Do not state the final number yourself — end by printing it.
+
+# Q: A store had 12 apples, sold 8, then got a delivery of 20.
+apples = 12
+apples = apples - 8       # sold
+apples = apples + 20      # delivery
+print(apples)
+
+# Q: {{QUESTION}}
+`;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Ask for code only — reasoning goes in the program</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Send the problem and get back a program. The model still does the hard part — deciding <em>what</em> to compute — but expresses it as variables and operations instead of doing the mental math. Nudge it to emit a fenced code block so extraction is trivial.</p>
+        <div class="relative"><pre>function palPrompt(question) {
+  return PAL_PROMPT.replace("{{QUESTION}}", question);
+}
+const reply = await llm(palPrompt(
+  "Invest $2,500 at 7% compounded annually for 8 years. Final balance?"
+));
+// reply contains a program:
+//   principal = 2500
+//   rate = 0.07
+//   for y in range(8): principal *= (1 + rate)
+//   print(round(principal, 2))</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Extract the program from the response</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Pull the code out of the reply — usually the contents of the fenced block. Everything else the model said is just narration; the program is the artifact you execute.</p>
+        <div class="relative"><pre>function extractCode(reply) {
+  const m = reply.match(/```(?:python|js)?\n([\s\S]*?)```/);
+  return m ? m[1] : reply;   // fall back to the whole reply
+}
+const program = extractCode(reply);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Run it in a real interpreter</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Hand the program to an actual runtime — a Python subprocess, a sandboxed JS VM, a code-interpreter tool — and capture what it prints. This is the step that makes the arithmetic exact: the runtime, not the model, produces the number. (The LOOK tab does exactly this with the browser's own JS engine.)</p>
+        <div class="relative"><pre>// Node example: run the model's Python in a subprocess
+import { execFileSync } from "node:child_process";
+function runPython(src) {
+  return execFileSync("python3", ["-c", src], {
+    timeout: 2000, encoding: "utf8"
+  }).trim();
+}
+const result = runPython(program);   // e.g. "4295.47"</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Return the interpreter's result as the answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The value the program printed <em>is</em> the answer — you skip having the model read the number back and re-transcribe it (another place it can slip). Optionally feed the result to a final call that phrases it in a sentence for the user.</p>
+        <div class="relative"><pre>const answer = result;                 // exact, computed value
+// optional: wrap it in prose for the user
+const reply = await llm(
+  `The computed answer is ${answer}. State it in one sentence.`);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Sandbox the code — and fall back when it fails</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You are running text a model wrote, so <strong>never <code>eval</code> it in your own process with full privileges</strong>. Execute it in an isolated sandbox with no network or filesystem access, a memory cap and a hard timeout. Validate the output shape, and if the program errors or hangs, retry once or fall back to plain CoT.</p>
+        <div class="relative"><pre>async function pal(question) {
+  const program = extractCode(await llm(palPrompt(question)));
+  try {
+    const out = await sandbox.run(program, {   // isolated VM
+      timeoutMs: 2000, memoryMb: 128,
+      network: false, filesystem: false
+    });
+    return validate(out);            // check it's a number/JSON
+  } catch (e) {
+    return await llm(cotPrompt(question));   // fall back to CoT
+  }
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 27 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Program-Aided Language Models: instead of asking the model to compute the answer, you ask it to <strong>write a program</strong> and let a <strong>deterministic interpreter run it</strong>. The reasoning stays with the model; the arithmetic and bookkeeping move to a runtime that is exact and reproducible — which is exactly where token-prediction is weakest. <strong>👉 Tomorrow — Day 28: Rephrase-and-Respond (RaR) — have the model restate your question in its own words before answering, so it locks onto what you actually meant.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: CoT (scripted, slips) vs PAL (real code, really executed) =====
+// Each problem: CoT reasons in words and lands on a wrong number;
+// PAL emits `code`, which a real JS interpreter runs live for the exact answer.
+const PROBLEMS = [
+  {
+    tag: "compound interest",
+    question: "You invest $2,500 at 7% annual interest, compounded annually, for 8 years. What is the final balance, to the cent?",
+    cot: [
+      "Start with the principal: $2,500.",
+      "7% of $2,500 is $175 of interest each year.",
+      "Over 8 years that's 8 × $175 = $1,400 of interest.",
+      "So the balance is 2,500 + 1,400 = $3,900."
+    ],
+    cotAnswer: "$3,900.00  — used simple interest, forgot to compound",
+    code: `// reason in code: compound the balance each year
+const principal = 2500;
+const rate      = 0.07;
+const years     = 8;
+let balance = principal;
+for (let y = 1; y <= years; y++) {
+  balance = balance * (1 + rate);   // interest ON interest
+  log("after year " + y + ": " + balance.toFixed(2));
+}
+return "$" + balance.toFixed(2);`
+  },
+  {
+    tag: "unit conversion",
+    question: "A recipe needs 2.5 pounds of flour plus 3 ounces of sugar. Your scale only reads grams. Using 1 lb = 453.592 g and 1 oz = 28.3495 g, what is the total mass in grams?",
+    cot: [
+      "2.5 pounds of flour. One pound is roughly 450 grams.",
+      "So 2.5 × 450 = 1,125 grams of flour.",
+      "3 ounces of sugar, and an ounce is about 28 grams: 3 × 28 = 84 g.",
+      "Total ≈ 1,125 + 84 = 1,209 grams."
+    ],
+    cotAnswer: "≈ 1,209 g  — rounded the conversion factors, drifted off",
+    code: `// reason in code: use the exact conversion factors
+const LB_TO_G = 453.592;
+const OZ_TO_G = 28.3495;
+const flour_g = 2.5 * LB_TO_G;
+const sugar_g = 3   * OZ_TO_G;
+log("flour: 2.5 lb = " + flour_g.toFixed(4) + " g");
+log("sugar: 3 oz  = " + sugar_g.toFixed(4) + " g");
+const total = flour_g + sugar_g;
+return total.toFixed(2) + " g";`
+  },
+  {
+    tag: "letter counting",
+    question: "How many times does the letter “r” appear in the word “strawberry”?",
+    cot: [
+      "Let me spell it out: s-t-r-a-w-b-e-r-r-y.",
+      "Scanning for “r”: there's one in the “str” at the start…",
+      "…and one over in the “berry” part at the end.",
+      "So that's two r's."
+    ],
+    cotAnswer: "2  — miscounted, missed the double r in “berry”",
+    code: `// reason in code: iterate and count, no guessing
+const word   = "strawberry";
+const target = "r";
+let count = 0;
+for (let i = 0; i < word.length; i++) {
+  if (word[i] === target) {
+    count++;
+    log("match at index " + i + "  (running count = " + count + ")");
+  }
+}
+return count;`
+  }
+];
+/* ==DATA_END== */
+let curP = 0;
+
+const probChips  = document.getElementById("probChips");
+const questionText = document.getElementById("questionText");
+const cotBox     = document.getElementById("cotBox");
+const cotAns     = document.getElementById("cotAns");
+const progPre    = document.getElementById("progPre");
+const interpBox  = document.getElementById("interpBox");
+const palAns     = document.getElementById("palAns");
+const verdict    = document.getElementById("verdict");
+const speed      = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html){ box.insertAdjacentHTML("beforeend", `<div class="pt row-appear">${html}</div>`); box.scrollTop = box.scrollHeight; }
+
+// The real interpreter: build a function from the model's source and run it.
+// `log(...)` is captured so we can render the execution trace.
+function runProgram(src){
+  const out = [];
+  const log = (...args) => out.push(args.join(" "));
+  let result, error = null;
+  try {
+    const fn = new Function("log", src);
+    result = fn(log);
+  } catch(e){ error = e.message; }
+  return { out, result, error };
+}
+
+// render the three problem chips
+PROBLEMS.forEach((p,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = p.tag;
+  c.onclick = () => { if(running) return; curP = i; syncChips(); showProblem(); reset(); };
+  probChips.appendChild(c);
+});
+function syncChips(){ probChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curP)); }
+function showProblem(){ questionText.textContent = " " + PROBLEMS[curP].question; }
+function reset(){
+  cotBox.innerHTML = "";
+  cotAns.innerHTML = '<span class="text-slate-400">—</span>';
+  progPre.textContent = "—";
+  interpBox.innerHTML = "Press ▶";
+  palAns.innerHTML = '<span class="text-slate-400">—</span>';
+  verdict.textContent = "";
+}
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay(); const E = PROBLEMS[curP];
+
+  // ---- Chain-of-Thought: reason in words, slip the arithmetic ----
+  for (const step of E.cot){ row(cotBox, step); await sleep(d*0.6); }
+  await sleep(d*0.4);
+  cotAns.innerHTML = `<span class="text-red-600">✗ ${escapeHtml(E.cotAnswer)}</span>`;
+  await sleep(d);
+
+  // ---- PAL: reveal the program the model wrote ----
+  progPre.textContent = E.code;
+  progPre.classList.remove("row-appear"); void progPre.offsetWidth; progPre.classList.add("row-appear");
+  await sleep(d);
+
+  // ---- PAL: actually run the program in the browser's JS engine ----
+  interpBox.innerHTML = '<span class="cmt">$ running program…</span>';
+  const { out, result, error } = runProgram(E.code);
+  await sleep(d*0.5);
+  interpBox.innerHTML = "";
+  for (const line of out){
+    interpBox.insertAdjacentHTML("beforeend", `<div class="row-appear">${escapeHtml(line)}</div>`);
+    interpBox.scrollTop = interpBox.scrollHeight;
+    await sleep(d*0.45);
+  }
+  await sleep(d*0.3);
+  if (error){
+    interpBox.insertAdjacentHTML("beforeend", `<div class="row-appear" style="color:#f87171">error: ${escapeHtml(error)}</div>`);
+    palAns.innerHTML = `<span class="text-red-600">runtime error</span>`;
+  } else {
+    interpBox.insertAdjacentHTML("beforeend", `<div class="row-appear" style="color:#e2e8f0">=&gt; ${escapeHtml(String(result))}</div>`);
+    palAns.innerHTML = `<span class="text-green-600">✓ ${escapeHtml(String(result))}</span> <span class="text-slate-400 text-xs font-normal">← returned by the interpreter</span>`;
+  }
+  await sleep(d*0.4);
+
+  verdict.innerHTML = `Chain-of-Thought reasoned in words and answered <span class="text-red-600">${escapeHtml(E.cotAnswer.split("  —")[0])}</span> — the arithmetic slipped. PAL wrote a program; the interpreter executed it and returned <span class="text-green-600">${escapeHtml(String(result))}</span> — exact, and identical every time you run it.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+showProblem();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Why LLMs are bad at exact arithmetic", why:"A language model is a next-<em>token</em> predictor. When you write 1234 × 5678, it doesn't run a multiplication — it predicts the most likely sequence of digit-tokens given everything it saw in training. Numbers are chopped into tokens in ways that don't line up with place value, so carrying and long chains of operations have no reliable mechanism behind them. The result is a number that <em>looks</em> right — correct length, plausible leading digits — but is often off, and the model is just as confident when it's wrong. Anything requiring exact calculation, careful bookkeeping, or counting is squarely in this weak spot.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\"1234 × 5678 = ?\"<br>model predicts likely digit-tokens<br>⇒ plausible-looking number<br>often wrong · always confident</div>`, code:`// The model doesn't compute — it predicts tokens:
+// "1234 × 5678 =" -> "70..." (looks right, often isn't)
+// No carry logic, no place value, just likelihood.` },
+ { title:"2. The PAL idea — reason in code, not prose", why:"Program-Aided Language Models (Gao et al., 2022) change what the model is asked to <em>produce</em>. Instead of a natural-language chain that ends in a number, the model writes a <strong>program</strong>: named variables for each quantity, real operations for each step, and a final line that prints the result. The reasoning is still there — the model decides which variables exist and how they combine — but it now lives in code. The key reframing: the model's job is to express the <em>method</em>, not to carry out the <em>calculation</em>.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">word problem<br>&nbsp;&nbsp;▼ [ model ]<br>program: vars + operations + print<br>(reasoning encoded as code)</div>`, code:`# CoT (prose):  "7% of 2500 is 175, times 8 = 1400..."  (wrong)
+# PAL (code):
+principal = 2500
+for y in range(8): principal *= 1.07
+print(round(principal, 2))   # method, not mental math` },
+ { title:"3. Offload execution to a deterministic interpreter", why:"Once the model has written a program, PAL hands it to a <strong>real interpreter</strong> — Python, JavaScript, a code-interpreter tool — and that runtime does the computing. This is the heart of the technique: the part the model is bad at (exact calculation) is delegated to a system that is exact by construction. The model never states the final number; the interpreter produces it. In the LOOK tab, the PAL answer is literally the return value of running the model's code in your browser's JS engine.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">[ model ] writes program<br>&nbsp;&nbsp;──────────▶<br>[ interpreter ] runs it<br>returns the exact number</div>`, code:`const program = extractCode(await llm(palPrompt(q)));
+const answer  = runInterpreter(program);  // runtime computes
+// the model decided WHAT to compute;
+// the interpreter decided the exact value.` },
+ { title:"4. Deterministic + verifiable", why:"An interpreter's output is <strong>deterministic</strong>: the same program returns the same value every time — no sampling, no temperature, no drift. That alone removes a huge class of errors. It's also <strong>verifiable</strong> in a way prose reasoning isn't: the program is an explicit, inspectable object. You can read it, unit-test it, diff it against a spec, or run it on new inputs to confirm the method generalises. A wrong CoT is a wall of text you have to re-check by hand; a wrong PAL program is a bug you can find on a specific line.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">run once  → 4295.47<br>run 100×  → 4295.47 (same)<br>+ inspectable · testable · diffable<br>= deterministic &amp; verifiable</div>`, code:`assert pal("2500 at 7% for 8y") == "4295.47"
+// re-run: identical. inspect the program,
+// test it on other inputs, trust the method.` },
+ { title:"5. PAL vs plain Chain-of-Thought", why:"CoT and PAL share the same reasoning skeleton — break the problem into steps. The difference is <em>where the numbers come from</em>. CoT asks one system, the model, to do both the reasoning and the calculation, so a single slipped multiplication poisons the answer. PAL keeps the reasoning in the model but moves the calculation to the interpreter, so the model can be a little sloppy about the exact math and still be right, as long as the <em>method</em> is sound. PAL is essentially CoT where the chain is executable — the steps are code, and something actually runs them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT: model reasons AND computes<br>&nbsp;&nbsp;&nbsp;&nbsp;→ one slip poisons the answer<br>PAL: model reasons, runtime computes<br>&nbsp;&nbsp;&nbsp;&nbsp;→ method can be sound, math exact</div>`, code:`// CoT: one model does everything (fragile on math)
+// PAL: reasoning  = model   (what to compute)
+//      arithmetic = runtime (the exact value)
+// = "Chain-of-Thought, but the chain is executable"` },
+ { title:"6. It's a form of tool use", why:"PAL is a specific, powerful case of the <strong>tool-use</strong> pattern (ReAct, Day 7; function calling): the tool is a code interpreter, and the model's 'action' is emitting a program to run. This is exactly what a modern <em>code interpreter</em> feature is — the model writes Python, a sandbox executes it, the output comes back. Framed as tool use, PAL slots naturally into agents: for any sub-task that's cleanly computable — math, date arithmetic, parsing, data crunching — the agent reaches for the code tool instead of doing it in its head. The generalisation is 'don't reason about what you can compute; compute it.'", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PAL = tool use, tool = interpreter<br>action: write program<br>observation: its output<br>(this is \"code interpreter\")</div>`, code:`// PAL as a ReAct-style action:
+Thought: this needs exact date math
+Action: run_code("from datetime import date; ...")
+Observation: "128 days"
+// the code tool is just another action` },
+ { title:"7. Running model-written code safely (sandboxing)", why:"PAL means <strong>executing text a model generated</strong> — treat it as untrusted input, never as your own code. Do not <code>eval</code> it in your main process with full privileges: a bad or manipulated program could read secrets, hit the network, delete files, or loop forever. Run it in an isolated sandbox — a locked-down subprocess, a container, or a restricted VM — with no filesystem or network access, a memory cap, and a hard timeout. Return only the captured output. This is the price of admission for letting a model's code touch a real runtime, and it's non-negotiable in production.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">model code = UNTRUSTED input<br>run in sandbox:<br>no net · no fs · mem cap · timeout<br>never eval() in your own process</div>`, code:`sandbox.run(program, {
+  timeoutMs: 2000, memoryMb: 128,
+  network: false, filesystem: false
+});
+// isolated VM/container. NEVER: eval(program) in-process.` },
+ { title:"8. Limits — where PAL stops helping", why:"PAL only works when the problem can be <em>formalised</em> as code. It shines on math, logic, unit conversion, dates, counting and data manipulation — anything with a clean computational core. It does nothing for open-ended judgment, taste, or genuinely ambiguous questions. And it doesn't make the model infallible: if the model <em>mis-models</em> the problem — wrong formula, wrong variable, a real bug — the interpreter will faithfully compute the wrong thing, precisely and confidently. It also needs a runtime available and adds the latency of an execution step. PAL fixes arithmetic errors, not reasoning errors.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">great: math · dates · counting · data<br>useless: taste · open-ended judgment<br>risk: buggy program → exact WRONG answer<br>needs a runtime · adds latency</div>`, code:`// If the model picks the wrong formula, the runtime
+// computes the wrong answer — precisely.
+// PAL removes arithmetic slips, NOT logic slips.
+if (!formalizable(task)) usePlainReasoning();` },
+ { title:"9. When to reach for PAL", why:"Use PAL whenever the answer depends on exact computation and a mistake is costly: financial math, engineering conversions, tallying, date/deadline arithmetic, parsing structured data, or any multi-step numeric problem. Combine it with self-consistency (Day 3) by sampling a few programs and comparing their outputs, or with tool-use agents that call a code interpreter on demand. Skip it for questions that are about language, opinion, or one-off arithmetic simple enough to trust — a program has a fixed cost, so it earns its keep when the calculation is real. Rule of thumb: if you could solve it with a calculator or a five-line script, let the model write that script.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE: money · conversions · counting<br>&nbsp;&nbsp;&nbsp;&nbsp;dates · data · multi-step math<br>SKIP: language · opinion · trivial math<br>combine with self-consistency / agents</div>`, code:`if (needsExactComputation(task))
+  answer = pal(task);          // write code, run it
+else
+  answer = await llm(task);    // plain reasoning is fine
+// "could a calculator do it?" -> yes -> PAL` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
