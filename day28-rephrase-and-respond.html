@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 28 — Rephrase-and-Respond (RaR)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.miss { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .term { background:#0b1220; color:#86efac; border-radius:8px; padding:10px; font-size:12px; min-height:40px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow:auto; }
+  .term .cmt { color:#64748b; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .rephrase { background:#f5f3ff; border:1px solid #c4b5fd; border-left:4px solid #7c3aed; border-radius:8px; padding:9px 11px; font-size:13px; color:#4c1d95; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 28</div>
+      <h1 class="text-xl font-bold">🔁 Rephrase-and-Respond (RaR) — make the model restate your question before it answers, so it locks onto what you actually meant</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">A human silently disambiguates your question. The model doesn't — unless you make it.</h2>
+        <p class="text-slate-500 mb-5">Human questions are full of small ambiguities — an "even month", a bare date like <span class="mono">02/03</span>, a temperature with no unit. You resolve them without noticing; a language model just <strong>picks a reading</strong> — often not the one you meant — and answers confidently on the wrong interpretation. <strong>Rephrase-and-Respond (RaR)</strong> fixes this cheaply: before answering, the model <strong>restates and expands your question in its own words</strong>, which forces it to <em>commit to one interpretation on the record</em> — and that act of restating usually surfaces the ambiguity and lands on the intended reading. Pick an ambiguous question below and press ▶: the <strong>left</strong> column answers directly and misreads it; the <strong>right</strong> column rephrases first, then answers correctly. All outputs are scripted and deterministic — no live model — so the contrast is the same every time.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Ambiguous question:</span>
+        <strong id="questionText" class="text-slate-800"></strong>
+      </div>
+      <div id="ambigNote" class="max-w-3xl mx-auto text-xs text-slate-500 text-center mb-4"></div>
+
+      <div class="flex justify-center items-center gap-4 mb-2 text-sm font-bold text-slate-600 flex-wrap">
+        <div id="qChips" class="flex gap-1.5"></div>
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Answer both ways</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+      <div class="flex justify-center items-center gap-2 mb-4 text-sm">
+        <span class="text-slate-500 font-semibold">RaR variant:</span>
+        <button id="modeTwo" class="chip sel">Two-step (rephrase → answer)</button>
+        <button id="modeOne" class="chip">One-step (rephrase + answer in one prompt)</button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">🅐 Direct — answer the question as written</div>
+          <div class="text-xs text-slate-500 mb-3">The model reads the prompt, silently picks whichever interpretation comes first, and answers. No chance to notice it guessed.</div>
+          <div id="directBox" class="space-y-1.5 min-h-[210px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Answer: <span id="directAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🅑 Rephrase-and-Respond — restate first, then answer</div>
+          <div class="text-xs text-slate-500 mb-3">The model rewrites the question in its own words — pinning down the ambiguous part — and only then answers. Restating locks it onto the intended reading.</div>
+          <div id="rarBox" class="space-y-1.5 min-h-[210px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Answer: <span id="rarAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+      </div>
+
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The rephrase is the whole trick.</strong> Nothing about the model's knowledge changed between the two columns — it knew Tom Cruise's birthday, both date formats, both temperature scales all along. What changed is that RaR made it <em>say out loud which question it was answering</em> before answering. That single restatement forces the model to resolve the underspecified part explicitly, so instead of quietly betting on one reading it either picks the intended one or flags that the question is ambiguous. Same model, same prompt cost of a sentence or two — dramatically less silent misreading.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Toggle the RaR variant to see the two forms: <strong>two-step</strong> makes one call to rephrase and a second call to answer the rephrased question; <strong>one-step</strong> asks a single prompt to "rephrase and expand the question, then answer it." Both land on the correct answer — the difference is one call versus two.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How RaR works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">RaR is almost pure prompt engineering — you add one instruction that tells the model to <strong>restate and expand the question before answering</strong>. Here is the one-step template, the two-step variant, how to feed the rephrasing into a Chain-of-Thought answer, and how to decide when it's worth the extra tokens.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The one-step RaR prompt — rephrase, then answer, in one call</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole technique can be a single appended instruction. You ask the model to rewrite and expand the question in its own words first, then answer <em>that</em> rewrite. The rephrasing forces it to commit to an interpretation on the record before it produces an answer.</p>
+        <div class="relative"><pre>const RAR_ONE_STEP = `${question}
+
+Rephrase and expand the question in your own words, spelling out any
+part that could be read more than one way and stating the reading you
+will use. Then, on a new line, answer the question you rephrased.`;
+
+const reply = await llm(RAR_ONE_STEP);
+// reply:
+//   Rephrased: You're asking whether the NUMBER of Tom Cruise's
+//   birth month (Jan=1 … Dec=12) is even. He was born July 3, 1962;
+//   July is month 7.
+//   Answer: No — 7 is odd, so it is not an even-numbered month.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The two-step variant — one call to rephrase, one to answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Split the work across two calls. The first returns only the rephrased question; the second answers that clean, disambiguated version. It costs an extra round-trip but the rephrasing becomes an inspectable artifact — you can log it, show it to the user for confirmation, or route on it.</p>
+        <div class="relative"><pre>// call 1 — rephrase only
+const rephrased = await llm(
+  `Rewrite and expand this question in your own words, making every
+   ambiguous part explicit. Output ONLY the rewritten question:
+   "${question}"`);
+
+// call 2 — answer the rephrased question
+const answer = await llm(rephrased);
+
+return { rephrased, answer };   // both are inspectable</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Trigger it only when the question is ambiguous</h3></div>
+        <p class="text-sm text-slate-600 mb-3">RaR earns its extra tokens on underspecified questions and wastes them on crisp ones. A cheap heuristic (or a tiny classifier prompt) decides whether to rephrase first. When in doubt, rephrasing rarely hurts correctness — it only costs latency.</p>
+        <div class="relative"><pre>function looksAmbiguous(q) {
+  return /\b(even|odd) (month|day)\b/i.test(q)   // "even month"
+      || /\b\d{1,2}\/\d{1,2}\b/.test(q)          // bare date 02/03
+      || /\b\d+\s*(degrees|deg)\b/i.test(q)      // unit-less temp
+      || /\b(it|this|that|they)\b/i.test(q);     // dangling pronoun
+}
+const answer = looksAmbiguous(q)
+  ? await rar(q)          // rephrase first
+  : await llm(q);         // answer directly</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Combine RaR with Chain-of-Thought</h3></div>
+        <p class="text-sm text-slate-600 mb-3">RaR and CoT fix different failure modes and stack cleanly: rephrase to clarify the <em>question</em>, then reason step-by-step toward the <em>answer</em>. Do the rephrase first so the reasoning chain is anchored to the correct interpretation from its first token.</p>
+        <div class="relative"><pre>const RAR_COT = `${question}
+
+Step 1 — Rephrase: restate the question in your own words, making
+         every ambiguous part explicit and stating your interpretation.
+Step 2 — Reason: think through it step by step for the rephrased version.
+Step 3 — Answer: give the final answer.`;
+
+const reply = await llm(RAR_COT);
+// clarify the question (RaR) THEN reason about it (CoT)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Self-clarify vs. ask the user back</h3></div>
+        <p class="text-sm text-slate-600 mb-3">RaR resolves ambiguity <em>itself</em> and states its assumption — no round-trip with the user, which keeps single-shot pipelines flowing. When a wrong guess is expensive, add a branch: if the rephrasing exposes readings that give genuinely different answers, surface them instead of silently choosing.</p>
+        <div class="relative"><pre>const { rephrased, readings } = await rephraseAndDetect(q);
+if (readings.length > 1 && answersDiffer(readings)) {
+  // wrong guess is costly -> ask the user
+  return `Did you mean: ${readings.map(r => r.label).join("  or  ")}?`;
+}
+// otherwise answer under the stated interpretation
+return await llm(rephrased);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Weigh the cost — and keep the rephrasing honest</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every RaR answer carries a rephrasing you didn't ask for, so it costs extra tokens and latency, and in chat UIs it can read as padding — hide the restatement or keep it to one line. Guard against a subtler failure: a rephrase that quietly changes the question. Validate that the restatement preserves the ask before trusting the answer.</p>
+        <div class="relative"><pre>const { rephrased, answer } = await rar(q);
+// cheap sanity check: the rephrase must keep the key terms
+const kept = keyTerms(q).every(t => rephrased.toLowerCase().includes(t));
+if (!kept) return await llm(q);   // rephrase drifted -> fall back
+// optionally strip the restatement from what the user sees
+return stripRephrase(answer);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 28 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Rephrase-and-Respond: before answering, have the model <strong>restate and expand the question in its own words</strong>, which forces it to commit to one interpretation and surfaces the ambiguity a human resolves silently. One-step folds the rephrase and answer into a single prompt; two-step splits them across two calls for an inspectable rephrasing. It clarifies the <em>question</em> where Chain-of-Thought reasons about the <em>answer</em> — so they stack. <strong>👉 Tomorrow — Day 29: Analogical Prompting — let the model generate its own relevant examples before solving, so it reasons by analogy instead of from a cold start.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Direct (misreads the ambiguity) vs RaR (rephrases, then answers) =====
+// Fully scripted & deterministic. Each question is genuinely underspecified;
+// the DIRECT column silently picks a reading and gets it wrong, while the RaR
+// column restates the question — pinning the ambiguity — and answers correctly.
+const QUESTIONS = [
+  {
+    tag: "even month",
+    question: "Was Tom Cruise born in an even month?",
+    ambiguity: "“Even month” is underspecified: an even-numbered month (Feb=2, Apr=4…) or a month with an even number of days? A person resolves it instantly; the model may not even notice the fork.",
+    direct: {
+      trace: [
+        "Tom Cruise… born around the middle of the year, summer-ish.",
+        "“Even month” — yeah, that sounds about right.",
+        "→ Yes, he was born in an even month."
+      ],
+      answer: "Yes",
+      note: "picked “yes” without ever pinning down what “even month” means — and it's wrong"
+    },
+    rephrase: "Restating your question: you're asking whether the NUMERIC position of Tom Cruise's birth month (Jan = 1, …, Dec = 12) is an even number. Tom Cruise was born on July 3, 1962. July is the 7th month.",
+    rarAnswer: "No",
+    rarDetail: "7 is odd, so July is not an even-numbered month.",
+    correct: "No"
+  },
+  {
+    tag: "bare date 02/03",
+    question: "Is the date 02/03 before or after Valentine's Day (Feb 14)?",
+    ambiguity: "“02/03” has no format attached: month-first it's February 3; day-first it's March 2. The two readings fall on opposite sides of Feb 14.",
+    direct: {
+      trace: [
+        "02/03 — I'll read that as February 3rd.",
+        "February 3 comes before February 14.",
+        "→ It's before Valentine's Day."
+      ],
+      answer: "Before",
+      note: "silently assumed US month-first format and answered as if there were no other reading"
+    },
+    rephrase: "Restating your question: “02/03” is ambiguous — in month-first (US) format it means February 3, in day-first (most of the world) format it means March 2. Valentine's Day is February 14. So the answer depends entirely on which format you mean.",
+    rarAnswer: "Depends on format",
+    rarDetail: "February 3 is before Feb 14; March 2 is after. The question can't be answered without fixing the date format.",
+    correct: "Depends on format"
+  },
+  {
+    tag: "unit-less temperature",
+    question: "My oven is set to 200. Is that hot enough to bake bread?",
+    ambiguity: "“200” has no unit. 200°C is a normal bread temperature; 200°F (≈93°C) is nowhere near hot enough. The right answer flips on the scale.",
+    direct: {
+      trace: [
+        "200 for baking — sure, ovens bake around there.",
+        "Bread bakes fine at a couple hundred.",
+        "→ Yes, 200 is hot enough for bread."
+      ],
+      answer: "Yes",
+      note: "assumed Celsius without saying so — if the oven reads Fahrenheit this is badly wrong"
+    },
+    rephrase: "Restating your question: you're asking whether 200 degrees is hot enough to bake bread, but you didn't say Celsius or Fahrenheit. Bread typically bakes near 220°C (428°F). 200°C is close enough; 200°F is only about 93°C, far too cool.",
+    rarAnswer: "Only if it's °C",
+    rarDetail: "200°C — yes, almost ideal. 200°F (~93°C) — no, far too low. Check the oven's scale first.",
+    correct: "Only if it's °C"
+  },
+  {
+    tag: "self-referential count",
+    question: "How many words are in your response to this prompt?",
+    ambiguity: "The answer must describe the very response that contains it — so the model has to fix its wording first and then count, not blurt a number the reply won't match.",
+    direct: {
+      trace: [
+        "Word count of my reply… I'll just estimate.",
+        "Feels like a short answer, maybe five words.",
+        "→ There are five words in my response."
+      ],
+      answer: "Five",
+      note: "guessed a number that doesn't match the sentence it's sitting in — self-inconsistent"
+    },
+    rephrase: "Restating your question: you want me to produce a response and report its exact word count — so the number must match the words I actually output. I'll commit to one fixed sentence and count every word in it.",
+    rarAnswer: "Seven",
+    rarDetail: "Fixed response: “This exact reply contains precisely seven words.” — count them: 7.",
+    correct: "Seven"
+  }
+];
+/* ==DATA_END== */
+let curQ = 0;
+let rarMode = "two"; // "two" = rephrase call then answer call; "one" = single prompt
+
+const qChips      = document.getElementById("qChips");
+const questionText= document.getElementById("questionText");
+const ambigNote   = document.getElementById("ambigNote");
+const directBox   = document.getElementById("directBox");
+const directAns   = document.getElementById("directAns");
+const rarBox      = document.getElementById("rarBox");
+const rarAns      = document.getElementById("rarAns");
+const verdict     = document.getElementById("verdict");
+const speed       = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const modeTwo     = document.getElementById("modeTwo"), modeOne = document.getElementById("modeOne");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html, cls){ box.insertAdjacentHTML("beforeend", `<div class="${cls||"pt"} row-appear">${html}</div>`); box.scrollTop = box.scrollHeight; }
+
+// render the question chips
+QUESTIONS.forEach((q,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = q.tag;
+  c.onclick = () => { if(running) return; curQ = i; syncChips(); showQuestion(); reset(); };
+  qChips.appendChild(c);
+});
+function syncChips(){ qChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curQ)); }
+function showQuestion(){
+  questionText.textContent = " " + QUESTIONS[curQ].question;
+  ambigNote.innerHTML = "⚠ " + escapeHtml(QUESTIONS[curQ].ambiguity);
+}
+function setMode(m){
+  rarMode = m;
+  modeTwo.classList.toggle("sel", m==="two");
+  modeOne.classList.toggle("sel", m==="one");
+  if(!running) reset();
+}
+modeTwo.onclick = () => { if(running) return; setMode("two"); };
+modeOne.onclick = () => { if(running) return; setMode("one"); };
+
+function reset(){
+  directBox.innerHTML = "";
+  directAns.innerHTML = '<span class="text-slate-400">—</span>';
+  rarBox.innerHTML = "";
+  rarAns.innerHTML = '<span class="text-slate-400">—</span>';
+  verdict.textContent = "";
+}
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay(); const E = QUESTIONS[curQ];
+
+  // ---- Direct: read the prompt, pick a reading silently, answer ----
+  for (const step of E.direct.trace){ row(directBox, escapeHtml(step)); await sleep(d*0.6); }
+  await sleep(d*0.4);
+  directAns.innerHTML = `<span class="text-red-600">✗ ${escapeHtml(E.direct.answer)}</span> <span class="text-slate-400 text-xs font-normal">— ${escapeHtml(E.direct.note)}</span>`;
+  await sleep(d);
+
+  // ---- RaR: rephrase first, then answer ----
+  if (rarMode === "two"){
+    row(rarBox, "① Rephrase", "badge call");
+    await sleep(d*0.4);
+    row(rarBox, escapeHtml(E.rephrase), "rephrase");
+    await sleep(d*1.1);
+    row(rarBox, "② Answer the rephrased question", "badge call");
+    await sleep(d*0.4);
+    row(rarBox, "<strong>" + escapeHtml(E.rarAnswer) + "</strong> — " + escapeHtml(E.rarDetail));
+  } else {
+    row(rarBox, "Single call — rephrase + answer", "badge call");
+    await sleep(d*0.4);
+    const combined =
+      `<div class="mb-2"><span class="text-xs font-bold text-violet-500 uppercase tracking-wide">Rephrased</span><br>${escapeHtml(E.rephrase)}</div>` +
+      `<div class="pt-2 border-t border-violet-200"><span class="text-xs font-bold text-violet-500 uppercase tracking-wide">Answer</span><br><strong>${escapeHtml(E.rarAnswer)}</strong> — ${escapeHtml(E.rarDetail)}</div>`;
+    row(rarBox, combined, "rephrase");
+  }
+  await sleep(d*0.6);
+  rarAns.innerHTML = `<span class="text-green-600">✓ ${escapeHtml(E.rarAnswer)}</span> <span class="text-slate-400 text-xs font-normal">← after restating the question</span>`;
+  await sleep(d*0.4);
+
+  verdict.innerHTML = `Answering directly, the model committed to <span class="text-red-600">${escapeHtml(E.direct.answer)}</span> on a reading it never checked. Rephrasing first made it state the interpretation out loud and answer <span class="text-green-600">${escapeHtml(E.rarAnswer)}</span> — ${rarMode==="two" ? "two calls" : "one call"}, same correct result.`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+showQuestion();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Why underspecified questions break LLMs", why:"Almost every real question leaves something implicit — a unit, a date format, a scope, a pronoun's referent. A person fills those gaps automatically from context and shared assumptions. A language model doesn't get to ask; it just continues the most likely text, which means it <strong>silently picks one reading</strong> — often the most common one in its training data, not the one you meant — and answers with full confidence. There's no signal that a choice was even made. The failure isn't lack of knowledge; it's answering the wrong question.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\"even month?\" · \"02/03\" · \"200 degrees\"<br>human: silently disambiguates<br>model: picks one reading, no signal<br>⇒ confident answer to the WRONG question</div>`, code:`// The gap is invisible to the model:
+// "Was X born in an even month?"
+//   -> even-NUMBERED? even # of DAYS?
+// model just continues text on ONE guess.` },
+ { title:"2. The RaR idea — restate, then respond", why:"Rephrase-and-Respond (Deng et al., 2023) adds one move before the answer: make the model <strong>rewrite and expand the question in its own words</strong>, then answer that rewrite. Instead of jumping straight to a response, the model first produces an explicit restatement — “you're asking whether the numeric month is even…” The rephrasing is where the ambiguity gets resolved, on the page, before a single token of the answer is generated.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">question<br>&nbsp;&nbsp;▼ [ rephrase + expand ]<br>explicit restatement (reading fixed)<br>&nbsp;&nbsp;▼<br>answer the restatement</div>`, code:`${'`'}${'${question}'}
+
+Rephrase and expand the question in your own words,
+making any ambiguous part explicit, then answer it.${'`'}` },
+ { title:"3. Why it works — the model commits to an interpretation", why:"The power of RaR is that the restatement <strong>goes into the context the answer is generated from</strong>. Once the model has written “you're asking whether the numeric position of the month is even, and July is the 7th month,” every following token is conditioned on that. It has committed to a reading in text, so it can no longer drift onto a different one mid-answer. Making the interpretation explicit both surfaces the ambiguity (the model often notices the fork while restating) and anchors the answer to a single, stated question.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">restatement is now in-context<br>answer conditions on it<br>⇒ can't silently switch readings<br>= interpretation committed on the record</div>`, code:`// Direct:  [question] -> [answer]   (reading never stated)
+// RaR:     [question] -> [RESTATEMENT] -> [answer]
+//          answer is conditioned on the restatement,
+//          so it's locked to one interpretation.` },
+ { title:"4. One-step vs two-step RaR", why:"There are two ways to run it. <strong>One-step</strong> folds everything into a single prompt — “rephrase and expand the question, then answer it” — so the model emits the restatement and the answer in one response, cheapest and simplest. <strong>Two-step</strong> uses two calls: the first returns only the rephrased question, the second answers it. Two-step costs an extra round-trip but makes the rephrasing a clean, inspectable artifact you can log, validate, show to the user, or route on. Both reach the same corrected answer; you're trading a call for control.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ONE-STEP: 1 call<br>&nbsp;&nbsp;\"rephrase then answer\" -> restate + answer<br>TWO-STEP: 2 calls<br>&nbsp;&nbsp;call1 -> rephrase · call2 -> answer(rephrase)</div>`, code:`// one-step (1 call):
+llm(question + " Rephrase, expand, then answer.");
+
+// two-step (2 calls):
+const rq = await llm("Rewrite this question clearly: " + question);
+const a  = await llm(rq);   // rephrasing is inspectable` },
+ { title:"5. Self-clarify vs. asking the user back", why:"There are two responses to an ambiguous question: bounce it back to the user (“did you mean Celsius or Fahrenheit?”) or resolve it yourself. RaR is the <strong>self-clarification</strong> path: the model states its assumption and proceeds, which keeps single-shot and batch pipelines flowing with no human in the loop. The tradeoff is it might state the wrong assumption. So the pattern is: self-clarify by default, and only escalate to a clarifying question when the rephrasing reveals readings whose answers genuinely differ <em>and</em> a wrong guess is costly.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ASK USER: correct, but needs a round-trip<br>RaR (self-clarify): state assumption, proceed<br>&nbsp;&nbsp;→ no round-trip, pipeline keeps flowing<br>escalate only if wrong guess is costly</div>`, code:`// RaR resolves it in-line and states the assumption:
+// "Assuming Celsius: 200 is nearly ideal for bread."
+// escalate only when it matters:
+if (readingsDiffer && costlyIfWrong) askUser();` },
+ { title:"6. RaR vs Chain-of-Thought — they clarify different things", why:"It's easy to conflate RaR with Chain-of-Thought because both add text before the answer, but they target opposite ends of the problem. <strong>CoT reasons toward the answer</strong> — it breaks the solution into steps once the question is understood. <strong>RaR clarifies the question</strong> — it fixes <em>which</em> problem is being solved before any reasoning starts. CoT can reason flawlessly and still be wrong if it's reasoning about the wrong interpretation. RaR guards the input; CoT works the process.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT: work the ANSWER (steps to solve)<br>RaR: fix the QUESTION (which problem?)<br>flawless CoT on wrong reading = wrong<br>different failure modes → they stack</div>`, code:`// CoT alone: great reasoning, wrong question
+//   "even = even # of days -> step, step -> wrong"
+// RaR fixes the question FIRST:
+//   "even = even-NUMBERED month" -> then reason` },
+ { title:"7. Combine RaR + CoT — clarify, then reason", why:"Because they fix different failures, RaR and CoT compose into a strong default: <strong>rephrase first, reason second</strong>. Step 1 restates and disambiguates the question; step 2 walks through the solution step by step for that pinned-down version; step 3 gives the answer. Doing the rephrase before the reasoning matters — it anchors the entire chain to the correct interpretation from its first token, so you don't get a beautifully reasoned answer to the wrong question.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1) Rephrase  → fix the question<br>2) Reason    → CoT on the fixed version<br>3) Answer<br>clarify THEN reason (order matters)</div>`, code:`${'`'}${'${question}'}
+Step 1 Rephrase: restate & disambiguate the question.
+Step 2 Reason:   think step by step on the rephrased version.
+Step 3 Answer:   give the final answer.${'`'}` },
+ { title:"8. When RaR helps most", why:"RaR pays off exactly where questions are underspecified. The sweet spots: <strong>ambiguous phrasing</strong> (“even month”, vague pronouns, “it/they” with no clear referent), <strong>temporal/date questions</strong> (bare dates, “next Friday”, timezone-free times), and <strong>unit-sensitive questions</strong> (numbers with no scale — degrees, currency, metric vs imperial). It also helps on self-referential or oddly-worded prompts where the ask itself needs unpacking. On crisp, single-reading questions it does little except add words.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">STRONG: ambiguous phrasing · dates/times<br>&nbsp;&nbsp;&nbsp;&nbsp;units &amp; scales · dangling pronouns<br>WEAK: crisp, single-reading questions<br>rule: is there more than one way to read it?</div>`, code:`// high-value targets:
+// "even month" · "02/03" · "200 degrees"
+// "next Friday" · "it" with no referent
+// low-value: "What is 2 + 2?"  (nothing to clarify)` },
+ { title:"9. The cost — and how to keep it honest", why:"RaR isn't free. Every answer now drags a rephrasing you didn't ask for, so you pay <strong>extra tokens and latency</strong> (two-step pays a whole extra call), and in a chat UI the restatement can read as filler — hide it or cap it at one line. There's a subtler risk: a rephrase that <em>changes</em> the question, quietly narrowing or shifting the ask, so the model then answers a different question precisely. Guard against it by checking the restatement still contains the question's key terms, and fall back to a direct answer if it drifted.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost: extra tokens · latency · +1 call (two-step)<br>UX: restatement can look like padding<br>risk: rephrase silently CHANGES the question<br>guard: verify key terms survive → else fall back</div>`, code:`const { rephrased, answer } = await rar(q);
+const ok = keyTerms(q).every(t =>
+  rephrased.toLowerCase().includes(t));   // didn't drift?
+return ok ? answer : await llm(q);        // else answer direct` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
