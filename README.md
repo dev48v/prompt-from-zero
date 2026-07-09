@@ -35,6 +35,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 26 — Meta-Prompting](https://dev48v.infy.uk/prompt/day26-meta-prompting.html) — `day26-meta-prompting.html`
 - [PromptFromZero · Day 27 — Program-Aided (PAL)](https://dev48v.infy.uk/prompt/day27-pal.html) — `day27-pal.html`
 - [PromptFromZero · Day 28 — Rephrase-and-Respond (RaR)](https://dev48v.infy.uk/prompt/day28-rephrase-and-respond.html) — `day28-rephrase-and-respond.html`
+- [PromptFromZero · Day 29 — Analogical Prompting](https://dev48v.infy.uk/prompt/day29-analogical.html) — `day29-analogical.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

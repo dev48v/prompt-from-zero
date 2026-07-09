@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 29 — Analogical Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .1s linear; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.miss { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .term { background:#0b1220; color:#86efac; border-radius:8px; padding:10px; font-size:12px; min-height:40px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow:auto; }
+  .term .cmt { color:#64748b; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .exemplar { background:#f5f3ff; border:1px solid #c4b5fd; border-left:4px solid #7c3aed; border-radius:8px; padding:9px 11px; font-size:13px; color:#4c1d95; }
+  .exemplar .eq { font-weight:700; display:block; }
+  .exemplar .ea { color:#5b21b6; margin-top:3px; display:block; }
+  .note-warn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px; font-size:12px; color:#92400e; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 29</div>
+      <h1 class="text-xl font-bold">🪆 Analogical Prompting — make the model generate its own relevant worked examples before it solves, so it reasons by analogy instead of from a cold start</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">A student who works two similar problems first rarely blows the third. Give the model that warm-up — and let it write the examples itself.</h2>
+        <p class="text-slate-500 mb-5">Answering a tricky problem <strong>cold</strong>, a language model does what it does with everything: it grabs the nearest surface pattern and runs with it — and on problems with a well-known <em>trap</em> (a leading-digit rule, a compounding discount, a rate you have to divide out first) the nearest pattern is usually the wrong one. <strong>Few-shot prompting</strong> fixes this by pasting in solved examples — but <em>you</em> have to have good, relevant, correct examples on hand for every new problem. <strong>Analogical Prompting</strong> (Yasunaga et al., 2023) removes that burden: before solving, you tell the model to <strong>recall and write out a few relevant solved problems itself</strong> — “here are similar problems and how I'd solve them” — and only then tackle the target by analogy. The self-generated exemplars warm up the right reasoning pattern from the model's own pretraining. Pick a target below and press ▶: the <strong>left</strong> column answers cold and falls into the trap; the <strong>right</strong> column self-generates examples first, then solves correctly. Everything is scripted and deterministic — no live model — so the contrast is identical every run.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Target problem:</span>
+        <strong id="problemText" class="text-slate-800"></strong>
+      </div>
+      <div id="trapNote" class="max-w-3xl mx-auto text-xs text-slate-500 text-center mb-4"></div>
+
+      <div class="flex justify-center items-center gap-4 mb-2 text-sm font-bold text-slate-600 flex-wrap">
+        <div id="pChips" class="flex gap-1.5"></div>
+        <button id="runBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Solve both ways</button>
+        <span>Speed</span>
+        <input id="speed" type="range" min="1" max="10" value="5" class="w-40 accent-violet-600">
+        <span id="speedVal" class="stat text-violet-600">5</span>x
+      </div>
+      <div class="flex justify-center items-center gap-2 mb-4 text-sm">
+        <span class="text-slate-500 font-semibold">Where do the examples come from?</span>
+        <button id="modeAna" class="chip sel">Analogical — model self-generates them</button>
+        <button id="modeFew" class="chip">Few-shot — you supply them</button>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="bg-white rounded-2xl border border-slate-200 p-5">
+          <div class="font-bold mb-1">🅐 Direct — solve cold, no examples</div>
+          <div class="text-xs text-slate-500 mb-3">The model reads the problem and answers straight from a standing start, pattern-matching to the nearest familiar shape. On a problem with a known trap, that shape is usually the wrong one.</div>
+          <div id="directBox" class="space-y-1.5 min-h-[240px]"></div>
+          <div class="mt-3 pt-3 border-t border-slate-100 text-sm">Answer: <span id="directAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-violet-200 p-5">
+          <div class="font-bold text-violet-700 mb-1">🅑 Analogical — recall similar solved problems first, then solve by analogy</div>
+          <div class="text-xs text-slate-500 mb-3">The model first writes out two or three relevant solved examples — surfacing the right method from its own pretraining — and only then solves the target by mapping those examples onto it.</div>
+          <div id="anaBox" class="space-y-1.5 min-h-[240px]"></div>
+          <div class="mt-3 pt-3 border-t border-violet-100 text-sm">Answer: <span id="anaAns" class="stat font-bold text-slate-400">—</span></div>
+        </div>
+      </div>
+
+      <div id="verdict" class="text-center mt-4 font-bold text-violet-600 min-h-[24px]"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The examples do the work — and the model can write them itself.</strong> Nothing about the model's knowledge changed between the two columns: it always knew the leading-digit rule, that discounts compound, that rates divide out. What changed on the right is that it <em>recalled a couple of solved problems of the same shape before touching the target</em>, and that warm-up activated the correct method. Few-shot gives the model the same head start — but only if <em>you</em> already have the right examples written down. Analogical prompting is few-shot where the model curates its own exemplars, so it works even on a brand-new problem you have no examples for.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Toggle the source of the examples: <strong>Analogical</strong> = the model generates the exemplars on the spot from pretraining; <strong>Few-shot</strong> = the same examples, but you had to find and write them yourself for this exact problem. Same reasoning payoff — the difference is who curates the examples, and whether you needed a good one on hand.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Analogical Prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Analogical prompting is pure prompt engineering — you add one instruction telling the model to <strong>recall a few relevant solved problems before answering</strong>. Here is the core template, how to give each self-generated exemplar its own reasoning (analogical + CoT), how to control how many you get, the generated-knowledge cousin, how to guard against bad exemplars, and how to decide between this and hand-written few-shot.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The core analogical prompt — recall examples, then solve</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole technique is one appended instruction: before answering, have the model write out a few relevant solved problems of its own, then solve the target by analogy to them. No example bank required — the model curates the exemplars from its own pretraining.</p>
+        <div class="relative"><pre>const ANALOGICAL = `Problem: ${problem}
+
+# Instructions
+Before solving, recall THREE distinct, relevant problems you already
+know how to solve that are similar to this one. For each, state the
+problem and its solution. THEN, using those as analogies, solve the
+original problem.
+
+# Relevant problems:
+(you generate them here)
+
+# Solution to the original problem:`;
+
+const reply = await llm(ANALOGICAL);
+// the model writes its own exemplars, then reasons by analogy</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Give every self-generated exemplar its own reasoning (analogical + CoT)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The exemplars are only useful if they carry a worked method, not just an answer. Ask the model to solve each recalled problem <em>step by step</em> — the reasoning pattern is what transfers to the target. This is analogical prompting done as the paper intends: self-generated exemplars, each with a chain of thought.</p>
+        <div class="relative"><pre>const ANALOGICAL_COT = `Problem: ${problem}
+
+Recall 3 relevant solved problems. For EACH, show the full
+step-by-step working, not just the final answer.
+
+Then solve the original problem, reusing the method from the
+examples and showing your steps.`;
+
+// each exemplar demonstrates the METHOD, which is what transfers</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Control how many exemplars — and keep them diverse</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Three to five is the sweet spot. Too few and the signal is weak; too many and the model drifts, pads latency, or starts repeating near-identical examples. Ask explicitly for a fixed count of <em>distinct</em> problems so you cover more of the method space instead of the same trick three times.</p>
+        <div class="relative"><pre>const K = 3;   // 3-5 works best; tune per task
+const prompt = `Recall ${K} relevant example problems that are
+DISTINCT from one another (different numbers, framings, or sub-methods
+— not three copies of the same problem). Solve each, then solve:
+${problem}`;
+
+// diverse exemplars = broader method coverage, less over-anchoring</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The cousin — Generated Knowledge Prompting</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Same family, different scaffold: instead of recalling solved <em>problems</em>, have the model first generate the relevant <em>facts / knowledge</em>, then answer using them. Use it when the failure is missing background knowledge rather than a missing method. Both share one idea — make the model produce its own scaffolding before it commits to an answer.</p>
+        <div class="relative"><pre>// 1) generate knowledge
+const facts = await llm(
+  `List key facts and principles relevant to: ${question}`);
+
+// 2) answer using the generated knowledge
+const answer = await llm(
+  `Knowledge:\n${facts}\n\nUsing the above, answer: ${question}`);
+
+// analogical -> recall EXAMPLES; generated-knowledge -> recall FACTS</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Guard against bad self-generated exemplars</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Self-generated examples can be wrong, irrelevant, or hallucinated — and a bad exemplar actively misleads the solution that leans on it (garbage in, garbage out). Ask the model to check each exemplar's relevance and its own answer before reusing it, and keep a direct-solve fallback for when the recalled examples don't actually match.</p>
+        <div class="relative"><pre>const prompt = `Recall 3 relevant solved problems. For each, VERIFY
+its answer is correct and state how it is relevant to the target.
+Discard any that are wrong or only superficially similar.
+Then solve using only the examples that survived:
+${problem}`;
+
+// wrong/irrelevant exemplar -> misleads the analogy -> fall back
+const answer = usableExamples > 0 ? viaAnalogy : await llm(problem);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Analogical vs hand-written few-shot — when to pick which</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Reach for analogical when you have <em>no good examples on hand</em>, when the problem space is wide and varied (one fixed example set can't cover it), or when you don't want to maintain an example bank — the model tailors fresh exemplars to each input. Stick with hand-written few-shot when you need a <em>specific output format</em> or have vetted gold examples whose correctness you can't leave to the model.</p>
+        <div class="relative"><pre>function chooseStrategy(task) {
+  if (task.hasVettedExamples || task.strictFormat)
+    return "few-shot";        // you control the exemplars
+  if (task.wideVariety || task.noExampleBank)
+    return "analogical";      // model curates per-input exemplars
+  return "analogical";        // safe default on novel problems
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 29 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Analogical Prompting: before solving, have the model <strong>recall and write out a few relevant solved problems itself</strong>, then solve the target by analogy — few-shot without you having to supply the examples. Self-generated exemplars carry their own reasoning (analogical + CoT), 3–5 diverse ones work best, its cousin Generated-Knowledge recalls facts instead of examples, and bad exemplars mislead so you guard and fall back. It shines exactly where few-shot stalls: novel problems with no good examples on hand. <strong>👉 Tomorrow — Day 30: Self-Refine — let the model critique its own draft and rewrite it, looping until the answer stops improving.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Direct/cold (falls into the trap) vs Analogical (self-generates examples, then solves) =====
+// Fully scripted & deterministic. Each target has a well-known trap; the DIRECT
+// column pattern-matches and gets it wrong, while the ANALOGICAL column first
+// self-generates relevant solved exemplars and then solves the target by analogy.
+const PROBLEMS = [
+  {
+    tag: "distinct digits",
+    problem: "How many 3-digit numbers have all distinct digits?",
+    trap: "The trap: the leading digit can't be 0 (or 072 isn't a 3-digit number). Cold, the model reaches for the clean 10 × 9 × 8 and forgets the zero rule.",
+    direct: {
+      trace: [
+        "3-digit number, all digits different — pick each slot.",
+        "10 options, then 9, then 8 → 10 × 9 × 8.",
+        "→ 720 such numbers."
+      ],
+      answer: "720",
+      note: "forgot the first digit can't be 0 — this counts non-numbers like 072"
+    },
+    exemplars: [
+      { q: "How many 2-digit numbers have distinct digits?", a: "First digit is 1–9 (can't be 0) = 9 ways; second is 0–9 except the first = 9 ways. 9 × 9 = 81." },
+      { q: "How many 3-letter codes from A–Z use no repeated letter?", a: "26 × 25 × 24 — each pick drops one option, and letters have no leading-zero rule." }
+    ],
+    analogySolve: "By analogy to the 2-digit case, the leading digit is 1–9 → 9 ways (not 10). Then, like the letter-code case, each later slot drops one option — but 0 is allowed here: 2nd digit = 9 ways (0–9 minus the first), 3rd = 8 ways.",
+    analogAnswer: "648",
+    analogDetail: "9 × 9 × 8 = 648.",
+    correct: "648"
+  },
+  {
+    tag: "stacked discount",
+    problem: "A jacket is 20% off, then 10% off the reduced price. What percent off is that overall?",
+    trap: "The trap: the second discount applies to the already-reduced price, not the original — so the percentages don't add. Cold, the model just sums 20 + 10.",
+    direct: {
+      trace: [
+        "20% off, and then another 10% off…",
+        "Add the two discounts: 20 + 10.",
+        "→ 30% off overall."
+      ],
+      answer: "30% off",
+      note: "added the percentages — but the 10% is taken off the smaller, already-discounted price"
+    },
+    exemplars: [
+      { q: "Two successive 50%-off discounts — is that 100% off (free)?", a: "No. 0.50 × 0.50 = 0.25 of the price is left → 75% off, not 100%." },
+      { q: "A price goes up 10%, then up 10% again. Total rise?", a: "1.10 × 1.10 = 1.21 → 21% up, not 20% — the second change compounds on the new price." }
+    ],
+    analogySolve: "Like the compounding cases above, chain the multipliers instead of adding them: you keep 80% and then keep 90% of that → 0.80 × 0.90 = 0.72 of the price remains.",
+    analogAnswer: "28% off",
+    analogDetail: "0.72 of the price is left, so 28% is off — not 30%.",
+    correct: "28% off"
+  },
+  {
+    tag: "palindrome fn",
+    problem: "Write isPalindrome(s) that ignores case and non-alphanumeric characters. Test: \"A man, a plan, a canal: Panama\".",
+    trap: "The trap: the raw string has capitals, spaces, commas and a colon, so a plain reverse-and-compare fails the classic test case. Cold, the model writes the one-liner and stops.",
+    direct: {
+      trace: [
+        "Palindrome = reads the same reversed.",
+        "return s === [...s].reverse().join('')",
+        "→ ship it."
+      ],
+      answer: "s === reverse(s)",
+      note: "fails the test — capitals, spaces, commas and the colon make it ≠ its reverse"
+    },
+    exemplars: [
+      { q: "How do I reverse a string in JS?", a: "[...s].reverse().join('') — spread to characters, reverse, rejoin." },
+      { q: "How do I strip everything except letters/digits and lowercase it?", a: "s.toLowerCase().replace(/[^a-z0-9]/g, '')" }
+    ],
+    analogySolve: "Compose the two recalled pieces: first NORMALIZE (lowercase + strip non-alphanumerics), then compare the cleaned string to its reverse — not the raw input.",
+    analogAnswer: "normalize → compare to reverse",
+    analogDetail: "const c = s.toLowerCase().replace(/[^a-z0-9]/g,''); return c === [...c].reverse().join('');  // passes \"…Panama\"",
+    correct: "normalize → compare to reverse"
+  },
+  {
+    tag: "machines & widgets",
+    problem: "3 machines make 3 widgets in 3 minutes. How long for 100 machines to make 100 widgets?",
+    trap: "The trap: the three 3's tempt a straight scale-up to 100. The real move is to find the per-machine rate first. Cold, the model matches the \"100\" pattern.",
+    direct: {
+      trace: [
+        "3 machines, 3 widgets, 3 minutes — scale it up.",
+        "100 machines, 100 widgets — same pattern of 100s.",
+        "→ 100 minutes."
+      ],
+      answer: "100 minutes",
+      note: "pattern-matched the '100s' instead of finding the per-machine rate"
+    },
+    exemplars: [
+      { q: "5 cats catch 5 mice in 5 minutes. How long for 100 cats to catch 100 mice?", a: "Rate: 1 cat catches 1 mouse in 5 min. 100 cats work in parallel → 100 mice in 5 min." },
+      { q: "General move: find the single-unit rate before scaling.", a: "Divide down to one worker / one item, then add workers in parallel — the time stays fixed." }
+    ],
+    analogySolve: "By analogy: 3 machines / 3 widgets / 3 min means 1 machine makes 1 widget in 3 minutes. 100 machines run in parallel, each making its own widget, so 100 widgets also take 3 minutes.",
+    analogAnswer: "3 minutes",
+    analogDetail: "Per-machine rate = 1 widget / 3 min; 100 machines in parallel → 100 widgets in 3 min.",
+    correct: "3 minutes"
+  }
+];
+/* ==DATA_END== */
+let curP = 0;
+let anaMode = "ana"; // "ana" = model self-generates exemplars; "few" = human supplies them
+
+const pChips      = document.getElementById("pChips");
+const problemText = document.getElementById("problemText");
+const trapNote    = document.getElementById("trapNote");
+const directBox   = document.getElementById("directBox");
+const directAns   = document.getElementById("directAns");
+const anaBox      = document.getElementById("anaBox");
+const anaAns      = document.getElementById("anaAns");
+const verdict     = document.getElementById("verdict");
+const speed       = document.getElementById("speed"), speedVal = document.getElementById("speedVal");
+const modeAna     = document.getElementById("modeAna"), modeFew = document.getElementById("modeFew");
+let running = false;
+
+speed.oninput = () => { speedVal.textContent = speed.value; };
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function delay(){ return 900 / (+speed.value); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+function row(box, html, cls){ box.insertAdjacentHTML("beforeend", `<div class="${cls||"pt"} row-appear">${html}</div>`); box.scrollTop = box.scrollHeight; }
+
+// render the problem chips
+PROBLEMS.forEach((p,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = p.tag;
+  c.onclick = () => { if(running) return; curP = i; syncChips(); showProblem(); reset(); };
+  pChips.appendChild(c);
+});
+function syncChips(){ pChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curP)); }
+function showProblem(){
+  problemText.textContent = " " + PROBLEMS[curP].problem;
+  trapNote.innerHTML = "⚠ " + escapeHtml(PROBLEMS[curP].trap);
+}
+function setMode(m){
+  anaMode = m;
+  modeAna.classList.toggle("sel", m==="ana");
+  modeFew.classList.toggle("sel", m==="few");
+  if(!running) reset();
+}
+modeAna.onclick = () => { if(running) return; setMode("ana"); };
+modeFew.onclick = () => { if(running) return; setMode("few"); };
+
+function reset(){
+  directBox.innerHTML = "";
+  directAns.innerHTML = '<span class="text-slate-400">—</span>';
+  anaBox.innerHTML = "";
+  anaAns.innerHTML = '<span class="text-slate-400">—</span>';
+  verdict.textContent = "";
+}
+
+async function run(){
+  if (running) return; running = true; reset();
+  const d = delay(); const E = PROBLEMS[curP];
+  const supplied = anaMode === "few";
+
+  // ---- Direct: solve cold, pattern-match, fall into the trap ----
+  for (const step of E.direct.trace){ row(directBox, escapeHtml(step)); await sleep(d*0.6); }
+  await sleep(d*0.4);
+  directAns.innerHTML = `<span class="text-red-600">✗ ${escapeHtml(E.direct.answer)}</span> <span class="text-slate-400 text-xs font-normal">— ${escapeHtml(E.direct.note)}</span>`;
+  await sleep(d);
+
+  // ---- Analogical: recall relevant solved examples first, then solve by analogy ----
+  row(anaBox, supplied ? "① Examples YOU supply (few-shot)" : "① Recall similar solved problems — self-generated", "badge call");
+  await sleep(d*0.4);
+  if (supplied) { row(anaBox, "⚠ In few-shot these examples aren't free — for every new problem, you must find and write correct, relevant ones yourself.", "note-warn"); await sleep(d*0.7); }
+  for (const ex of E.exemplars){
+    row(anaBox, `<span class="eq">${escapeHtml(ex.q)}</span><span class="ea">↳ ${escapeHtml(ex.a)}</span>`, "exemplar");
+    await sleep(d*0.9);
+  }
+  row(anaBox, "② Solve the target by analogy to those examples", "badge call");
+  await sleep(d*0.4);
+  row(anaBox, escapeHtml(E.analogySolve), "exemplar");
+  await sleep(d*0.6);
+  row(anaBox, "<strong>" + escapeHtml(E.analogAnswer) + "</strong> — " + escapeHtml(E.analogDetail));
+  await sleep(d*0.6);
+  anaAns.innerHTML = `<span class="text-green-600">✓ ${escapeHtml(E.analogAnswer)}</span> <span class="text-slate-400 text-xs font-normal">← reasoned by analogy to ${supplied ? "your" : "self-generated"} examples</span>`;
+  await sleep(d*0.4);
+
+  verdict.innerHTML = `Cold, the model pattern-matched to <span class="text-red-600">${escapeHtml(E.direct.answer)}</span>. After ${supplied ? "being handed" : "generating its own"} relevant worked examples, it solved by analogy and got <span class="text-green-600">${escapeHtml(E.analogAnswer)}</span>. ${supplied ? "Few-shot lands it too — but only because you supplied the examples." : "No examples were supplied — the model produced them itself."}`;
+  running = false;
+}
+document.getElementById("runBtn").onclick = run;
+showProblem();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The cold-start problem", why:"Asked a tricky problem with no warm-up, a language model does what it always does: it continues the most likely text, which means it latches onto the <strong>nearest surface pattern</strong> and runs. On problems with a well-known trap — a leading-digit rule, a compounding percentage, a rate you must divide out first — the nearest pattern is precisely the wrong one (10 × 9 × 8, 20 + 10, scale the 100s). There's no worked reasoning in front of it to lean on, so a plausible-looking-but-wrong shape wins. The knowledge is all there; the model just never activated it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">tricky problem, no warm-up<br>▼<br>grab NEAREST surface pattern<br>▼<br>confident answer to the trap = WRONG</div>`, code:`// cold start, no scaffolding:
+// "3-digit numbers, distinct digits?"
+//   -> nearest pattern: 10 x 9 x 8 = 720
+//   -> misses: leading digit can't be 0
+// right method never got activated.` },
+ { title:"2. Few-shot fixes it — but you pay the curation cost", why:"The classic fix (Day 4) is <strong>few-shot</strong>: prepend a few solved examples so the model sees the right method before the target. It works — but the examples have to come from somewhere. <em>You</em> must have relevant, correct, well-formatted exemplars on hand for every new problem, keep an example bank current, and pick ones that actually match. On a brand-new or highly varied problem you often don't have good examples, and an irrelevant or wrong one actively hurts. The head start is real; the curation burden is the catch.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">few-shot: [ex1][ex2][ex3] + target<br>examples show the right method ✓<br>BUT: you must curate them<br>no good example on hand → stuck</div>`, code:`// few-shot: YOU supply the exemplars
+const prompt =
+  example1 + example2 + example3 + "\\n" + target;
+// great -- if you HAVE 3 relevant, correct examples.
+// novel problem? empty-handed.` },
+ { title:"3. The analogical idea — self-generate the examples", why:"Analogical Prompting (Yasunaga et al., 2023, Google DeepMind) flips who writes the examples. Instead of supplying exemplars, you instruct the model to <strong>recall and write out a few relevant solved problems itself</strong> — “here are similar problems and how I'd solve them” — and only then solve the target by analogy to them. It's few-shot where the <em>model</em> curates the shots, drawing on the millions of solved problems it saw in pretraining. No example bank, and the exemplars are tailored to each specific input.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">target problem<br>▼ [ recall similar solved problems ]<br>self-generated ex1 · ex2 · ex3<br>▼ [ solve target BY ANALOGY ]<br>answer</div>`, code:`// analogical: the MODEL supplies the exemplars
+const prompt = target + \`
+Recall a few relevant problems you can solve,
+solve each, THEN solve the target by analogy.\`;
+// exemplars are generated per-input, from pretraining.` },
+ { title:"4. Why it works — warming up the right pattern", why:"The model has seen an enormous number of worked problems in pretraining; the trouble is a cold prompt doesn't <em>activate</em> the relevant ones. Making it first write out similar solved problems pulls that latent method into the context window — and because generation is autoregressive, every token of the target solution is then conditioned on those freshly-stated exemplars. The self-generated examples act like a self-built few-shot prefix: they retrieve and lay down the correct reasoning pattern right before it's needed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pretraining: millions of solved problems (latent)<br>recall step → pulls the RIGHT ones in-context<br>target solution conditions on them<br>= self-built few-shot prefix</div>`, code:`// direct:     [target] -> [answer]  (pattern cold)
+// analogical: [target] -> [EXEMPLARS] -> [answer]
+//   answer is conditioned on the exemplars,
+//   so the correct method is already primed.` },
+ { title:"5. The prompt template — recall, then solve", why:"The technique is essentially one template. You give the problem, then instruct: “recall N relevant problems you know how to solve, state each with its solution, THEN solve the original by analogy.” The section headers matter — an explicit “# Relevant problems” block followed by a “# Solution” block keeps the model from skipping the recall step and jumping straight to the (cold) answer. The structure is what turns a vague hint into a reliable two-phase procedure.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono"># Problem: ...<br># Recall 3 relevant solved problems:<br>&nbsp;&nbsp;(model writes ex1, ex2, ex3)<br># Now solve the original by analogy:<br>&nbsp;&nbsp;(model answers)</div>`, code:`Problem: {problem}
+
+# Relevant problems:
+Recall 3 problems you can solve that are similar.
+State each problem and its solution.
+
+# Solution:
+Using those as analogies, solve the original.` },
+ { title:"6. How many exemplars", why:"Count matters. One self-generated example is a weak signal and often just the same trap restated; a dozen invites drift, latency, and near-duplicate examples that add nothing. In practice <strong>3–5 diverse exemplars</strong> is the sweet spot — enough to triangulate the method, few enough to stay focused. Ask explicitly for a fixed number of <em>distinct</em> problems (different numbers, framings, sub-methods) so the model covers more of the method space instead of generating the same example three ways.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 exemplar → weak / just restates the trap<br>3–5 diverse → sweet spot ✓<br>many → drift · latency · duplicates<br>ask for DISTINCT examples</div>`, code:`const K = 3; // 3-5 is the sweet spot
+\`Recall \${K} DISTINCT relevant problems
+ (different numbers/framings, not 3 copies),
+ solve each, then solve the target.\`` },
+ { title:"7. The cousin — Generated Knowledge Prompting", why:"Analogical prompting belongs to a small family whose shared move is “make the model produce its own scaffolding before answering.” Its closest relative is <strong>Generated Knowledge Prompting</strong> (Liu et al., 2022): instead of recalling solved <em>problems</em>, the model first generates relevant <em>facts and principles</em>, then answers using them. Use analogical when the gap is a missing <em>method</em>; use generated-knowledge when the gap is missing <em>background knowledge</em>. Same engine, different fuel — self-generated examples versus self-generated facts.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">family: self-generate scaffolding first<br>ANALOGICAL → recall solved EXAMPLES (method)<br>GENERATED-KNOWLEDGE → recall FACTS (knowledge)<br>then answer using what you produced</div>`, code:`// generated-knowledge:
+const facts = await llm("List key facts for: " + q);
+const ans   = await llm(facts + "\\nUsing these, answer: " + q);
+// analogical recalls examples; this recalls facts.` },
+ { title:"8. When it beats few-shot", why:"Analogical prompting wins exactly where hand-written few-shot struggles. When you have <strong>no good examples on hand</strong> (a novel problem), when the problem space is <strong>wide and varied</strong> so no single fixed example set fits every input, or when you simply don't want to build and maintain an example bank — the model curates fresh, input-specific exemplars every call. It also self-adapts: the examples it recalls for a geometry question differ from those for a rate puzzle, without you writing either set.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE ANALOGICAL WHEN:<br>· no good examples on hand (novel task)<br>· wide problem variety (one set won't fit)<br>· don't want to maintain an example bank<br>→ model tailors exemplars per input</div>`, code:`// few-shot: one fixed example set for all inputs
+// analogical: exemplars regenerated per input
+//   geometry Q -> geometry examples
+//   rate Q     -> rate examples
+//   ...no bank to curate.` },
+ { title:"9. Failure modes — bad self-examples mislead", why:"The technique's strength is also its risk: the exemplars are only as good as the model's own generation. A self-generated example can be <strong>wrong, irrelevant, or outright hallucinated</strong> — and because the solution reasons <em>by analogy to it</em>, a bad exemplar drags the answer down with it (garbage in, garbage out). The model can also recall an example that's only superficially similar and anchor to the wrong method. Mitigate: ask for diverse examples, have the model verify each exemplar's answer and relevance, and keep a direct-solve fallback.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">self-gen exemplar wrong / irrelevant / hallucinated<br>↓ solution reasons BY ANALOGY to it<br>↓<br>bad example → misled answer (GIGO)<br>guard: verify · diversify · fall back</div>`, code:`// exemplar is wrong -> analogy inherits the error
+\`Recall 3 relevant problems. VERIFY each answer
+ and its relevance; discard bad ones. Then solve.\`
+// no usable exemplar -> answer directly instead.` },
+ { title:"10. Combine with Chain-of-Thought", why:"Analogical prompting and CoT (Day 2) aren't rivals — the paper's own method is analogical <em>with</em> CoT. Each self-generated exemplar should be solved <strong>step by step</strong>, because it's the worked <em>method</em>, not the final number, that transfers to the target; and the target itself is then solved with a visible chain. So the strong default is: recall a few relevant problems, show full reasoning for each, then reason step-by-step through the target by analogy. The exemplars supply the pattern; CoT executes it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">recall exemplars (each solved step-by-step)<br>▼ the METHOD transfers, not the number<br>solve target with CoT, by analogy<br>= analogical + CoT (the paper's method)</div>`, code:`\`Recall 3 relevant problems. For EACH show the
+ full step-by-step working (not just the answer).
+ Then solve the target step by step, reusing
+ the method from the examples.\`` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
