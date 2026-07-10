@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 30 — Self-Refine</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .4s ease; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .llm-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:#7c3aed; margin-right:3px; }
+  .llm-dot.tool { background:#94a3b8; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .chip.miss { background:#fef2f2; color:#b91c1c; border-color:#fecaca; }
+  .chip.dim { opacity:.35; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .term { background:#0b1220; color:#86efac; border-radius:8px; padding:10px; font-size:12px; min-height:40px; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow:auto; }
+  .term .cmt { color:#64748b; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .exemplar { background:#f5f3ff; border:1px solid #c4b5fd; border-left:4px solid #7c3aed; border-radius:8px; padding:9px 11px; font-size:13px; color:#4c1d95; }
+  .exemplar .eq { font-weight:700; display:block; }
+  .exemplar .ea { color:#5b21b6; margin-top:3px; display:block; }
+  .note-warn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px; font-size:12px; color:#92400e; }
+  /* --- Self-Refine loop cards --- */
+  .round-card { background:#fff; border:1px solid #e2e8f0; border-left:4px solid #7c3aed; border-radius:10px; padding:12px 14px; }
+  .crit-card { background:#fffbeb; border:1px solid #fde68a; border-left:4px solid #f59e0b; border-radius:10px; padding:12px 14px; }
+  .crit-badge { background:#fef3c7; color:#92400e; border:1px solid #fde68a; }
+  .crit-list { list-style:disc; margin:8px 0 0 18px; font-size:13px; color:#78350f; }
+  .crit-list li { margin-bottom:5px; }
+  .prose-out { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:10px 12px; font-size:13.5px; line-height:1.55; color:#3b0764; }
+  .hchart { display:flex; align-items:flex-end; gap:16px; height:120px; padding:6px 4px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:38px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .4s ease; min-height:2px; }
+  .hbar.ghost { background:repeating-linear-gradient(45deg,#ddd6fe,#ddd6fe 5px,#faf5ff 5px,#faf5ff 10px); border:1px dashed #a78bfa; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .hlab .hdelta { color:#7c3aed; font-weight:700; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 30</div>
+      <h1 class="text-xl font-bold">♻️ Self-Refine — the model drafts an answer, critiques its own draft, then rewrites using that critique, looping until the gains flatline — one model as generator, critic, and reviser, with no external tools</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Great writing is rewriting — and one model can do both halves. Draft, then turn the same model into its own harshest editor, and loop.</h2>
+        <p class="text-slate-500 mb-5">Ask a model for something once and you get exactly one pass: a <strong>first draft</strong> — fluent, plausible, and almost always improvable. A function that forgets the empty-input case; a paragraph padded with “really great”; an email with no deadline. The model often <em>knows better</em> — it can spot those flaws in a second if asked — but a single forward pass never stops to check. <strong>Self-Refine</strong> (Madaan et al., 2023) bakes the rewrite instinct into the prompt: the same model produces a draft, then switches hats and <strong>CRITIQUES</strong> its own output — listing concrete, specific flaws — then switches again and <strong>REWRITES</strong> the draft to fix exactly those flaws. Critique the new version, refine again, and repeat until the self-critique stops finding anything worth changing and the quality gain flattens. No tests, no compiler, no human, no second model — <strong>one model playing generator, critic, and reviser in turn.</strong> Pick a task and step through the loop below: watch each critique name real problems, watch the next version address exactly those, and watch the quality meter climb then plateau. Everything is scripted and deterministic — no live model — so the trajectory is identical every run.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <span id="taskChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="goalText" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="flex justify-center items-center gap-3 mb-3 text-sm font-bold text-slate-600 flex-wrap">
+        <button id="stepBtn" class="bg-violet-600 hover:bg-violet-700 text-white px-5 py-2 rounded-lg font-semibold text-sm">▶ Next step</button>
+        <button id="runBtn" class="bg-violet-500 hover:bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">⏩ Run whole loop</button>
+        <button id="resetBtn" class="bg-slate-200 hover:bg-slate-300 px-4 py-2 rounded-lg font-semibold text-sm">↺ Reset</button>
+        <span id="phaseLabel" class="text-violet-600 font-semibold"></span>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2">
+          <div id="loopCol" class="space-y-3 min-h-[300px]"></div>
+        </div>
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Quality meter</div>
+            <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">current best</span><span id="qNum" class="stat font-bold text-violet-700 text-lg">—</span></div>
+            <div class="bar mb-3"><span id="qBar"></span></div>
+            <div class="text-xs uppercase font-bold text-slate-400 tracking-wider mb-1">rounds — rise then plateau</div>
+            <div id="qHistory" class="hchart"></div>
+            <div id="stopNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The critique is the engine — and the same model supplies it.</strong> Nothing external judged these drafts: no unit test, no editor, no second model. The model wrote the draft, then — pointed at its own finished output with the single narrow job “find what's wrong here” — surfaced concrete flaws it hadn't avoided the first time, and the refine step put that knowledge to work. Recognizing a weakness is an easier task than avoiding it under next-token pressure, which is exactly why a second look helps even though the weights never changed. The loop stops itself when the self-critique runs dry and each new round barely moves the needle — the plateau you see on the right.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Draft → self-critique → refine → self-critique → refine … until the critique finds nothing actionable and the marginal quality gain drops below threshold. Most of the lift lands in the first one or two refinements; returns diminish fast — so a small round cap captures nearly all the benefit.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Self-Refine works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step →</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">—</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Self-Refine is three prompts and a loop. <strong>Generate</strong> a draft, <strong>critique</strong> it (specific, itemized, actionable — this is the load-bearing step), then <strong>refine</strong> it against that critique. Wrap those in a loop with a stopping criterion, ground the critic in a rubric so it doesn't rubber-stamp, and know when to hand the feedback job to an external oracle instead. Here is each piece.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Prompt #1 — Generate the draft</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The first pass is just the task, done once. Expect first-draft quality: fluent and plausible, but carrying the small errors, omissions, and clumsy phrasings any first draft has. This is the raw material the loop will improve — don't over-engineer it.</p>
+        <div class="relative"><pre>const GENERATE = `${task}`;      // just do the task, one pass
+
+let draft = await llm(GENERATE);
+// draft = first-draft quality: fluent, plausible, improvable.
+// the model often KNOWS better -- it just never stopped to check.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Prompt #2 — Critique it (specific, actionable, itemized)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the prompt that carries the whole technique. Point the model at its own finished output and give it the single narrow job of finding flaws. Demand <em>specific, actionable, quoted</em> problems — “make it better” yields nothing; “the loop divides by <code>length</code> with no empty-array guard” drives a real fix. Give it an explicit escape hatch so a genuinely-good draft can end the loop.</p>
+        <div class="relative"><pre>const FEEDBACK = (draft) => `Here is an attempt at the task:
+"""${draft}"""
+
+List the SPECIFIC, ACTIONABLE problems with it as bullets —
+correctness, missing cases, clarity, structure, tone.
+Be concrete and quote the text you mean.
+If it is already excellent, reply exactly: NO_ISSUES.`;
+
+const critique = await llm(FEEDBACK(draft));
+// vague critique -> vague rewrite. Insist on specifics.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Prompt #3 — Refine using the critique</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Hand the model both the draft <em>and</em> its own critique, and ask for a rewrite that addresses every point. The critique is what makes this more than a re-roll: the new version is conditioned on a concrete list of what was wrong, so it fixes those things instead of regenerating from scratch and reintroducing them.</p>
+        <div class="relative"><pre>const REFINE = (draft, critique) => `Task attempt:
+"""${draft}"""
+
+Critique of that attempt:
+"""${critique}"""
+
+Rewrite the attempt so it fixes EVERY point in the critique.
+Output only the improved version.`;
+
+draft = await llm(REFINE(draft, critique));  // v2 addresses each flaw</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Wire the loop — with a stopping criterion</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Alternate critique and refine until you should stop. Three stops, usually combined: the critique itself says it's done (<code>NO_ISSUES</code>), the marginal quality gain drops below a threshold (you're polishing noise), or you hit a hard round cap. Most of the lift is in the first one or two rounds, so a small cap is cheap insurance against an endless — and expensive — loop.</p>
+        <div class="relative"><pre>async function selfRefine(task, { maxRounds = 3, minGain = 0.05 } = {}) {
+  let draft = await llm(task);
+  let prev  = score(draft);
+  for (let r = 0; r &lt; maxRounds; r++) {
+    const critique = await llm(FEEDBACK(draft));
+    if (critique.trim() === "NO_ISSUES") break;        // self-judged done
+    const next = await llm(REFINE(draft, critique));
+    const q = score(next);
+    draft = next;
+    if (q - prev &lt; minGain) break;                     // marginal gain -> stop
+    prev = q;
+  }
+  return draft;   // ~2K+1 model calls for K rounds
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Ground the critic in a rubric so it can't rubber-stamp</h3></div>
+        <p class="text-sm text-slate-600 mb-3">An open-ended “what's wrong?” invites the model to shrug and say “looks good” — an empty critique that wastes a whole round. Give the critic a rubric or checklist to grade against, and force it to justify any criterion it scores below full marks. Structured critique is more consistent, harder to hand-wave, and turns vague dissatisfaction into concrete, refinable fixes.</p>
+        <div class="relative"><pre>const FEEDBACK = (draft) => `Grade this output against the rubric,
+then list concrete fixes for EVERY criterion scored below 5/5:
+- Correctness   (handles edge cases? logically sound?)
+- Completeness  (anything missing or unstated?)
+- Clarity       (unambiguous, concise, no padding?)
+- Structure     (format / ordering fit the task?)
+
+Output: a score per criterion, then the itemized fixes.
+
+Attempt:
+"""${draft}"""`;
+// a rubric stops "looks good" rubber-stamping and empty critiques</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Prefer an external oracle when one exists (the Reflexion move)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Self-critique is only as sharp as the model's own eyes — it can be blind to its own errors, or even “refine” a correct answer into a wrong one. Wherever a cheap, trustworthy oracle exists — unit tests, a compiler, a type-checker, a calculator — feed <em>that</em> result back instead: it can't be fooled by the model's blind spots. Use self-critique for the open-ended tasks (most writing and reasoning) where no such oracle is available; the two compose.</p>
+        <div class="relative"><pre>// when a cheap, trustworthy oracle exists, feed IT back (Reflexion-style)
+let code = await llm(task);
+for (let r = 0; r &lt; maxRounds; r++) {
+  const result = runTests(code);        // compiler / unit tests / linter
+  if (result.pass) break;               // oracle says done -- can't be fooled
+  code = await llm(REFINE(code, result.errors));
+}
+// self-critique only where NO oracle exists (open-ended writing/reasoning)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 30 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Self-Refine: have one model <strong>draft</strong>, then <strong>critique its own draft</strong>, then <strong>rewrite using that critique</strong>, looping until the self-critique runs dry and the quality gain flattens. It works because recognizing a flaw is easier than avoiding it under next-token pressure — the critique surfaces knowledge the draft didn't use. Three prompts (generate / feedback / refine), a stopping criterion (self-judged done · marginal gain · max rounds), a rubric to stop rubber-stamping, and an external oracle wherever one exists. Cousin to Reflexion (external feedback) and Chain-of-Verification (fact-checking); costs ~2K+1 calls for K rounds. It shines on code, writing, and multi-constraint reasoning — anywhere a first draft is decent but a second look reliably makes it better. <strong>👉 Tomorrow — Day 31: Emotion-Prompting — add emotional stakes to the prompt (“this is important to my career”) and watch the model try harder.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Self-Refine loop — draft -> self-critique -> refine, until it plateaus =====
+// Fully scripted & deterministic. One model plays generator, critic, and reviser.
+// Each round: a VERSION (the output so far, with a quality score) then a SELF-CRITIQUE
+// (concrete flaws). The critique of round N explicitly drives the rewrite into round N+1.
+// The final round's self-critique finds nothing actionable -> the loop halts.
+const TASKS = [
+  {
+    tag: "write a function",
+    goal: "Write average(nums) — return the arithmetic mean of a list of numbers.",
+    rounds: [
+      {
+        lang: "js",
+        quality: 45,
+        body:
+`function average(nums) {
+  let sum = 0;
+  for (let i = 0; i < nums.length; i++) sum += nums[i];
+  return sum / nums.length;
+}`,
+        critique: [
+          "Divides by nums.length with no guard — an empty array returns NaN silently, with no error.",
+          "No input validation: a non-number element (or a stray null/undefined) quietly corrupts the mean instead of failing loudly.",
+          "Undocumented — the contract (what it accepts, what it returns, what it does on bad input) isn't stated anywhere."
+        ]
+      },
+      {
+        lang: "js",
+        quality: 73,
+        addresses: "empty-array crash, missing validation, and no doc comment",
+        body:
+`/** Mean of a numeric array; throws on empty or invalid input. */
+function average(nums) {
+  if (!Array.isArray(nums) || nums.length === 0)
+    throw new Error("average() needs a non-empty array");
+  let sum = 0;
+  for (const n of nums) {
+    if (typeof n !== "number" || Number.isNaN(n))
+      throw new TypeError("every element must be a number");
+    sum += n;
+  }
+  return sum / nums.length;
+}`,
+        critique: [
+          "The manual accumulator loop is more code than the job needs — reduce() expresses \"sum\" directly and reads cleaner.",
+          "The typeof check lets Infinity through; a finiteness test is the more honest guard for a mean.",
+          "The one-line doc states it throws, but not the full contract (non-empty array of finite numbers)."
+        ]
+      },
+      {
+        lang: "js",
+        quality: 88,
+        addresses: "verbose loop → reduce, Infinity leak → Number.isFinite, and a fuller contract in the doc",
+        body:
+`/**
+ * Arithmetic mean of a non-empty array of finite numbers.
+ * @throws {Error}     if the array is empty or not an array
+ * @throws {TypeError} if any element is not a finite number
+ */
+function average(nums) {
+  if (!Array.isArray(nums) || nums.length === 0)
+    throw new Error("average() needs a non-empty array");
+  if (!nums.every(Number.isFinite))
+    throw new TypeError("every element must be a finite number");
+  return nums.reduce((sum, n) => sum + n, 0) / nums.length;
+}`,
+        critique: [],
+        done: true,
+        proj: 2
+      }
+    ]
+  },
+  {
+    tag: "polish a paragraph",
+    goal: "Polish this product-description paragraph to be clear and punchy.",
+    rounds: [
+      {
+        lang: "text",
+        quality: 40,
+        body:
+"Our new app is a really great tool that helps you to be able to manage all of your various different tasks in one single place, and it has a lot of features that are very useful for helping you get things done in a more efficient and productive manner.",
+        critique: [
+          "Padded and wordy — \"really great\", \"various different\", \"in a more efficient and productive manner\" add length without adding meaning.",
+          "Vague — names no concrete feature or benefit; \"a lot of features\" is a claim, not proof.",
+          "Buries the point behind hedges (\"helps you to be able to\") instead of stating what it does."
+        ]
+      },
+      {
+        lang: "text",
+        quality: 71,
+        addresses: "the padding, the vagueness, and the hedged phrasing",
+        body:
+"Our app brings all your tasks into one place. Capture, organize, and track them without switching between five separate tools — so you spend less time managing work and more time doing it.",
+        critique: [
+          "Stronger, but still opens with the mechanism (\"brings tasks into one place\") rather than the reader's pain or payoff.",
+          "\"track them\" and \"doing it\" are the softest words in the sentence — the verbs could hit harder.",
+          "\"five separate tools\" is good and concrete; lean into that specificity even more."
+        ]
+      },
+      {
+        lang: "text",
+        quality: 87,
+        addresses: "leads with the pain, sharpens the verbs, and keeps the concrete detail",
+        body:
+"Stop juggling five apps to run your day. Ours captures, organizes, and tracks every task in one place — so your time goes to finishing work, not managing it.",
+        critique: [],
+        done: true,
+        proj: 2
+      }
+    ]
+  },
+  {
+    tag: "tighten an email",
+    goal: "Tighten this email asking a colleague to review a document by Friday.",
+    rounds: [
+      {
+        lang: "text",
+        quality: 38,
+        body:
+"Hi Sam, I hope this email finds you well. I was just wondering if you might possibly have a little bit of time at some point this week to take a look at the document I've attached whenever you get a chance. It would be really great if you could maybe get back to me with any thoughts or feedback you might have. Thanks so much!",
+        critique: [
+          "No clear deadline — \"at some point this week\" and \"whenever you get a chance\" give Sam nothing concrete to act on.",
+          "The actual ask is buried under hedges (\"might possibly\", \"a little bit\", \"maybe\"), so it reads as optional.",
+          "Opens with filler (\"hope this email finds you well\") before ever reaching the request."
+        ]
+      },
+      {
+        lang: "text",
+        quality: 74,
+        addresses: "the missing deadline, the buried ask, and the opening filler",
+        body:
+"Hi Sam — could you review the attached document and send me any feedback by end of Friday? It should take about 15 minutes. Thanks!",
+        critique: [
+          "Clear now, but doesn't say WHY Friday — a reason meaningfully raises the odds of an on-time reply.",
+          "Doesn't tell Sam what kind of feedback is most useful, so the review may miss what matters.",
+          "\"any feedback\" is broad; pointing at a specific section would focus Sam's 15 minutes."
+        ]
+      },
+      {
+        lang: "text",
+        quality: 88,
+        addresses: "adds the reason for the deadline and focuses the review on what matters",
+        body:
+"Hi Sam — could you review the attached doc by end of Friday? I'm sending it to the client Monday, so I'd especially value your take on the pricing section. Should be ~15 minutes. Thanks!",
+        critique: [],
+        done: true,
+        proj: 3
+      }
+    ]
+  }
+];
+/* ==DATA_END== */
+let curTask = 0;
+let cards = [];
+let idx = 0;
+let prevQ = null;
+let history = [];
+let running = false;
+
+const taskChips  = document.getElementById("taskChips");
+const goalText   = document.getElementById("goalText");
+const loopCol    = document.getElementById("loopCol");
+const stepBtn    = document.getElementById("stepBtn");
+const runBtn     = document.getElementById("runBtn");
+const resetBtn   = document.getElementById("resetBtn");
+const phaseLabel = document.getElementById("phaseLabel");
+const qNum       = document.getElementById("qNum");
+const qBar       = document.getElementById("qBar");
+const qHistory   = document.getElementById("qHistory");
+const stopNote   = document.getElementById("stopNote");
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+// render task chips
+TASKS.forEach((t,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = t.tag;
+  c.onclick = () => { if(running) return; curTask = i; syncChips(); reset(); };
+  taskChips.appendChild(c);
+});
+function syncChips(){ taskChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curTask)); }
+
+function buildCards(){
+  cards = [];
+  TASKS[curTask].rounds.forEach((r,i)=>{
+    cards.push({ type:"version", round:i, lang:r.lang, quality:r.quality, body:r.body, addresses:r.addresses });
+    cards.push({ type:"critique", round:i, items:r.critique||[], done:!!r.done, proj:r.proj||0 });
+  });
+}
+
+function versionCard(c){
+  const roleLabel = c.round===0 ? "GENERATE — first draft" : "REFINE — rewrite";
+  const bodyHtml = c.lang==="js"
+    ? `<div class="struct mono">${escapeHtml(c.body)}</div>`
+    : `<div class="prose-out">${escapeHtml(c.body)}</div>`;
+  const addr = c.addresses
+    ? `<div class="text-xs text-violet-600 mt-2">↳ rewrites v${c.round} to fix: ${escapeHtml(c.addresses)}.</div>`
+    : `<div class="text-xs text-slate-400 mt-2">cold first draft — no critique has run yet.</div>`;
+  return `<div class="round-card row-appear">
+      <div class="flex items-center justify-between mb-2">
+        <span class="badge call">v${c.round+1} · ${roleLabel}</span>
+        <span class="stat text-sm font-bold text-violet-700">quality ${c.quality}%</span>
+      </div>
+      ${bodyHtml}
+      ${addr}
+    </div>`;
+}
+
+function critiqueCard(c){
+  if(c.done){
+    return `<div class="note-warn row-appear">
+        <strong>✓ Self-critique of v${c.round+1}: nothing actionable left.</strong>
+        The model re-read its own output and found only matters of taste, not defects.
+        Projected gain from another round ≈ +${c.proj}% — below the 5% threshold.
+        <strong>Loop halts: v${c.round+1} is the final answer.</strong>
+      </div>`;
+  }
+  const items = c.items.map(f=>`<li>${escapeHtml(f)}</li>`).join("");
+  return `<div class="crit-card row-appear">
+      <span class="badge crit-badge">🔎 Self-critique of v${c.round+1}</span>
+      <ul class="crit-list">${items}</ul>
+      <div class="text-xs text-amber-700 mt-2 font-semibold">→ these flaws drive the rewrite into v${c.round+2}.</div>
+    </div>`;
+}
+
+function renderHistory(){
+  let html = history.map((h,i)=>{
+    const d = i===0 ? "first draft" : ((h.q-history[i-1].q>=0?"+":"") + (h.q-history[i-1].q) + "%");
+    return `<div class="hbar-wrap"><div class="hbar" style="height:${h.q}%"></div><div class="hlab">${h.label}<br><span class="hdelta">${h.q}%</span><br>${d}</div></div>`;
+  }).join("");
+  html += ghostHtml;
+  qHistory.innerHTML = html;
+}
+let ghostHtml = "";
+
+function updateMeter(q){ qNum.textContent = q + "%"; qBar.style.width = q + "%"; }
+
+function reset(){
+  running = false;
+  buildCards();
+  idx = 0; prevQ = null; history = []; ghostHtml = "";
+  loopCol.innerHTML = "";
+  goalText.textContent = TASKS[curTask].goal;
+  qNum.textContent = "—"; qBar.style.width = "0%";
+  qHistory.innerHTML = ""; stopNote.textContent = "";
+  phaseLabel.textContent = "Ready — press Next step";
+  stepBtn.disabled = false;
+  stepBtn.classList.remove("opacity-40");
+}
+
+function revealNext(){
+  if(idx >= cards.length) return false;
+  const c = cards[idx];
+  if(c.type === "version"){
+    loopCol.insertAdjacentHTML("beforeend", versionCard(c));
+    updateMeter(c.quality);
+    history.push({ q:c.quality, label:"v"+(c.round+1) });
+    renderHistory();
+    prevQ = c.quality;
+    phaseLabel.textContent = c.round===0 ? "Generated v1 (first draft)" : "Refined into v"+(c.round+1);
+  } else {
+    loopCol.insertAdjacentHTML("beforeend", critiqueCard(c));
+    if(c.done){
+      const ghostQ = prevQ + c.proj;
+      ghostHtml = `<div class="hbar-wrap"><div class="hbar ghost" style="height:${ghostQ}%"></div><div class="hlab">v?<br><span class="hdelta" style="color:#a78bfa">+${c.proj}%</span><br>&lt; threshold</div></div>`;
+      renderHistory();
+      stopNote.innerHTML = "Gain flattened — the dashed bar is the projected next round (+" + c.proj + "%), below the 5% stop threshold.";
+      phaseLabel.textContent = "✓ Converged — loop stopped";
+    } else {
+      phaseLabel.textContent = "Critiqued v"+(c.round+1)+" — "+c.items.length+" flaws found";
+    }
+  }
+  idx++;
+  if(idx >= cards.length){ stepBtn.disabled = true; stepBtn.classList.add("opacity-40"); }
+  return true;
+}
+
+stepBtn.onclick = () => { if(running) return; revealNext(); };
+resetBtn.onclick = () => { if(running) return; reset(); };
+runBtn.onclick = async () => {
+  if(running) return;
+  if(idx >= cards.length) reset();
+  running = true; stepBtn.disabled = true; stepBtn.classList.add("opacity-40");
+  while(idx < cards.length){ revealNext(); await sleep(750); }
+  running = false;
+};
+
+reset();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. A single pass is first-draft quality", why:"Ask a model for something once and you get exactly that: one forward pass, tokens emitted left to right, never looking back. What comes out is a <strong>first draft</strong> — fluent and plausible, but carrying the small errors, omissions, and clumsy phrasings any first draft has. A function that forgets the empty-input case; a paragraph padded with “really great”; an email with no deadline. The striking part is the model usually <em>knows better</em> — ask it to check and it spots the flaw instantly — but in a single pass there's no moment where it stops to look. Humans don't ship first drafts either; we reread and revise. Self-Refine gives the model that second look.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prompt<br>▼ [ single forward pass ]<br>first draft<br>(fluent · plausible · improvable)<br>— never re-examined —</div>`, code:`// one shot: prompt -> draft, done.
+const out = await llm(prompt);
+// fluent, plausible... and never re-examined.
+// the model often KNOWS better; it just never stopped to check.` },
+ { title:"2. The generate → critique → refine loop", why:"Self-Refine (Madaan et al., 2023) turns one pass into a loop. <strong>Generate</strong> a draft. <strong>Critique</strong> it — ask the model to list concrete, specific problems with what it just wrote. <strong>Refine</strong> — hand it the draft plus that critique and ask for a rewrite that fixes each point. Then critique the new version and refine again. Each turn feeds the previous output <em>and</em> its self-assessment back in, so the answer ratchets upward instead of being re-rolled from scratch. The loop runs until the critique stops finding anything worth changing.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GENERATE → draft<br>▼<br>CRITIQUE → list flaws ──┐<br>▼&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│ loop<br>REFINE → better draft ◀─┘<br>… until critique runs dry</div>`, code:`let draft = await llm(task);              // generate
+for (let r = 0; r < maxRounds; r++) {
+  const critique = await llm(FEEDBACK(draft));   // critique
+  draft = await llm(REFINE(draft, critique));    // refine
+}
+// each round conditions on the LAST output + its own critique.` },
+ { title:"3. One model, three hats", why:"The defining feature: there is no second model and no external oracle. The <em>same</em> model is the generator, the critic, and the reviser — it just receives three different instructions. That's what separates Self-Refine from a multi-agent debate or a separate reward model: it's self-contained, runs behind one API key, and needs no extra infrastructure or training. The only thing that changes between the three roles is the prompt you wrap around the same weights — generate this, now find what's wrong with it, now rewrite it to fix that.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">┌────── ONE MODEL ──────┐<br>│ 🖊 generator  → draft   │<br>│ 🔎 critic     → flaws   │<br>│ ✂ reviser    → rewrite │<br>└───────────────────────┘<br>same weights · 3 prompts</div>`, code:`// same llm(), three roles selected by the prompt:
+const draft    = await llm(GENERATE(task));
+const critique = await llm(FEEDBACK(draft));   // now be the critic
+const better   = await llm(REFINE(draft, critique)); // now the reviser
+// no 2nd model, no reward model, no tools.` },
+ { title:"4. Why self-critique helps: recognizing < producing", why:"It seems paradoxical — if the model could write it better, why didn't it the first time? Because <strong>recognizing a flaw is an easier task than avoiding it while generating</strong>. A first draft juggles content, structure, and phrasing all at once under next-token pressure, and some things slip. But pointed at a finished draft with the single narrow job “find what's wrong here,” the model can spend its whole forward pass on evaluation — and evaluation is easier than flawless first-pass generation. The critique surfaces latent knowledge the draft didn't use; the refine step then puts it to work. Same weights, better answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GENERATING: juggle content+structure+style<br>under next-token pressure → things slip<br>——————————————<br>CRITIQUING: one narrow job on finished text<br>→ full pass spent on evaluation<br>recognizing a flaw &lt; avoiding it live</div>`, code:`// the knowledge was always in the weights --
+// a cold pass just never activated it.
+// critique = a dedicated evaluation pass:
+//   "find what's wrong" is easier than
+//   "write it flawlessly the first time".` },
+ { title:"5. The three prompts", why:"The whole method is three prompt templates. <strong>Generate:</strong> just do the task. <strong>Feedback:</strong> “here is your output — list specific, actionable problems with it.” <strong>Refine:</strong> “here is your output AND the feedback — produce an improved version that addresses each point.” The feedback prompt is the load-bearing one: specificity is everything. “Make it better” yields a vague reshuffle; “the loop divides by length with no empty-array guard” drives a real fix. Push for concrete, itemized flaws quoted from the actual text, and give a clean exit (reply NO_ISSUES) so a good draft can end the loop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 GENERATE: “do the task”<br>2 FEEDBACK: “list specific flaws in THIS”<br>3 REFINE: “rewrite to fix every flaw”<br>——<br>#2 is load-bearing: vague critique = vague rewrite</div>`, code:`GENERATE: \`\${task}\`
+FEEDBACK: \`Here is an attempt: """\${draft}"""
+  List SPECIFIC, ACTIONABLE problems. Quote the text.
+  If already excellent, reply exactly: NO_ISSUES.\`
+REFINE:   \`Attempt + critique -> rewrite fixing EVERY point.\`` },
+ { title:"6. The stopping criterion", why:"A refine loop needs a brake, or it runs forever — and each turn costs tokens. Three common stops, usually combined: <strong>(1) self-judged done</strong> — the critique step returns “no substantive issues,” so there's nothing to act on; <strong>(2) marginal gain</strong> — the improvement between versions drops below a threshold, so you're polishing noise; <strong>(3) a hard max</strong> — cap at, say, 3–4 rounds regardless. In practice most of the lift comes in the first one or two refinements and returns diminish fast — exactly the plateau in the demo, where the third round barely moved and the loop halted.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">stop when ANY holds:<br>① critique says NO_ISSUES (self-judged done)<br>② Δquality &lt; threshold (marginal gain)<br>③ rounds ≥ max (hard cap)<br>quality: rises fast, then PLATEAUS</div>`, code:`if (critique.trim() === "NO_ISSUES") break;  // self-judged done
+if (q - prev < minGain)             break;  // marginal gain
+if (r >= maxRounds)                 break;  // hard cap
+// most of the gain is in rounds 1-2; returns diminish fast.` },
+ { title:"7. Self-feedback vs external feedback — the Reflexion cousin", why:"Self-Refine's feedback comes from the model judging its own text. Its close cousin <strong>Reflexion</strong> (Day 20) closes the loop with an <em>external</em> signal instead — a unit-test result, a compiler error, a game score, an environment reward — and has the model reflect on that outcome before retrying. Rule of thumb: when a cheap, trustworthy oracle exists (tests, a type-checker, a calculator), feed <em>that</em> back — it can't be fooled by the model's own blind spots. Use self-critique when no such oracle exists, which covers most open-ended writing and reasoning. They compose: refine against tests where you have them, against self-critique where you don't.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">SELF-REFINE: feedback = model judges itself<br>REFLEXION:  feedback = external outcome<br>&nbsp;&nbsp;(tests · compiler · score · reward)<br>oracle exists? → use it (can't be fooled)<br>no oracle? → self-critique</div>`, code:`// Reflexion: external, trustworthy signal
+const result = runTests(code);       // oracle
+if (result.pass) break;
+code = await llm(REFINE(code, result.errors));
+
+// Self-Refine: no oracle -> model critiques itself.` },
+ { title:"8. Not the same as Chain-of-Verification", why:"Chain-of-Verification (Day 15) also has the model check its own work, but it targets a different failure: <strong>factual errors</strong>. CoVe generates verification <em>questions</em>, answers them independently, and revises to remove contradictions — a fact-checking pass. Self-Refine targets <strong>overall quality</strong> — clarity, completeness, structure, style, correctness — via open-ended critique. CoVe asks “is each claim true?”; Self-Refine asks “is this output good, and where is it weak?” Same self-review family, different lens — and you can run a CoVe-style pass as the feedback step when the task is fact-heavy.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoVe (Day 15): “is each CLAIM true?”<br>&nbsp;&nbsp;→ fact-check &amp; de-contradict<br>Self-Refine: “is this OUTPUT good?”<br>&nbsp;&nbsp;→ clarity · completeness · structure · style<br>same family · different lens</div>`, code:`// Chain-of-Verification: targets FACTS
+//   draft -> verification Qs -> answer each -> fix contradictions
+// Self-Refine: targets QUALITY
+//   draft -> "what's weak here?" -> rewrite
+// fact-heavy task? use CoVe as the feedback step.` },
+ { title:"9. The cost: N× tokens and latency", why:"Quality isn't free here. A K-round refine loop is roughly <strong>2K+1 model calls</strong> — one generate, then a critique and a refine per round — so three rounds can cost 5–7× the tokens and latency of a single answer, all <em>sequential</em> (you can't refine v3 before v2 exists). That's the core trade: spend more compute for a better answer. Because gains plateau, the economical move is a small cap — one or two refinements capture most of the benefit — and reserving deeper loops for high-value outputs where quality clearly outweighs the extra cost and wait.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 generate + K×(critique+refine)<br>= ~2K+1 model calls, all SEQUENTIAL<br>3 rounds ≈ 5–7× tokens &amp; latency<br>gains plateau → cap small (1–2 rounds)</div>`, code:`// K rounds  ->  1 + 2K calls (generate + critique/refine)
+//   3 rounds ~ 7 calls ~ 5-7x cost & latency of one answer
+//   and strictly sequential (no parallelism across rounds)
+// plateau => a small maxRounds captures most of the win.` },
+ { title:"10. Failure modes & where it shines", why:"Two failure modes to watch. <strong>Blind spots:</strong> if the model can't see its own error, self-critique won't catch it either — it may even “refine” a correct answer into a wrong one, or rubber-stamp a flaw (“looks good”) round after round. <strong>Empty critique:</strong> feedback that doesn't actually change the output wastes a full round of cost. Guard by grounding the critic in a rubric or checklist and preferring an external oracle wherever one exists. Where it shines: <strong>code</strong> (readability, edge cases), <strong>writing</strong> (clarity, concision, tone), and <strong>multi-constraint reasoning</strong> — anywhere a first draft is decent but a second look reliably makes it better.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">FAILS WHEN:<br>· blind to its own error (may un-fix a right answer)<br>· critique doesn't change output (wasted round)<br>SHINES ON:<br>· code · writing · multi-constraint reasoning<br>guard: rubric · external oracle</div>`, code:`// failure: model can't see its own bug ->
+//   self-critique misses it, or "refines" right -> wrong.
+// guard: rubric-grounded critique + external oracle when available.
+// shines: code, writing, multi-constraint reasoning.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
