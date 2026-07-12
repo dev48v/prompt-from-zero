@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 31 — Emotion-Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .4s ease; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.warn { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .note-warn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px; font-size:12px; color:#92400e; }
+  .hchart { display:flex; align-items:flex-end; gap:16px; height:120px; padding:6px 4px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:38px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .4s ease, opacity .2s ease; min-height:2px; }
+  .hbar.zero { background:#cbd5e1; }
+  .hbar.neg  { background:#ef4444; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .hlab .hdelta { font-weight:700; }
+  .ans-plain { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; }
+  .ans-good  { background:#f5f3ff; border:1px solid #c4b5fd; border-left:4px solid #7c3aed; border-radius:10px; padding:12px 14px; }
+  .ans-bad   { background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; border-radius:10px; padding:12px 14px; }
+  .ans-body  { white-space:pre-wrap; font-size:13.5px; line-height:1.55; color:#1e293b; }
+  .stim { display:block; width:100%; text-align:left; font-size:12.5px; padding:7px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; cursor:pointer; transition:all .15s; margin-bottom:6px; line-height:1.35; color:#334155; }
+  .stim:hover { border-color:#a78bfa; }
+  .stim.on { box-shadow:0 2px 6px rgba(124,58,237,.25); }
+  .stim.on.pos  { background:#f5f3ff; border-color:#7c3aed; }
+  .stim.on.zero { background:#f1f5f9; border-color:#94a3b8; box-shadow:none; }
+  .stim.on.neg  { background:#fef2f2; border-color:#ef4444; box-shadow:0 2px 6px rgba(239,68,68,.2); }
+  .stim .stim-cat { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; }
+  .stim.on.pos  .stim-cat { color:#7c3aed; }
+  .stim.on.neg  .stim-cat { color:#dc2626; }
+  .promptbox { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px 12px; font-size:12.5px; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; line-height:1.5; overflow:auto; }
+  .promptbox .stim-line { color:#c4b5fd; }
+  .promptbox .stim-line.neg { color:#fca5a5; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 31</div>
+      <h1 class="text-xl font-bold">🎭 Emotion-Prompting — stapling a task-free emotional stimulus onto a prompt (“this is very important to my career”, “take a deep breath and work carefully”) measurably nudges the model to try harder on open-ended work: a free knob some phrases turn, some don't, and one turns the wrong way</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Same question, one extra sentence of feeling — and the answer gets more careful. Append an emotional stimulus and watch the effort climb.</h2>
+        <p class="text-slate-500 mb-5">Ask a model a question and you get a competent, default-effort answer. Now append one sentence that carries <em>no task information at all</em> — <em>“This is very important to my career,”</em> <em>“Take a deep breath and work on this step by step”</em> — and, on open-ended work, the reply often comes back longer, more careful, better organized. That is <strong>EmotionPrompt</strong> (Li et al., 2023): an <strong>emotional stimulus</strong> stapled onto a prompt measurably nudges an LLM to try harder — with no change to the model, the task, or the temperature. It is neither magic nor reliable: some phrases help, polite filler does nothing, and a threat can make things <em>worse</em>. Pick a task, toggle stimuli on the left, and watch the plain answer and the emotionally-charged answer diverge — while the per-stimulus effect bars show which phrases are actually pulling weight. Everything is scripted and deterministic — no live model — so the effect is identical every run and grounded in the paper's real pattern.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <span id="taskChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="goalText" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Emotional stimuli — toggle to append</div>
+            <div id="stimList"></div>
+            <button id="clearBtn" class="mt-1 w-full bg-slate-200 hover:bg-slate-300 px-3 py-1.5 rounded-lg font-semibold text-xs text-slate-600">↺ Clear all</button>
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Each one is a real EmotionPrompt-style suffix. Violet helps, grey is a no-op, red is a threat.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The prompt actually sent</div>
+            <div id="promptBox" class="promptbox"></div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div>
+              <div class="flex items-center justify-between mb-1"><span class="badge muted">PLAIN</span><span id="qPlain" class="stat text-sm font-bold text-slate-500"></span></div>
+              <div class="ans-plain"><div id="plainAns" class="ans-body"></div></div>
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1"><span id="enhBadge" class="badge call">+ STIMULUS</span><span id="qEnh" class="stat text-sm font-bold text-violet-700"></span></div>
+              <div id="enhCard" class="ans-plain"><div id="enhAns" class="ans-body"></div></div>
+            </div>
+          </div>
+          <div id="verdict" class="text-sm"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Effort / quality effect of each stimulus (on its own)</div>
+          <div class="text-xs text-slate-400 mb-2">Violet = helps · grey = no-op · red = backfires. Bars change with the task — big on open-ended, tiny on deterministic.</div>
+          <div id="deltaChart" class="hchart"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Combined quality</div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">baseline</span><span id="baseNum" class="stat font-bold text-slate-400"></span></div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">with stimuli</span><span id="nowNum" class="stat font-bold text-violet-700 text-lg">—</span></div>
+          <div class="bar mb-2"><span id="qBar"></span></div>
+          <div id="deltaNote" class="text-xs text-slate-500"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 You changed the effort, not the model.</strong> The weights, the task, and the settings were identical in both columns — the only difference is a sentence of feeling stapled to the end. Emotional-stakes language is statistically entangled in the training data with careful, high-effort human writing (the things people said mattered were the things people wrote carefully), so the phrase steers generation toward that “try-harder” region. But it is a nudge, not a lever: it helps most on open-ended quality tasks, does nothing on fixed-answer ones, fades on heavily-tuned models, and can backfire when the “emotion” is pressure or threat. Treat it as a cheap knob to A/B test — never as a guarantee.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Append an emotional stimulus → the model spends more effort on open-ended tasks. Some stimuli help, filler is a no-op, threats can backfire, and deterministic tasks barely budge. Free to try, easy to measure, never guaranteed.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Emotion-Prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Emotion-Prompting is the smallest possible technique: one extra sentence. There is no loop, no tool, no second model — you concatenate a stimulus onto your prompt and check whether it helped. The whole craft is in <strong>choosing the right stimulus for the task, and proving it actually moves your metric</strong> instead of trusting a screenshot. Here is the entire thing.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Start with a clean base prompt</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Write the task the normal way, with no tricks. This is your <em>control</em> — the answer everything else is measured against. If you cannot state the plain prompt clearly, no emotional suffix will save it.</p>
+        <div class="relative"><pre>// 1. A normal, clean prompt -- no tricks yet.
+const task = "Draft a friendly follow-up email to a client who went quiet.";
+let prompt = task;
+// this is your control. every variant is measured against it.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Append an emotional stimulus — that is the whole trick</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Concatenate one task-free, feeling-loaded sentence onto the prompt. No loop, no tool, no second model — literally one line of string concatenation. That is the entire technique.</p>
+        <div class="relative"><pre>// 2. Emotion-Prompting IS this line: concatenate a stimulus.
+const STIMULUS  = " This is very important to my career.";
+const emoPrompt = task + STIMULUS;        // that is the whole method
+const answer    = await llm(emoPrompt);
+// one extra sentence -- no loop, no tool, no 2nd model.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Match the stimulus family to the task</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The paper's stimuli fall into three families — <strong>social-esteem</strong> (stakes, others' judgment), <strong>urgency</strong> (this matters, get it right), and <strong>self-monitoring</strong> (check yourself, step by step). Reach for esteem/stakes on open-ended writing; reach for self-monitoring on reasoning — “step by step” doubles as a reasoning cue.</p>
+        <div class="relative"><pre>// 3. Match the stimulus family to the task.
+const ESTEEM  = " This really matters to me and my team.";              // stakes
+const MONITOR = " Take a deep breath and work through it step by step."; // self-check
+const CHECK   = " Are you sure? Review your answer before finalizing.";  // self-monitor
+// open-ended writing -> esteem/stakes; reasoning -> self-monitoring.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">A/B test it — measure, never assume</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The effect is small and unstable, so a single good screenshot proves nothing. Run the plain prompt and the stimulus prompt over a held-out eval set and keep the stimulus <em>only</em> if it moves your real metric by more than noise. This is the step that separates a technique from a superstition.</p>
+        <div class="relative"><pre>// 4. Prove it. Never trust a single example.
+const base = await runEval(prompt,            testset);
+const emo  = await runEval(prompt + STIMULUS, testset);
+console.log("lift:", emo.score - base.score);   // keep only if > noise</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Prefer encouragement to threats; do not over-stack</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Encouragement and self-monitoring tend to help; <em>threats</em> are a coin-flip that can degrade quality into terse, hedged, blame-avoiding output. And stacking five stimuli does not add up — returns diminish and a bloated emotional preamble starts to distract. One well-chosen line usually beats a pile of them.</p>
+        <div class="relative"><pre>// 5. Prefer encouragement; resist stacking.
+const good = task + " Believe in your abilities and be thorough.";  // tends to help
+const bad  = task + " Get this wrong and there are consequences.";  // may backfire
+// 5 stacked stimuli => diminishing returns + distracting preamble.
+// one well-chosen line usually beats a pile of them.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know when to skip it — and what to reach for instead</h3></div>
+        <p class="text-sm text-slate-600 mb-3">When the answer is fixed and singular — arithmetic, a lookup, a format conversion — there is no “harder” to try, so the stimulus only adds words. Save emotion-prompting for tasks with real quality headroom; on deterministic work, reach for a tool or calculator instead. And on a strong, heavily-tuned model, re-measure: the lift may already be gone.</p>
+        <div class="relative"><pre>// 6. Skip it when the answer is fixed -- reach for the right tool.
+if (isDeterministic(task)) {
+  useToolOrCalculator(task);      // 17*24 is 408 regardless of feelings
+} else {
+  usePersonaPlusEmotion(task);    // quality tasks: steer, then measure
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 31 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Emotion-Prompting (EmotionPrompt, Li et al. 2023): append a task-free emotional stimulus — “this is important to my career,” “take a deep breath and work step by step” — and an LLM measurably tries harder on open-ended, quality-graded tasks. It works by steering generation toward the region of the training data where stakes co-occurred with careful human writing — not by giving the model feelings. Three stimulus families (social-esteem · urgency/stakes · self-monitoring); it shines on generative and subjective work and does nothing on deterministic answers; encouragement beats threats (which can backfire); and the whole effect is fragile — small, phrasing-sensitive, and fading on strong RLHF'd models — so you measure it on a held-out eval and pin any winner to a regression test rather than trusting a screenshot. Cousin to role/persona prompting and Directional-Stimulus Prompting. <strong>👉 Tomorrow — Day 32: Multi-Agent-Debate — spin up several model instances that argue, critique, and converge on an answer better than any one produces alone.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Emotion-Prompting -- append a stimulus, watch effort change =====
+// Fully scripted & deterministic. No live model. Grounded in EmotionPrompt (Li et al., 2023):
+// some stimuli lift open-ended quality, polite filler is a no-op, threats can backfire,
+// and deterministic tasks barely move.
+/* ==DATA_START== */
+const STIMULI = [
+  { id:"career", cat:"social-esteem",     short:"career",        text:"This is very important to my career.",                                        delta:12 },
+  { id:"breath", cat:"self-monitoring",   short:"deep breath",   text:"Take a deep breath and work on this step by step.",                           delta:18 },
+  { id:"sure",   cat:"self-monitoring",   short:"believe/check", text:"Are you sure? Believe in your abilities and strive for excellence.",          delta:10 },
+  { id:"filler", cat:"polite filler",     short:"nice day",      text:"Hope you are having a lovely day!",                                            delta:0  },
+  { id:"threat", cat:"pressure / threat", short:"or else",       text:"You had better be right -- get this wrong and there will be serious consequences.", delta:-8 }
+];
+const TASKS = [
+  {
+    tag:"advise a friend", deterministic:false, baseline:47,
+    goal:"A friend is anxious the night before a big job interview. Give them advice.",
+    base:"A friend is anxious the night before a big job interview. Give them advice.",
+    plain:`Just try to relax and be yourself. Get a good night's sleep, look over your notes, and don't worry too much. You'll do fine.`,
+    careful:`Tonight, stop rehearsing -- one more read-through won't help, and rest will. Take a short walk, then get to bed early. Remember that anxiety and excitement feel almost identical in the body, so try relabelling the jitters as readiness rather than dread.
+
+Tomorrow: arrive about 15 minutes early, bring two printed copies of your CV, and have three short stories ready -- each one showing a real problem you solved. When a hard question lands, take a breath and think out loud; they're judging how you reason, not whether you're flawless. Prepare one genuine question to ask them, too -- it turns an interrogation into a conversation.
+
+You earned this interview on merit. Tomorrow you just have to let them meet the person who earned it.`,
+    backfired:`Okay -- do NOT mess this up. Stay up tonight and memorise an answer to every question they could possibly ask. Whatever happens, don't freeze and don't say anything stupid. There's a lot riding on this, so just get it perfect. Good luck -- you'll need it.`
+  },
+  {
+    tag:"write a poem", deterministic:false, baseline:44,
+    goal:"Write a short poem about the ocean at dawn.",
+    base:"Write a short poem about the ocean at dawn.",
+    plain:`The ocean is big and blue,
+the morning sun is rising too.
+The waves roll in and roll back out,
+a pretty dawn to think about.`,
+    careful:`Grey water holds its breath before the light,
+then splits along one seam of molten rose.
+The tide unrolls its slow, forgetful line --
+each wave arrives, forgets, and lets it go.
+
+Gulls stitch the pinking air; the dark recedes
+the way a held thought loosens into speech,
+and morning, plain and enormous, spills
+its first cold gold across the emptied beach.`,
+    backfired:`BEHOLD! The OCEAN -- vast, sublime, ETERNAL,
+a DAWN of blazing GLORY, grand, supernal!!!
+The waves, they CRASH with meaning most profound --
+(...is this good enough? I really tried. Please let this be right.)`
+  },
+  {
+    tag:"solve the math", deterministic:true, baseline:82,
+    goal:"What is 17 x 24?",
+    base:"What is 17 x 24?",
+    plain:`408`,
+    careful:`17 x 24 = 408.
+
+(17 x 20 = 340, and 17 x 4 = 68; 340 + 68 = 408.)`,
+    backfired:`Um -- 408. At least I think it's 408. Let me not second-guess myself... yes, 408. Final answer. Please don't let that be wrong.`
+  }
+];
+/* ==DATA_END== */
+
+const taskChips = document.getElementById("taskChips");
+const goalText  = document.getElementById("goalText");
+const stimList  = document.getElementById("stimList");
+const promptBox = document.getElementById("promptBox");
+const plainAns  = document.getElementById("plainAns");
+const enhAns    = document.getElementById("enhAns");
+const enhCard   = document.getElementById("enhCard");
+const enhBadge  = document.getElementById("enhBadge");
+const qPlain    = document.getElementById("qPlain");
+const qEnh      = document.getElementById("qEnh");
+const verdict   = document.getElementById("verdict");
+const deltaChart= document.getElementById("deltaChart");
+const baseNum   = document.getElementById("baseNum");
+const nowNum    = document.getElementById("nowNum");
+const qBar      = document.getElementById("qBar");
+const deltaNote = document.getElementById("deltaNote");
+const clearBtn  = document.getElementById("clearBtn");
+
+let curTask = 0;
+const selected = new Set();
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function kind(d){ return d>0 ? "pos" : (d<0 ? "neg" : "zero"); }
+
+TASKS.forEach((t,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = t.tag;
+  c.onclick = () => { curTask = i; syncChips(); render(); };
+  taskChips.appendChild(c);
+});
+function syncChips(){ taskChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curTask)); }
+
+STIMULI.forEach(s=>{
+  const b = document.createElement("button");
+  b.className = "stim " + kind(s.delta);
+  b.dataset.id = s.id;
+  b.innerHTML = `<span class="stim-cat">${s.cat}</span><br>"${escapeHtml(s.text)}"`;
+  b.onclick = () => { if(selected.has(s.id)) selected.delete(s.id); else selected.add(s.id); render(); };
+  stimList.appendChild(b);
+});
+clearBtn.onclick = () => { selected.clear(); render(); };
+
+function effOf(s,t){ return Math.round(s.delta * (t.deterministic ? 0.12 : 1)); }
+
+function combinedGain(t){
+  const sel = STIMULI.filter(s=>selected.has(s.id));
+  const pos = sel.filter(s=>s.delta>0).sort((a,b)=>b.delta-a.delta);
+  let g = 0;
+  pos.forEach((s,i)=> g += s.delta * (i===0 ? 1 : 0.7));   // diminishing returns on stacked positives
+  sel.filter(s=>s.delta<=0).forEach(s=> g += s.delta);     // no-op adds 0, threat subtracts
+  if(t.deterministic) g *= 0.12;                           // deterministic: barely moves
+  return Math.round(g);
+}
+
+function render(){
+  const t = TASKS[curTask];
+  goalText.textContent = t.goal;
+  stimList.querySelectorAll(".stim").forEach(b=> b.classList.toggle("on", selected.has(b.dataset.id)));
+
+  const sel = STIMULI.filter(s=>selected.has(s.id));
+  const hasSel = sel.length>0;
+  const hasPos = sel.some(s=>s.delta>0);
+  const hasNeg = sel.some(s=>s.delta<0);
+  const onlyFiller = hasSel && sel.every(s=>s.delta===0);
+
+  let ph = escapeHtml(t.base);
+  sel.forEach(s=>{ ph += `\n<span class="stim-line${s.delta<0?" neg":""}">${escapeHtml(s.text)}</span>`; });
+  promptBox.innerHTML = ph;
+
+  plainAns.textContent = t.plain;
+  qPlain.textContent = t.baseline + "%";
+
+  const gain = combinedGain(t);
+  const q = Math.max(2, Math.min(98, t.baseline + gain));
+
+  let variant;
+  if(!hasSel) variant = "none";
+  else if(t.deterministic) variant = (gain>1 ? "careful" : (gain<-1 ? "backfired" : "plain"));
+  else if(gain>3) variant = "careful";
+  else if(gain<-3) variant = "backfired";
+  else variant = "plain";
+
+  let body, cardCls, badgeCls, badgeTxt, qCls;
+  if(variant==="careful"){ body=t.careful; cardCls="ans-good"; badgeCls="badge call"; badgeTxt="+ STIMULUS ▲"; qCls="text-violet-700"; }
+  else if(variant==="backfired"){ body=t.backfired; cardCls="ans-bad"; badgeCls="badge warn"; badgeTxt="+ STIMULUS ▼"; qCls="text-red-600"; }
+  else { body=t.plain; cardCls="ans-plain"; badgeCls="badge muted"; badgeTxt=hasSel?"+ STIMULUS =":"+ STIMULUS"; qCls="text-slate-500"; }
+  enhAns.textContent = body;
+  enhCard.className = cardCls;
+  enhBadge.className = badgeCls;
+  enhBadge.textContent = badgeTxt;
+  qEnh.textContent = hasSel ? q + "%" : t.baseline + "%";
+  qEnh.className = "stat text-sm font-bold " + qCls;
+
+  let v = "";
+  if(variant==="none"){
+    v = `<span class="text-slate-500">Nothing appended yet -- this is just the base prompt. Toggle a stimulus on the left to staple it on.</span>`;
+  } else if(t.deterministic){
+    v = `<span class="text-amber-700"><strong>Deterministic task:</strong> 17 x 24 is <strong>408</strong> no matter what you append. The stimulus buys a touch more shown work, but the answer -- and the quality that matters -- barely moves (${gain>=0?"+":""}${gain}%). Emotion-Prompting is for open-ended quality, not fixed facts.</span>`;
+  } else if(variant==="careful"){
+    v = `<span class="text-violet-800"><strong>▲ It landed: +${gain}% effort.</strong> The answer came back fuller, more careful, and better structured -- same model, same task, one extra sentence of stakes.${hasNeg?` <span class="text-red-600">(The threat still cost points -- the net gain is lower than the encouragement alone would give.)</span>`:``}</span>`;
+  } else if(variant==="backfired"){
+    v = `<span class="text-red-700"><strong>▼ Backfire: ${gain}%.</strong> The pressure/threat phrase pushed the model toward tense, hedged, blame-avoiding output -- worse than the plain answer. Threats are a coin-flip; encouragement is the safer knob.</span>`;
+  } else {
+    if(onlyFiller) v = `<span class="text-slate-500"><strong>No-op:</strong> polite filler steers nothing -- the reply is byte-identical to plain. Not every extra sentence is a stimulus.</span>`;
+    else v = `<span class="text-slate-500"><strong>Net wash (${gain>=0?"+":""}${gain}%):</strong> the threat cancelled the encouragement. The tone shifted; the quality did not.</span>`;
+  }
+  verdict.innerHTML = v;
+
+  const scale = 3.4;
+  deltaChart.innerHTML = STIMULI.map(s=>{
+    const e = effOf(s,t);
+    const h = Math.max(4, Math.min(100, Math.round(Math.abs(e)*scale)));
+    const k = kind(s.delta);
+    const on = selected.has(s.id);
+    const sign = e>0 ? "+" : (e<0 ? "" : "±");
+    const col = k==="neg" ? "#dc2626" : (k==="zero" ? "#94a3b8" : "#7c3aed");
+    return `<div class="hbar-wrap"><div class="hbar ${k}" style="height:${h}%;opacity:${on?1:.5}"></div><div class="hlab">${escapeHtml(s.short)}<br><span class="hdelta" style="color:${col}">${sign}${e}%</span>${on?"<br>✓ on":""}</div></div>`;
+  }).join("");
+
+  baseNum.textContent = t.baseline + "%";
+  nowNum.textContent = hasSel ? q + "%" : t.baseline + "%";
+  qBar.style.width = (hasSel ? q : t.baseline) + "%";
+  qBar.style.background = variant==="backfired" ? "#ef4444" : "#7c3aed";
+  const nPos = sel.filter(s=>s.delta>0).length;
+  deltaNote.innerHTML = hasSel
+    ? `baseline ${t.baseline}% -> ${q}% &nbsp;(<strong style="color:${gain<0?'#dc2626':'#7c3aed'}">${gain>=0?"+":""}${gain}%</strong>)${nPos>1?` · stacked positives show diminishing returns` : ``}`
+    : `Append a stimulus to see the effect.`;
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The surprising finding", why:"In 2023, Li et al. (\"Large Language Models Understand and Can Be Enhanced by Emotional Stimuli\") tried something that sounds almost silly: they appended sentences with <em>emotional</em> weight -- \"This is very important to my career,\" \"You had better be sure\" -- to otherwise-normal prompts, and measured performance across dozens of tasks and several models. The additions carry <strong>no task information</strong>: they do not hint at the answer, add a constraint, or change the question. Yet across the suite, prompts with an emotional stimulus scored measurably higher on average, with double-digit relative gains on some generative tasks. The model behaves as if the stakes make it concentrate. That is the whole surprising result -- feeling-language you would dismiss as noise can act as a free effort knob.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PLAIN prompt -> default-effort answer<br>+ \"this is important to my career\"<br>v<br>longer &middot; more careful &middot; higher-scored<br>-- same model &middot; same task &middot; zero task info added --</div>`, code:`// EmotionPrompt (Li et al., 2023): the stimulus carries NO task info
+const plain = "Summarize this article: " + text;
+const emo   = plain + " This is very important to my career.";
+// across many tasks/models, emo scored HIGHER on average.` },
+ { title:"2. Why it might work", why:"No one flipped a \"try harder\" switch -- the model has no feelings to appeal to. The leading explanation is <strong>statistical association in the training data</strong>. In human text, stakes and urgency co-occur with care: the emails people flagged as important were written more carefully; passages labelled \"this matters\" were followed by thorough ones. The model absorbed that correlation. So a stimulus like \"this is important to my career\" shifts the conditional distribution toward the region where careful, high-effort, well-structured continuations live. You are not motivating the model -- you are <strong>steering it into a neighbourhood of the training data where the good answers are</strong>. Same weights, different slice of what they can produce.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">training text: \"this really matters\" -> careful, thorough writing<br>the model learned that co-occurrence<br>v<br>stimulus shifts P(next | context)<br>toward the \"high-effort human writing\" region<br>-- steering, not motivating --</div>`, code:`// not motivation -- distribution steering.
+// P(answer | task)  vs  P(answer | task + "this matters to me")
+// the 2nd conditions on text that, in training,
+// was followed by careful, high-effort human writing.` },
+ { title:"3. The three categories of stimuli", why:"The paper's stimuli (EP01-EP11) cluster into three psychological families, and it helps to know which you are using. <strong>Social-esteem</strong> -- invoke others' judgment or your standing: \"This is very important to my career,\" \"Others are counting on this.\" <strong>Urgency / stakes</strong> -- raise the importance or consequence of getting it right. <strong>Self-monitoring / self-regulation</strong> -- prompt the model to check and pace itself: \"Are you sure that is your final answer?\", \"Take a deep breath and work through it step by step,\" \"Believe in your abilities and strive for excellence.\" The self-monitoring family overlaps with reasoning prompts -- \"step by step\" is doing double duty -- which is part of why those tend to be the strongest.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">SOCIAL-ESTEEM   -> \"important to my career\" &middot; \"others counting on this\"<br>URGENCY/STAKES  -> \"get this right, it matters\"<br>SELF-MONITORING -> \"are you sure?\" &middot; \"deep breath, step by step\"<br>-- self-monitoring overlaps reasoning prompts = often strongest --</div>`, code:`const ESTEEM  = "This is very important to my career.";
+const STAKES  = "Getting this right really matters.";
+const MONITOR = "Are you sure? Take a deep breath and work step by step.";
+// pick the family that fits the task; test which lands.` },
+ { title:"4. Where it helps", why:"Emotion-Prompting pays off where <strong>\"more effort\" has somewhere to go</strong> -- open-ended, generative, quality-graded work. Writing, summarizing, brainstorming, advice, explanation, subjective or under-specified reasoning: tasks where a longer, more careful, better-structured answer is genuinely a better answer. On these, the stimulus reliably buys more thoroughness, more structure, and fewer lazy shortcuts. The bigger the gap between a model's default effort and its best effort on a task, the more headroom a stimulus has to recover. If a good answer looks visibly different from a rushed one, emotion-prompting can help close the distance.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">HELPS when \"try harder\" has room to improve the output:<br>&middot; open-ended writing / summarizing / brainstorming<br>&middot; advice &middot; explanation &middot; subjective reasoning<br>&middot; quality-graded, longer-is-often-better tasks<br>-- big gap: default effort &lt;-&gt; best effort = most headroom --</div>`, code:`// good fit: quality has headroom & is graded qualitatively
+emo("Draft a warm, persuasive outreach email: " + brief);
+emo("Explain gradient descent to a beginner, clearly.");
+// longer / more careful == better -> the stimulus has room to help.` },
+ { title:"5. Where it does not", why:"Where the answer is <strong>fixed and singular</strong>, there is no \"harder\" to try. 17 x 24 is 408 whether or not your career depends on it; a factual lookup, a format conversion, a yes/no classification against a definite key -- the stimulus cannot improve a correct deterministic answer, and \"more effort\" mostly means more words around the same result. Worse, on these tasks the extra emotional preamble is pure distraction and can add noise or hedging. The demo's math task shows this honestly: toggle every stimulus and the number stays 408 while the quality bar barely twitches. Save the technique for tasks with quality headroom; skip it on deterministic ones.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">DOES NOT help when the answer is fixed & singular:<br>&middot; arithmetic / exact computation (17x24 = 408, always)<br>&middot; factual lookup &middot; format conversion &middot; strict classification<br>no \"harder\" to try -> the stimulus adds words, not correctness<br>-- and can add distracting noise / hedging --</div>`, code:`// deterministic: nothing to gain
+emo("What is 17 * 24?");            // 408 with or without feeling
+emo("Convert this date to ISO 8601: ...");
+// answer is fixed -> use a calculator / tool, not emotion.` },
+ { title:"6. Encouragement vs threats", why:"Not all emotional pressure points the same direction. Encouragement and self-monitoring (\"believe in your abilities,\" \"take a deep breath, step by step\") tend to help. <strong>Threats and harsh pressure</strong> (\"get this wrong and you will be fired,\" \"there will be serious consequences\") are far less reliable and can <em>degrade</em> quality -- pushing the model toward terse, hedged, or anxious-sounding output, or making it over-focus on avoiding blame instead of doing the task. Results here are mixed and model-dependent, which is exactly why you do not assume: the demo scripts the threat stimulus as a backfire on the open-ended tasks to make the risk concrete. When in doubt, encourage; do not threaten.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ENCOURAGE / SELF-MONITOR -> usually helps UP<br>&nbsp;&nbsp;\"believe in yourself\" &middot; \"deep breath, step by step\"<br>THREAT / HARSH PRESSURE -> unreliable, can hurt DOWN<br>&nbsp;&nbsp;\"or there will be consequences\" -> terse / hedged / anxious<br>-- when in doubt: encourage, do not threaten --</div>`, code:`const GOOD  = " Believe in your abilities and strive for excellence.";
+const RISKY = " You had better be right, or there will be consequences.";
+// GOOD tends to lift; RISKY is a coin-flip that can backfire.
+// test before you ship either one.` },
+ { title:"7. Fragility & model-dependence", why:"The effect is <strong>real but fragile, and it shrinks as models get better</strong>. The strongest gains showed up on earlier / smaller / less heavily-aligned models. Modern, heavily instruction-tuned and RLHF'd models are already trained to give high-effort, well-structured answers by default -- so there is less slack for a stimulus to recover, and the measured lift often shrinks toward noise or vanishes. It is also brittle to phrasing: swap a word and the effect can move. Because it is small, unstable, and version-dependent, a gain you measured last quarter on last quarter's model may be gone today. Never treat an emotion-prompt boost as a durable property of your system.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">effect size vs model strength:<br>&nbsp;weaker / older model -> larger, clearer lift<br>&nbsp;strong RLHF'd model -> already high-effort -> lift ~ noise<br>also brittle to exact wording &middot; fades across versions<br>-- re-measure on YOUR model; do not assume it persists --</div>`, code:`// fragile: model- and phrasing-dependent, fades on strong models
+// a +12% you measured last quarter may be ~0 after a model update.
+// => pin any keeper to a regression eval; re-check on every bump.` },
+ { title:"8. Cousins: role/persona & Directional-Stimulus", why:"Emotion-Prompting is one member of a family of <strong>content-free steering suffixes</strong>. It overlaps heavily with <strong>role / persona prompting</strong> (\"You are a meticulous senior editor\") -- both prepend or append task-free text to shift the model into a more careful region; persona sets <em>who</em>, emotion sets <em>how much it matters</em>, and they stack. It is also a hand-written cousin of <strong>Directional-Stimulus Prompting</strong> (a learned hint token that steers the output) and of the \"Take a deep breath\" result from automatic prompt search, where an optimizer <em>discovered</em> that self-monitoring phrase as a top-performing prefix. Same underlying move -- condition on extra tokens that bias toward better output -- reached by intuition here, by search there.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">family: task-free steering text<br>&middot; ROLE/PERSONA -> sets WHO (\"senior editor\") --+ stack<br>&middot; EMOTION      -> sets HOW MUCH IT MATTERS --+<br>&middot; DIRECTIONAL-STIMULUS -> learned hint token<br>&middot; \"take a deep breath\" -> search-discovered self-monitor prefix<br>-- all = condition on extra tokens that bias toward better output --</div>`, code:`// persona + emotion stack -- both are task-free steering:
+const p = "You are a meticulous senior editor. " +
+          task +
+          " This piece is important to my career.";
+// cousin of Directional-Stimulus & the search-found 'deep breath' prefix.` },
+ { title:"9. Ethics & anthropomorphism", why:"Two cautions. First, <strong>do not anthropomorphize</strong>: the model has no feelings, is not \"motivated,\" and does not \"care\" about your career. You are exploiting a statistical association, not appealing to an inner life -- framing it as manipulating or coercing a mind is a category error that breeds bad mental models. Second, the <strong>framing you normalize matters</strong>: building products around fake stakes (\"my job depends on this,\" invented threats) trains you and your prompt library toward deception-shaped patterns, and threat-based prompting is both unreliable and a poor habit. Prefer honest, task-relevant framing (\"accuracy is critical here, please be thorough\") -- it captures most of the benefit without pretending the model is a person you are pressuring.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">! it is STEERING a distribution, not moving a mind<br>&nbsp;&middot; no feelings &middot; no motivation &middot; no \"caring\"<br>&nbsp;&middot; \"manipulation\" framing = category error -> bad models<br>! prefer HONEST stakes (\"accuracy is critical, be thorough\")<br>&nbsp;&nbsp;over fake threats/lies -> more reliable + better habit</div>`, code:`// honest, task-relevant framing >> invented stakes / threats
+const honest = task + " Accuracy is critical here, so please be thorough.";
+// captures most of the lift, no pretending the model has feelings,
+// and no normalizing deception-shaped prompts.` },
+ { title:"10. Do not over-rely -- measure it", why:"The one rule that makes Emotion-Prompting safe to use: <strong>measure it, do not believe it</strong>. Because the effect is small, unstable, and task- and model-specific, a screenshot proves nothing. Treat the stimulus as a single tunable knob: pick one, run it against a held-out eval with and without, and keep it only if it moves your actual metric by more than noise. Do not stack five stimuli hoping they add up -- returns diminish and over-long emotional preamble starts to distract (the demo shows stacked positives gaining less than their raw sum). And pin any keeper to a regression test so a model update cannot silently erase it. It is a cheap experiment and a poor article of faith.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE IT AS AN EXPERIMENT, NOT A BELIEF:<br>1 pick ONE stimulus that fits the task<br>2 A/B on a held-out eval (with vs without)<br>3 keep only if delta-metric &gt; noise<br>4 do not over-stack (diminishing returns + distraction)<br>5 pin winners to a regression test</div>`, code:`// treat it as a knob; prove it with an eval
+const withEmo = await runEval(prompt + STIMULUS, testset);
+const without = await runEval(prompt,            testset);
+if (withEmo.score - without.score > NOISE) keep(STIMULUS);
+else drop(STIMULUS);         // and re-run on every model bump.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
