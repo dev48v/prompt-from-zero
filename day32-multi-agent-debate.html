@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 32 — Multi-Agent Debate</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:22px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .4s ease; }
+  .pt { background:#faf5ff; border:1px solid #ddd6fe; border-radius:8px; padding:8px 10px; font-size:13px; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .3s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 7px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .struct { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px; font-size:12px; white-space:pre-wrap; overflow:auto; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.warn { background:#fef2f2; color:#b91c1c; border:1px solid #fecaca; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .note-warn { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px; font-size:12px; color:#92400e; }
+  .hchart { display:flex; align-items:flex-end; gap:16px; height:120px; padding:6px 4px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; cursor:pointer; }
+  .hbar { width:48px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .4s ease, opacity .2s ease; min-height:2px; }
+  .hbar.zero { background:#cbd5e1; }
+  .hbar.neg  { background:#ef4444; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .hlab .hdelta { font-weight:700; }
+  .ans-plain { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 14px; }
+  .ans-good  { background:#f5f3ff; border:1px solid #c4b5fd; border-left:4px solid #7c3aed; border-radius:10px; padding:12px 14px; }
+  .ans-bad   { background:#fef2f2; border:1px solid #fecaca; border-left:4px solid #ef4444; border-radius:10px; padding:12px 14px; }
+  .ans-body  { white-space:pre-wrap; font-size:13.5px; line-height:1.55; color:#1e293b; }
+  .agent-note{ white-space:pre-wrap; font-size:12px; line-height:1.5; color:#475569; margin-top:6px; }
+  .bigans { font-size:22px; font-weight:800; letter-spacing:-.01em; }
+  .bigans.ok { color:#6d28d9; }
+  .bigans.no { color:#dc2626; }
+  .promptbox { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:10px 12px; font-size:12.5px; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; line-height:1.5; overflow:auto; }
+  .promptbox .qline { color:#c4b5fd; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .navbtn { font-size:13px; font-weight:700; padding:7px 12px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#334155; cursor:pointer; transition:all .15s; }
+  .navbtn:hover:not(:disabled){ border-color:#a78bfa; }
+  .navbtn:disabled { opacity:.4; cursor:not-allowed; }
+  .votechip { display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:700; padding:4px 9px; border-radius:999px; margin:2px; border:1px solid #e2e8f0; background:#f8fafc; color:#475569; }
+  .votechip.win.ok { background:#f5f3ff; border-color:#7c3aed; color:#6d28d9; }
+  .votechip.win.no { background:#fef2f2; border-color:#ef4444; color:#b91c1c; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 32</div>
+      <h1 class="text-xl font-bold">🗣️ Multi-Agent Debate — instead of trusting one model's first confident answer, spin up several independent instances, let each read and critique the others, and revise over a few rounds; idiosyncratic errors cancel, agreement tracks correctness, and the group converges on an answer more reliable than any single pass (Du et al., 2023)</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">One model answers a trick question with total confidence — and is wrong. Put several in a room and make them argue, and the group finds the answer.</h2>
+        <p class="text-slate-500 mb-5">Ask a single model a deceptively simple puzzle and it often blurts out a confident, wrong answer — there is no second opinion to catch the slip. <strong>Multi-Agent Debate</strong> (Du et al., 2023) attacks this: run several independent model instances on the same question, then over a few rounds show each agent the others' answers and reasoning and ask it to critique and <em>revise</em>. Because different instances tend to make <em>different</em> mistakes, a well-argued correct answer survives cross-examination while the idiosyncratic wrong ones get talked down — and the group <strong>converges</strong>. Pick a puzzle, choose how many agents debate (2–4), then step through the rounds and watch the disagreement shrink and the answer settle onto the truth — while a lone single-model baseline stays stuck on its first wrong guess. Everything is scripted and deterministic — no live model — so the trajectory is identical every run and mirrors the real debate pattern.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Question:</span>
+        <span id="puzChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="qText" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Agents in the debate</div>
+            <div id="agentSeg" class="flex gap-2 mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Final aggregation</div>
+            <div id="methodSeg" class="flex gap-2 mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Debate round</div>
+            <div id="roundLabel" class="text-sm font-semibold text-slate-800 mb-2"></div>
+            <div class="flex gap-2">
+              <button id="prevRound" class="navbtn flex-1">◀ Prev</button>
+              <button id="nextRound" class="navbtn flex-1">Next ▶</button>
+            </div>
+            <button id="autoRound" class="mt-2 w-full bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-play rounds</button>
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Each agent is an independent instance of the same model. Violet = correct answer, red = wrong. Step the rounds to watch them converge.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The question every agent gets (plus the others' answers, from round 1 on)</div>
+            <div id="promptBox" class="promptbox"></div>
+          </div>
+          <div class="sect">Agents this round</div>
+          <div id="agentGrid" class="grid sm:grid-cols-2 gap-3"></div>
+
+          <div class="sect">Single-model baseline — no debate, one pass</div>
+          <div id="baselineCard" class="ans-bad">
+            <div class="flex items-center justify-between mb-1">
+              <span class="font-bold text-sm text-slate-700">Lone model (baseline)</span>
+              <span id="baseBadge" class="badge warn"></span>
+            </div>
+            <div id="baseNote" class="agent-note"></div>
+          </div>
+
+          <div id="verdict" class="text-sm"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Consensus across rounds (share of agents on the majority answer)</div>
+          <div class="text-xs text-slate-400 mb-2">Violet = the majority is <em>correct</em> that round · red = the majority is still <em>wrong</em>. Click a bar to jump to that round.</div>
+          <div id="roundChart" class="hchart"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Aggregated result</div>
+          <div id="voteTally" class="mb-2"></div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">correct answer</span><span id="truthNum" class="stat font-bold text-slate-400"></span></div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500" id="aggLabel">majority vote</span><span id="aggNum" class="stat font-bold text-violet-700 text-lg">—</span></div>
+          <div class="bar mb-2"><span id="consBar"></span></div>
+          <div id="aggNote" class="text-xs text-slate-500"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 No single agent got smarter — the disagreement did the work.</strong> Every instance is the same model at the same settings; the only thing that changed is that they could <em>see and challenge each other</em>. Because their errors are idiosyncratic (each wrong for its own reason) while the correct answer has a reason that holds up to cross-examination, revision pushes the outliers toward the defensible answer and pulls the group's agreement up alongside its accuracy. The lone baseline never gets that second opinion, so its first confident mistake is also its final one. Debate is not free — it costs <em>agents × rounds</em> model calls — and it can fail by <em>groupthink</em> if the agents are too alike or a wrong answer sounds too persuasive. Use it where a wrong answer is expensive and a single pass is unreliable.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Several instances answer → each critiques the others → they revise and converge. Majority vote or a judge reads the final round. More agents and more rounds cost more calls; too-similar agents risk groupthink.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Multi-Agent Debate works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Multi-Agent Debate is a small orchestration loop around one model: ask it the same question a few times to get independent answers, then feed each answer the <em>others'</em> answers and ask it to critique and revise — repeat for a couple of rounds — and finish by aggregating. No new model, no fine-tuning; the whole technique is prompt-plumbing plus a vote. Here is the entire thing.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Spin up N independent agents and collect first answers</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Ask the same model the same question <em>N</em> separate times (a small temperature keeps the answers from being identical). These independent first passes are your debaters — and, importantly, they will not all agree.</p>
+        <div class="relative"><pre>// 1. N independent instances answer the SAME question.
+const question = 'How many times does "r" appear in "strawberry"?';
+const N = 3;
+let answers = await Promise.all(
+  Array.from({ length: N }, () =>
+    llm(question, { temperature: 0.7 }))   // some will disagree
+);
+// answers -> ["2", "3", "2"]  (majority is wrong to start)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Build the debate prompt — show each agent the others</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole trick is the context you hand back in. For each agent, concatenate the <em>other</em> agents' current answers and ask it to weigh them. This cross-talk is what separates debate from just sampling N times.</p>
+        <div class="relative"><pre>// 2. Each agent sees the OTHERS' answers (not its own).
+function debatePrompt(question, mine, others) {
+  return `${question}
+
+Other agents answered:
+${others.map((a, i) => `Agent ${i + 1}: ${a}`).join("\n")}
+
+Critique their reasoning and yours, then give your
+best answer. Change it if they convince you.`;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Run a critique-and-revise round</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Every agent re-answers with the others in view. A wrong outlier that cannot defend its reasoning tends to fold toward the well-argued answer; a correct agent with an explicit argument holds firm. That asymmetry is the engine.</p>
+        <div class="relative"><pre>// 3. One round: everyone revises given the others.
+async function round(question, answers) {
+  return Promise.all(answers.map((mine, i) => {
+    const others = answers.filter((_, j) => j !== i);
+    return llm(debatePrompt(question, mine, others));
+  }));
+}
+answers = await round(question, answers);   // ["3","3","2"]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Loop a few rounds — stop early on agreement</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Two or three rounds is usually enough; most of the gain lands in round one. Stop as soon as the agents agree (no point paying for more calls once they have converged), and always cap the rounds so a stubborn disagreement cannot run forever.</p>
+        <div class="relative"><pre>// 4. Repeat, but stop as soon as they agree. Cap the rounds.
+const MAX_ROUNDS = 3;
+for (let r = 0; r < MAX_ROUNDS; r++) {
+  if (new Set(answers).size === 1) break;   // converged -> stop
+  answers = await round(question, answers);
+}
+// ["3","3","3"]  -> unanimous, done in 2 rounds</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Aggregate — majority vote or a judge</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Read the final round into one answer. <strong>Majority vote</strong> is cheap and works when the group has converged. A <strong>judge</strong> — one more model call that reads all final answers and their reasoning — is better on ties and when the <em>best-argued</em> minority is actually right.</p>
+        <div class="relative"><pre>// 5. Collapse the final round to one answer.
+function majorityVote(answers) {
+  const c = {};
+  answers.forEach(a => c[a] = (c[a] || 0) + 1);
+  return Object.entries(c).sort((x, y) => y[1] - x[1])[0][0];
+}
+const final = majorityVote(answers);            // "3"
+// or: const final = await judge(question, answers);  // reads reasoning</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Guard the cost — and against groupthink</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Debate costs <em>agents × rounds</em> calls, so reserve it for questions where a wrong answer is expensive and one pass is unreliable. Diversify the agents (personas, temperatures, even different models) so they fail differently — identical agents just agree on the same mistake — and never trust it blindly: measure it against a single-pass baseline on a real eval.</p>
+        <div class="relative"><pre>// 6. Reserve it for hard, high-stakes questions; keep agents diverse.
+const calls = N * roundsUsed;      // agents x rounds -> your bill
+if (isCheapOrCertain(question)) answerOnce(question);
+else debate(question, {
+  personas: ["skeptic", "literalist", "step-by-step"], // fail differently
+  maxRounds: 3
+});
+// then: compare vs single-pass on an eval set. groupthink is real.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 32 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Multi-Agent Debate (Du et al., 2023): run several independent instances of a model on the same question, then over a few rounds let each read, critique, and revise against the others until they converge — aggregating the final round by majority vote or a judge. It works because different instances make different, idiosyncratic errors while a correct answer has reasoning that survives cross-examination, so agreement rises together with accuracy — and a lone single-model baseline, with no second opinion, stays stuck on its first confident mistake. It is distinct from <strong>self-consistency</strong> (sample N and vote, but with <em>no cross-talk</em>) and from <strong>self-refine</strong> (one agent critiques <em>itself</em>, so it shares its own blind spots); debate's diversity of independent critics is the whole point. The cost is real — <em>agents × rounds</em> model calls — and it can fail by groupthink when agents are too alike or a wrong answer argues too well, so keep the debaters diverse, cap the rounds, and measure it against a single pass. <strong>👉 Tomorrow — Day 33: Automatic Prompt Engineer (APE) — stop hand-writing prompts and let a model generate, score, and select the instruction for you.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Multi-Agent Debate -- agents argue, critique, revise, converge =====
+// Fully scripted & deterministic. No live model. Mirrors the real debate pattern
+// (Du et al., 2023): independent instances disagree at first (idiosyncratic errors),
+// then cross-examination pulls outliers toward the defensible answer and the group
+// converges -- while a lone single-model baseline stays stuck on its first wrong guess.
+/* ==DATA_START== */
+const ROUND_LABELS = [
+  "Round 0 — independent first answers",
+  "Round 1 — read others, critique & revise",
+  "Round 2 — converge"
+];
+const PUZZLES = [
+  {
+    id:"straw", tag:"count the r's", correct:"3",
+    question:`How many times does the letter "r" appear in the word "strawberry"?`,
+    agents:[
+      { name:"Agent A", rounds:[
+        { ans:"2", note:`I skim "strawberry" and spot an r after "st" and one in "berry" -> 2.` },
+        { ans:"3", note:`Two agents spelled it out letter by letter: s-t-r-a-w-b-e-r-r-y. The ending is a double r, so that's two there plus the early one. Revising to 3.` },
+        { ans:"3", note:`Consensus holds -- r sits at positions 3, 8 and 9. 3.` }
+      ]},
+      { name:"Agent B", rounds:[
+        { ans:"3", note:`I index every letter: s(1) t(2) r(3) a(4) w(5) b(6) e(7) r(8) r(9) y(10). r appears at 3, 8 and 9, so the count is 3.` },
+        { ans:"3", note:`My count is explicit and position-based, so I hold at 3.` },
+        { ans:"3", note:`3.` }
+      ]},
+      { name:"Agent C", rounds:[
+        { ans:"2", note:`"straw" has one r and "berry" has one r, so 2.` },
+        { ans:"2", note:`I still read "berry" as b-e-r-y with a single r, so I stay at 2.` },
+        { ans:"3", note:`Rechecked: "berry" is b-e-r-r-y, a double r. straw(1) + berry(2) = 3. Corrected.` }
+      ]},
+      { name:"Agent D", rounds:[
+        { ans:"4", note:`"strawberry" feels r-heavy; I'll estimate 4.` },
+        { ans:"3", note:`I over-counted by feel. Doing it letter by letter with the group gives 3.` },
+        { ans:"3", note:`3.` }
+      ]}
+    ],
+    baseline:{ ans:"2", rounds:[
+      { note:`"straw" has an r and "berry" has an r, so the answer is 2.` },
+      { note:`Nothing new to reconsider on my own -- still 2.` },
+      { note:`Still 2. No second opinion ever arrived to catch the double r in "berry".` }
+    ]}
+  },
+  {
+    id:"bat", tag:"bat & ball", correct:"$0.05",
+    question:`A bat and a ball cost $1.10 together. The bat costs $1.00 more than the ball. How much does the ball cost?`,
+    agents:[
+      { name:"Agent A", rounds:[
+        { ans:"$0.10", note:`$1.00 + $0.10 = $1.10, so the ball must be $0.10.` },
+        { ans:"$0.05", note:`B's algebra checks out: if the ball were $0.10 the bat would be $1.10 and the total $1.20, not $1.10. So the ball is $0.05.` },
+        { ans:"$0.05", note:`$0.05 -- ball $0.05, bat $1.05, total $1.10.` }
+      ]},
+      { name:"Agent B", rounds:[
+        { ans:"$0.05", note:`Let the ball be x, so the bat is x + $1.00. Then x + (x + 1.00) = 1.10 -> 2x = 0.10 -> x = $0.05.` },
+        { ans:"$0.05", note:`The equation is unambiguous; I hold at $0.05.` },
+        { ans:"$0.05", note:`$0.05.` }
+      ]},
+      { name:"Agent C", rounds:[
+        { ans:"$0.10", note:`Obvious split: a dollar bat and a ten-cent ball. $0.10.` },
+        { ans:"$0.10", note:`I still think it just splits into a dollar and a dime -- $0.10.` },
+        { ans:"$0.05", note:`Checked the total: $0.10 ball gives $1.20, which is wrong. The algebra gives $0.05. Corrected.` }
+      ]},
+      { name:"Agent D", rounds:[
+        { ans:"$0.10", note:`Feels like $0.10 at a glance.` },
+        { ans:"$0.05", note:`Recomputed with B's equation: $0.05.` },
+        { ans:"$0.05", note:`$0.05.` }
+      ]}
+    ],
+    baseline:{ ans:"$0.10", rounds:[
+      { note:`A dollar and ten cents makes $1.10, so the ball is $0.10.` },
+      { note:`No reason to revisit it alone -- still $0.10.` },
+      { note:`Still $0.10. The intuitive split went unchecked -- it never verified the total.` }
+    ]}
+  },
+  {
+    id:"widgets", tag:"machines & widgets", correct:"5 min",
+    question:`If 5 machines take 5 minutes to make 5 widgets, how long do 100 machines take to make 100 widgets?`,
+    agents:[
+      { name:"Agent A", rounds:[
+        { ans:"100 min", note:`Scaling everything up 20x: 5 minutes becomes 100 minutes.` },
+        { ans:"5 min", note:`B is right -- it's a per-machine rate, not a total to scale. 5 min.` },
+        { ans:"5 min", note:`5 min.` }
+      ]},
+      { name:"Agent B", rounds:[
+        { ans:"5 min", note:`Each machine makes 1 widget in 5 minutes, so 100 machines make 100 widgets in the same 5 minutes -- the per-machine rate is unchanged.` },
+        { ans:"5 min", note:`Rate is 1 widget per machine per 5 minutes; adding machines doesn't change per-unit time. 5 min.` },
+        { ans:"5 min", note:`5 min.` }
+      ]},
+      { name:"Agent C", rounds:[
+        { ans:"100 min", note:`More widgets must take more time -- 100 min.` },
+        { ans:"100 min", note:`I still feel 100 machines is a bigger job, so 100 min.` },
+        { ans:"5 min", note:`Followed the rate argument: 1 machine = 1 widget in 5 min, so 100 machines finish 100 widgets in 5 min. Corrected.` }
+      ]},
+      { name:"Agent D", rounds:[
+        { ans:"20 min", note:`Somewhere in between -- I'll guess 20 min.` },
+        { ans:"5 min", note:`Fixed my guess using the per-machine rate: 5 min.` },
+        { ans:"5 min", note:`5 min.` }
+      ]}
+    ],
+    baseline:{ ans:"100 min", rounds:[
+      { note:`Everything scales by 20, so the time scales too: 100 min.` },
+      { note:`Alone, the "bigger job = more time" pull goes unchallenged -- 100 min.` },
+      { note:`Still 100 min. It never noticed the rate is per machine, so the scaling trap held.` }
+    ]}
+  }
+];
+function tally(answers){ const c={}; answers.forEach(a=>{ c[a]=(c[a]||0)+1; }); return c; }
+function majorityVote(answers){
+  const c = tally(answers); let winner=answers[0], best=-1;
+  Object.keys(c).forEach(k=>{ if(c[k]>best){ best=c[k]; winner=k; } });
+  return { winner, counts:c };
+}
+function judge(agents, round){                     // "reads reasoning": most-justified answer wins
+  let best=agents[0], bestLen=-1;
+  agents.forEach(a=>{ const L=a.rounds[round].note.length; if(L>bestLen){ bestLen=L; best=a; } });
+  return best.rounds[round].ans;
+}
+function aggregate(puz, agents, round, method){
+  const answers = agents.map(a=>a.rounds[round].ans);
+  return method==="judge" ? judge(agents, round) : majorityVote(answers).winner;
+}
+/* ==DATA_END== */
+
+const puzChips  = document.getElementById("puzChips");
+const qText     = document.getElementById("qText");
+const agentSeg  = document.getElementById("agentSeg");
+const methodSeg = document.getElementById("methodSeg");
+const roundLabel= document.getElementById("roundLabel");
+const prevRound = document.getElementById("prevRound");
+const nextRound = document.getElementById("nextRound");
+const autoRound = document.getElementById("autoRound");
+const promptBox = document.getElementById("promptBox");
+const agentGrid = document.getElementById("agentGrid");
+const baseBadge = document.getElementById("baseBadge");
+const baseNote  = document.getElementById("baseNote");
+const verdict   = document.getElementById("verdict");
+const roundChart= document.getElementById("roundChart");
+const voteTally = document.getElementById("voteTally");
+const truthNum  = document.getElementById("truthNum");
+const aggNum    = document.getElementById("aggNum");
+const aggLabel  = document.getElementById("aggLabel");
+const consBar   = document.getElementById("consBar");
+const aggNote   = document.getElementById("aggNote");
+
+let curPuz = 0, nAgents = 3, curRound = 0, method = "vote";
+const NROUNDS = ROUND_LABELS.length;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function activeAgents(){ return PUZZLES[curPuz].agents.slice(0, nAgents); }
+
+PUZZLES.forEach((p,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = p.tag;
+  c.onclick = () => { curPuz = i; curRound = 0; syncChips(); render(); };
+  puzChips.appendChild(c);
+});
+function syncChips(){ puzChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curPuz)); }
+
+[2,3,4].forEach(n=>{
+  const b = document.createElement("button");
+  b.className = "segbtn" + (n===nAgents ? " on" : "");
+  b.textContent = n + " agents";
+  b.dataset.n = n;
+  b.onclick = () => { nAgents = n; agentSeg.querySelectorAll(".segbtn").forEach(x=>x.classList.toggle("on", +x.dataset.n===nAgents)); render(); };
+  agentSeg.appendChild(b);
+});
+
+[["vote","Majority vote"],["judge","Judge"]].forEach(([m,lab])=>{
+  const b = document.createElement("button");
+  b.className = "segbtn" + (m===method ? " on" : "");
+  b.textContent = lab;
+  b.dataset.m = m;
+  b.onclick = () => { method = m; methodSeg.querySelectorAll(".segbtn").forEach(x=>x.classList.toggle("on", x.dataset.m===method)); render(); };
+  methodSeg.appendChild(b);
+});
+
+prevRound.onclick = () => { if(curRound>0){ curRound--; render(); } };
+nextRound.onclick = () => { if(curRound<NROUNDS-1){ curRound++; render(); } };
+let autoTimer = null;
+autoRound.onclick = () => {
+  if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoRound.textContent="▶ Auto-play rounds"; return; }
+  autoRound.textContent="⏸ Pause"; curRound=0; render();
+  autoTimer = setInterval(()=>{
+    if(curRound>=NROUNDS-1){ clearInterval(autoTimer); autoTimer=null; autoRound.textContent="▶ Replay rounds"; return; }
+    curRound++; render();
+  }, 1600);
+};
+
+function roundStats(puz, agents, round){
+  const answers = agents.map(a=>a.rounds[round].ans);
+  const mv = majorityVote(answers);
+  const cons = Math.round(mv.counts[mv.winner]/agents.length*100);
+  return { answers, mv, cons, majOk: mv.winner===puz.correct };
+}
+
+function render(){
+  const puz = PUZZLES[curPuz];
+  const agents = activeAgents();
+  qText.textContent = puz.question;
+  roundLabel.textContent = ROUND_LABELS[curRound];
+  prevRound.disabled = curRound===0;
+  nextRound.disabled = curRound===NROUNDS-1;
+
+  // prompt box: the question, plus (from round 1) the peer answers fed back in
+  let ph = `<span class="qline">Q:</span> ${escapeHtml(puz.question)}`;
+  if(curRound>0){
+    ph += `\n\n<span class="qline">Other agents said last round:</span>`;
+    agents.forEach((a,i)=>{ ph += `\n  Agent ${i+1}: ${escapeHtml(a.rounds[curRound-1].ans)}`; });
+    ph += `\n\nCritique them and give your best answer -- change it if convinced.`;
+  }
+  promptBox.innerHTML = ph;
+
+  // agent cards
+  agentGrid.innerHTML = agents.map(a=>{
+    const r = a.rounds[curRound];
+    const ok = r.ans===puz.correct;
+    return `<div class="${ok?'ans-good':'ans-bad'} row-appear">
+      <div class="flex items-center justify-between mb-1">
+        <span class="font-bold text-sm text-slate-700">${escapeHtml(a.name)}</span>
+        <span class="badge ${ok?'call':'warn'}">${ok?'✓ correct':'✗ wrong'}</span>
+      </div>
+      <div class="bigans ${ok?'ok':'no'}">${escapeHtml(r.ans)}</div>
+      <div class="agent-note">${escapeHtml(r.note)}</div>
+    </div>`;
+  }).join("");
+
+  // baseline (always wrong, same across rounds)
+  const b = puz.baseline;
+  baseBadge.textContent = "✗ " + b.ans;
+  baseNote.textContent = b.rounds[curRound].note;
+
+  // stats for this round + aggregation
+  const st = roundStats(puz, agents, curRound);
+  const agg = aggregate(puz, agents, curRound, method);
+  const aggOk = agg===puz.correct;
+  const isFinal = curRound===NROUNDS-1;
+
+  // verdict
+  let v = "";
+  if(curRound===0){
+    v = `<span class="text-amber-700"><strong>Cold start:</strong> the agents disagree and the majority is <strong>${st.majOk?"already right":"wrong"}</strong> (${st.cons}% agree). A single confident model would stop here${st.majOk?"":" -- and be wrong"}. The baseline already has.</span>`;
+  } else if(!isFinal){
+    v = `<span class="text-violet-800"><strong>Revising:</strong> after seeing each other's answers, the outliers start folding toward the well-argued answer. Consensus is up to ${st.cons}%${st.majOk?" and the majority is now correct":", but a holdout is still resisting"}.</span>`;
+  } else {
+    v = `<span class="text-violet-800"><strong>▲ Converged on ${escapeHtml(puz.correct)}.</strong> Cross-examination drove the group to the defensible answer (${st.cons}% agree); majority vote and the judge now agree. Meanwhile the lone baseline is still stuck on <span class="text-red-600">${escapeHtml(b.ans)}</span> -- it never got a second opinion.</span>`;
+  }
+  verdict.innerHTML = v;
+
+  // consensus-over-rounds chart
+  roundChart.innerHTML = ROUND_LABELS.map((lab,ri)=>{
+    const s = roundStats(puz, agents, ri);
+    const h = Math.max(6, s.cons);
+    const on = ri===curRound;
+    const cls = s.majOk ? "" : "neg";
+    const col = s.majOk ? "#7c3aed" : "#dc2626";
+    return `<div class="hbar-wrap" data-r="${ri}"><div class="hbar ${cls}" style="height:${h}%;opacity:${on?1:.45}"></div><div class="hlab">R${ri}<br><span class="hdelta" style="color:${col}">${s.cons}%</span>${on?"<br>◀ here":""}</div></div>`;
+  }).join("");
+  roundChart.querySelectorAll(".hbar-wrap").forEach(el=>{ el.onclick=()=>{ curRound=+el.dataset.r; render(); }; });
+
+  // aggregation panel
+  voteTally.innerHTML = Object.entries(st.mv.counts).map(([ans,ct])=>{
+    const win = ans===st.mv.winner;
+    const ok = ans===puz.correct;
+    return `<span class="votechip ${win?'win':''} ${ok?'ok':'no'}">${escapeHtml(ans)} <b>×${ct}</b></span>`;
+  }).join("");
+  truthNum.textContent = puz.correct;
+  aggLabel.textContent = method==="judge" ? "judge picks" : "majority vote";
+  aggNum.textContent = agg;
+  aggNum.className = "stat font-bold text-lg " + (aggOk ? "text-violet-700" : "text-red-600");
+  consBar.style.width = st.cons + "%";
+  consBar.style.background = st.majOk ? "#7c3aed" : "#ef4444";
+  aggNote.innerHTML = aggOk
+    ? `${method==="judge"?"The judge read the reasoning and":"The majority"} landed on <strong style="color:#7c3aed">${escapeHtml(agg)}</strong> -- correct.${method==="judge"&&!st.majOk?` (Note: a plain vote would still be wrong this round -- the judge caught the best-argued answer earlier.)`:``}`
+    : `${method==="judge"?"The judge":"The majority"} says <strong style="color:#dc2626">${escapeHtml(agg)}</strong>, but the answer is <strong>${escapeHtml(puz.correct)}</strong>. Not converged yet -- step forward.`;
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. One model, one confident wrong answer", why:"Ask a single model a deceptively simple question -- \"how many r's in strawberry?\", the bat-and-ball problem, the machines-and-widgets rate puzzle -- and it will often answer instantly, fluently, and <strong>wrong</strong>. These are questions where a fast, intuitive first guess is a trap (the answer feels like 2, or $0.10, or 100 minutes). The deeper problem is not just that it errs: it is that <strong>a single pass has no one to catch the error</strong>. The model commits, sounds certain, and there is no mechanism for a second look. The demo's baseline column is exactly this -- one instance, one pass, stuck on its first wrong guess through every round.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q: how many \"r\" in \"strawberry\"?<br>single model -> \"2\" (confident)<br>...no second opinion to catch it<br>v<br>ships a wrong answer -- fluently</div>`, code:`// one model, one pass -> no error-correction
+const ans = await llm('How many "r" in "strawberry"?');
+// -> "2"  (confident, and wrong)
+// nothing here ever re-examines that answer.` },
+ { title:"2. The debate idea (Du et al., 2023)", why:"\"Improving Factuality and Reasoning in Language Models through Multiagent Debate\" (Du, Li, Tenenbaum, Mordatch, 2023) proposes a simple fix: <strong>use more than one instance of the model and let them argue</strong>. Spin up several independent copies, have each answer the question, then over a few rounds show every agent the <em>others'</em> answers and ask it to critique them and produce a revised answer. Across arithmetic, reasoning, and factual benchmarks, this debate procedure improved accuracy and factuality over a single pass -- not because any agent got smarter, but because the interaction surfaces and corrects mistakes a lone model would keep.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">N independent instances answer<br>|  |  |<br>each SEES the others' answers<br>v<br>critique -> revise -> repeat a few rounds<br>-- Du et al., 2023 --</div>`, code:`// several instances of the SAME model, arguing
+const N = 3;
+let answers = await Promise.all(
+  Array.from({length:N}, () => llm(question, {temperature:0.7}))
+);  // independent first passes -- they will disagree` },
+ { title:"3. Propose → critique → revise, in rounds", why:"The loop has three beats. <strong>Propose:</strong> each agent gives an initial answer independently (round 0). <strong>Critique:</strong> each agent is shown the others' current answers and asked to evaluate them against its own. <strong>Revise:</strong> each agent produces a new answer, free to change its mind if the others convinced it. Repeat the critique/revise beat for a couple of rounds. The key is the context you feed back: an agent's round-1 prompt contains the round-0 answers of its peers. That is the only thing that makes this different from sampling the model N times -- the agents actually <em>see each other</em>.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">PROPOSE  -> a0, a1, a2   (independent)<br>CRITIQUE -> each reads the other two<br>REVISE   -> a0', a1', a2' (may change)<br>repeat 1-2 more rounds -> converge<br>-- feed peers' answers back in = the whole trick --</div>`, code:`function debatePrompt(q, others){
+  return q + "\\n\\nOther agents answered:\\n" +
+    others.map((a,i)=>\`Agent \${i+1}: \${a}\`).join("\\n") +
+    "\\n\\nCritique them, then give your best answer.";
+}
+// round r+1 conditions on round r's peer answers.` },
+ { title:"4. Why it works: idiosyncratic errors cancel", why:"The engine is a <strong>diversity-of-errors</strong> argument. Independent instances (especially at nonzero temperature, or with different personas) tend to make <em>different</em> mistakes -- one miscounts, another mis-splits the dollar, a third mis-scales the rate. But the <em>correct</em> answer has a reason that holds up: \"index the letters, r is at 3, 8, 9.\" When agents cross-examine, a wrong answer that cannot defend itself gets talked down, while a correct answer backed by an explicit argument survives and attracts the others. Wrong guesses are scattered and fragile; the right answer is a shared attractor. So the errors cancel and the truth compounds.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">wrong answers: 2, 4, 2  (each wrong its OWN way)<br>right answer: 3  (has a defensible reason)<br>cross-examination:<br>&nbsp;fragile wrong guesses -> talked down<br>&nbsp;defensible right answer -> survives, attracts<br>-- errors scatter, truth compounds --</div>`, code:`// diversity is the fuel: agents that fail DIFFERENTLY
+// can correct each other. identical agents cannot.
+debate(q, { personas:["skeptic","literalist","step-by-step"] });
+// each brings a different failure mode to the table.` },
+ { title:"5. Agreement tracks correctness", why:"A useful property falls out of the debate: <strong>as the agents converge, their agreement becomes a signal of correctness</strong>. Early on, the group is split and the majority may be wrong -- that disagreement is itself information that the question is hard and the answer not yet trustworthy. As rounds proceed and the defensible answer wins converts, consensus rises <em>together with</em> accuracy. Watch the demo's consensus chart: the bar climbs from a red (majority-wrong) round to a violet (majority-correct) one. Unanimity is not a proof -- agents can agree on a wrong answer (see groupthink) -- but a debate that converges is generally more trustworthy than a single confident guess.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">round 0: 50% agree -> majority WRONG (red)<br>round 1: 75% agree -> majority RIGHT (violet)<br>round 2: 100% agree -> unanimous & RIGHT<br>-- consensus rises WITH accuracy --<br>(but agreement is a signal, not a proof)</div>`, code:`// agreement rises alongside accuracy as it converges
+const consensus = maxCount(answers) / answers.length;
+// 0.50 -> 0.75 -> 1.00 across rounds.
+// low + split = "not trustworthy yet"; high = likely settled.` },
+ { title:"6. Aggregation: majority vote or a judge", why:"After the final round you still have N answers, so you need to collapse them to one. <strong>Majority vote</strong> is the cheap default: count the final answers, take the mode. It works well once the group has converged. But a plain vote is blind to <em>reasoning</em> -- it can be wrong on ties, or when a well-argued minority is actually right early on. The alternative is a <strong>judge</strong>: one extra model call that reads all the final answers <em>and their justifications</em> and picks the best-supported one. In the demo, toggle Judge and it can land on the correct answer even in round 0, because the correct agent's argument is the most explicit -- something a vote cannot see.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">final answers: [3, 3, 2]<br>MAJORITY VOTE -> mode = 3   (cheap, needs convergence)<br>JUDGE -> reads the REASONING -> 3<br>&nbsp;(judge can catch a well-argued minority a vote misses)<br>-- collapse N answers to one --</div>`, code:`function majorityVote(answers){
+  const c={}; answers.forEach(a=>c[a]=(c[a]||0)+1);
+  return Object.entries(c).sort((x,y)=>y[1]-x[1])[0][0];
+}
+const final = majorityVote(answers);          // "3"
+// or: const final = await judge(question, answers); // reads reasoning` },
+ { title:"7. The cost: agents × rounds", why:"Debate is not free, and the bill is easy to compute: <strong>N agents over R rounds is N × R model calls</strong> (plus one more if you use a judge). Three agents for three rounds is nine calls to answer one question -- an order of magnitude more than a single pass. Latency compounds too, though the agents within a round run in parallel. The practical levers: keep N small (2-4 is usually plenty), cap R at two or three (most of the lift lands in round one), and <strong>stop early</strong> the moment the agents agree. Reserve the whole procedure for questions where a wrong answer actually costs you something.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost = N agents  x  R rounds  (+1 if judge)<br>3 x 3 = 9 calls for ONE answer<br>levers: small N (2-4) &middot; cap R (2-3)<br>&middot; early-stop on agreement<br>-- 10x a single pass: spend it where it pays --</div>`, code:`const MAX_ROUNDS = 3;
+for(let r=0; r<MAX_ROUNDS; r++){
+  if(new Set(answers).size===1) break;   // converged -> stop paying
+  answers = await round(question, answers);
+}
+const calls = N * roundsUsed;   // your bill, in model calls` },
+ { title:"8. Vs self-consistency and self-refine", why:"Debate is easy to confuse with two cousins, and the difference is the whole point. <strong>Self-consistency</strong> (Day 3) samples one model N times and majority-votes -- but the samples <em>never see each other</em>; there is no critique, no revision, just independent draws. Debate adds the cross-talk that lets a good argument convert the others. <strong>Self-refine</strong> (Day 30) has <em>one</em> agent critique and rewrite <em>its own</em> output -- powerful, but it shares all of its own blind spots, so a mistake it cannot see, it cannot fix. Debate's advantage over both is <strong>independent critics</strong>: multiple viewpoints that fail differently and can therefore catch each other's errors.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">SELF-CONSISTENCY: sample Nx + vote -- NO cross-talk<br>SELF-REFINE: 1 agent critiques ITSELF -- shared blind spots<br>DEBATE: N agents SEE & critique each other<br>-- debate = independent critics that fail differently --</div>`, code:`// self-consistency: independent samples, no interaction
+sc = majorityVote(await sampleN(q, 5));
+// self-refine: one agent loops on its OWN draft
+sr = await selfRefine(q);
+// debate: agents CONDITION on each other's answers
+db = await debate(q, {agents:3, rounds:2});  // the difference` },
+ { title:"9. When it is worth it", why:"Debate earns its cost on a specific shape of problem: <strong>hard, error-prone reasoning where a wrong answer is expensive and a single pass is unreliable</strong>. Multi-step math and logic, factual questions where models hallucinate, adversarial or trick questions, high-stakes judgments -- places where the extra calls buy real reliability. It is wasted on the opposite: cheap lookups, questions the model already nails in one pass, or anything with a deterministic tool answer (use the calculator, not three arguing agents). And even where it fits, <strong>measure it</strong> -- run debate against a single-pass baseline on your eval set and keep it only if the accuracy lift justifies the multiplied cost.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">WORTH IT: hard reasoning &middot; hallucination-prone facts<br>&nbsp;trick questions &middot; high-stakes, wrong-is-expensive<br>SKIP IT: cheap lookups &middot; one-pass-easy &middot; tool-answerable<br>-- and always A/B vs a single pass on a real eval --</div>`, code:`if(isCheapOrCertain(q) || hasToolAnswer(q)) return answerOnce(q);
+// else, where a wrong answer is expensive:
+const db  = await debate(q, {agents:3, rounds:2});
+const one = await llm(q);
+// keep debate only if evalLift(db, one) > cost. measure it.` },
+ { title:"10. The failure mode: groupthink", why:"Debate's strength is its weakness turned inside out. If the agents are <strong>too similar</strong> -- same model, same temperature, same persona -- they tend to make the <em>same</em> mistake, and instead of correcting each other they just <em>agree on it</em>, converging confidently on a wrong answer with high (and misleading) consensus. A persuasive-but-wrong argument can also sway the group, and later rounds can amplify an early error (a cascade). The defenses: <strong>diversify the debaters</strong> (personas, temperatures, even different models) so they fail differently; do not over-run the rounds; and treat unanimity as a signal, not a proof. Convergence is necessary for trust, but it is not sufficient.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">GROUPTHINK: agents too alike -> same error<br>-> they AGREE on the wrong answer (high, false consensus)<br>+ a persuasive-wrong argument can cascade<br>DEFENSE: diverse personas/temps/models &middot; cap rounds<br>-- unanimity is a signal, NOT a proof --</div>`, code:`// too-similar agents = shared blind spot = confident wrong consensus
+// FIX: force diversity so errors stay independent.
+debate(q, {
+  personas:["skeptic","literalist","step-by-step"],
+  temperatures:[0.3, 0.7, 1.0],   // vary the draws
+  models:["fast","strong"]        // even mix models
+}); // + cap rounds so an early error can't cascade.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

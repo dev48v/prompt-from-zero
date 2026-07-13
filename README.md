@@ -38,6 +38,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 29 — Analogical Prompting](https://dev48v.infy.uk/prompt/day29-analogical.html) — `day29-analogical.html`
 - [PromptFromZero · Day 30 — Self-Refine](https://dev48v.infy.uk/prompt/day30-self-refine.html) — `day30-self-refine.html`
 - [PromptFromZero · Day 31 — Emotion-Prompting](https://dev48v.infy.uk/prompt/day31-emotion-prompting.html) — `day31-emotion-prompting.html`
+- [PromptFromZero · Day 32 — Multi-Agent Debate](https://dev48v.infy.uk/prompt/day32-multi-agent-debate.html) — `day32-multi-agent-debate.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
