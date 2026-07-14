@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 33 — Automatic Prompt Engineer (APE)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:20px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .5s ease; }
+  .bar.lose > span { background:#cbd5e1; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .demo-tbl { width:100%; border-collapse:collapse; font-size:12.5px; }
+  .demo-tbl td { padding:4px 8px; border-bottom:1px solid #eef2f7; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .demo-tbl td.arrow { color:#a78bfa; text-align:center; width:24px; }
+  .demo-tbl td.out { color:#6d28d9; font-weight:600; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .cand .instr { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:12.5px; color:#1e293b; line-height:1.4; }
+  .exchip { display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 6px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #e2e8f0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .exchip.ok { background:#f5f3ff; border-color:#c4b5fd; color:#6d28d9; }
+  .exchip.no { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .navbtn { font-size:13px; font-weight:700; padding:7px 12px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#334155; cursor:pointer; transition:all .15s; }
+  .navbtn:hover:not(:disabled){ border-color:#a78bfa; }
+  .navbtn:disabled { opacity:.4; cursor:not-allowed; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:60px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .winbox { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px 14px; }
+  .winbox .instr { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:13.5px; color:#c4b5fd; line-height:1.5; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 33</div>
+      <h1 class="text-xl font-bold">🔮 Automatic Prompt Engineer (APE) — stop hand-writing the instruction: define the task with a few input→output examples, let a model <em>generate</em> many candidate instructions, <em>score</em> each on how well it reproduces held-out examples, and <em>select</em> the winner — then resample near it for an even better one (Zhou et al., 2022)</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">You have a handful of examples but no idea what to <em>tell</em> the model. Let the model write the instruction for you — many drafts, scored on held-out examples, best one wins.</h2>
+        <p class="text-slate-500 mb-5">Hand-writing a good prompt is guesswork: you try a phrasing, eyeball a few outputs, tweak, repeat. <strong>Automatic Prompt Engineer</strong> (Zhou et al., 2022) turns that guesswork into <em>search</em>. Give it a task defined only by a few input→output demonstrations. A model then (1) <strong>proposes</strong> several candidate instruction strings inferred from the demos — "Write the antonym of the input word", "Give the opposite", "Reverse the meaning"… ; (2) each candidate is <strong>scored</strong> by how many <em>held-out</em> examples it reproduces correctly (execution accuracy); (3) the top-scoring instruction is <strong>selected</strong>; and (4) an optional round 2 <strong>resamples</strong> variations near the winner, which usually scores higher still. Pick a task, step through the two rounds, and watch the candidates sort by score, the winner light up, and the best accuracy climb. Everything is scripted and deterministic — no live model — but faithful to APE's propose → score → select loop.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <span id="taskChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="taskTitle" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">The task = a few demos</div>
+            <table class="demo-tbl mb-4"><tbody id="demoBody"></tbody></table>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Held-out scoring set</div>
+            <p class="text-[11px] text-slate-400 mb-1 leading-snug">Not shown to the proposer. Each candidate instruction is graded on how many of these it reproduces.</p>
+            <table class="demo-tbl mb-4"><tbody id="heldBody"></tbody></table>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">APE round</div>
+            <div id="roundSeg" class="flex flex-col gap-2 mb-2"></div>
+            <button id="autoRound" class="mt-1 w-full bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-play rounds</button>
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Round 1 proposes instructions from the demos. Round 2 resamples variations near round 1's winner. Winner is highlighted in violet.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">What APE does this round</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="roundNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+
+          <div class="sect">Candidate instructions — scored on the held-out set, best sorted to the top</div>
+          <div id="candList" class="space-y-2"></div>
+
+          <div class="sect">✅ Selected instruction (argmax over candidates)</div>
+          <div id="winBox" class="winbox">
+            <div class="flex items-center justify-between mb-1">
+              <span class="text-xs uppercase font-bold text-violet-300 tracking-wider">best this round</span>
+              <span id="winPct" class="stat font-bold text-lg text-white"></span>
+            </div>
+            <div id="winInstr" class="instr"></div>
+          </div>
+
+          <div id="verdict" class="text-sm"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 grid md:grid-cols-3 gap-4">
+        <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Best held-out accuracy per round</div>
+          <div class="text-xs text-slate-400 mb-2">The whole point of the resample step: round 2's best beats — or at worst matches — round 1's best.</div>
+          <div id="scoreChart" class="hchart"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Search so far</div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">candidates evaluated</span><span id="evalNum" class="stat font-bold text-slate-700"></span></div>
+          <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">held-out examples</span><span id="heldNum" class="stat font-bold text-slate-700"></span></div>
+          <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">best accuracy</span><span id="bestNum" class="stat font-bold text-violet-700 text-lg"></span></div>
+          <div class="bar mb-2"><span id="bestBar"></span></div>
+          <div id="bestNote" class="text-xs text-slate-500"></div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The prompt was never written by a human — it was searched for.</strong> APE treats the instruction as the thing to optimize and the model as both the <em>proposer</em> (it drafts candidate instructions from the demos) and the <em>executor</em> (it runs each candidate to see how it scores). Because the scoring is objective — execution accuracy on a held-out set the proposer never saw — you can rank many phrasings automatically and keep the best, then resample near it to climb higher. It routinely finds instructions a human would not think to write, and it costs many model calls (proposals × held-out evaluations). Its two hard requirements: a <strong>dev set</strong> of examples and a <strong>scorer</strong> that can grade an output. Where those exist, APE — and its descendants like DSPy's optimizers — turns prompt engineering into gradient-free program search.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Propose candidate instructions from demos → score each on a held-out set → select the argmax → resample near the winner. More candidates and a bigger dev set cost more evaluations but search more of the instruction space.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How APE works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">APE is a tiny optimization loop around one model: describe the task with a few examples, ask the model to <em>propose</em> instructions, <em>score</em> each proposal against a held-out set, keep the best, and optionally <em>resample</em> near the winner. No fine-tuning, no gradients — just generate, evaluate, select. Here is the whole thing.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Define the task as demos + a held-out scoring set</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You do not write the instruction — you provide <em>examples</em>. Split them: a few <strong>demos</strong> the proposer will read to infer the instruction, and a <strong>held-out set</strong> it never sees, reserved for scoring. The held-out split is what keeps a candidate honest.</p>
+        <div class="relative"><pre>// 1. The task is just input->output pairs. Split them.
+const demos = [
+  { in: "happy", out: "sad" }, { in: "hot", out: "cold" },
+  { in: "fast",  out: "slow" }, { in: "up",  out: "down" },
+];
+const heldout = [                 // proposer never sees these
+  { in: "light", out: "dark" }, { in: "open", out: "closed" },
+  { in: "wet",   out: "dry"  }, { in: "loud", out: "quiet" },
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Generate candidate instructions (forward generation)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Show the model the demos and ask it to infer the instruction that maps input to output — sampled several times (nonzero temperature) so you get a diverse pool of phrasings to search over.</p>
+        <div class="relative"><pre>// 2. Ask the model to WRITE the instruction, N times.
+function proposePrompt(demos) {
+  const shown = demos.map(d =&gt; `Input: ${d.in}\nOutput: ${d.out}`).join("\n\n");
+  return `Here are input-output examples:\n\n${shown}\n\n` +
+    `Write the instruction that maps each input to its output.`;
+}
+const candidates = await Promise.all(
+  Array.from({ length: 8 }, () =&gt;
+    llm(proposePrompt(demos), { temperature: 0.9 }))   // diverse drafts
+);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Score each candidate on the held-out set</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the objective function. Run each candidate instruction on every held-out input and count how many outputs match — <strong>execution accuracy</strong>. (Log-probability of the correct output is the other classic scorer.) No human judgement in the loop.</p>
+        <div class="relative"><pre>// 3. Execution accuracy: does the instruction reproduce held-out?
+async function score(instruction, heldout) {
+  let correct = 0;
+  for (const ex of heldout) {
+    const pred = await llm(`${instruction}\n\nInput: ${ex.in}\nOutput:`);
+    if (pred.trim().toLowerCase() === ex.out) correct++;
+  }
+  return correct / heldout.length;          // 0..1
+}
+const scored = await Promise.all(
+  candidates.map(async c =&gt; ({ instruction: c, acc: await score(c, heldout) }))
+);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Select the best (argmax)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Sort by score and take the top instruction. That is your automatically-engineered prompt — chosen by measured accuracy, not by how good it sounded to a human.</p>
+        <div class="relative"><pre>// 4. Keep the highest-scoring instruction.
+scored.sort((a, b) =&gt; b.acc - a.acc);
+const best = scored[0];
+// best.instruction -> "Write the antonym of the input word."  (acc 0.83)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Resample around the winner (iterative Monte-Carlo)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Optional but powerful: ask the model for <em>variations</em> of the current best instruction, score those too, and keep the new champion if it beats the old. This local search around high-scorers climbs toward phrasings a single proposal round would miss.</p>
+        <div class="relative"><pre>// 5. Generate near-neighbours of the winner, re-score, keep the best.
+async function resample(best, heldout) {
+  const variants = await llm(
+    `Generate 6 varied rephrasings of this instruction, same meaning:\n"${best.instruction}"`
+  );                                                  // e.g. add "single word", "exact opposite"
+  const rescored = await Promise.all(
+    variants.map(async v =&gt; ({ instruction: v, acc: await score(v, heldout) }))
+  );
+  return [best, ...rescored].sort((a, b) =&gt; b.acc - a.acc)[0];   // >= old best
+}
+const winner = await resample(best, heldout);         // acc 0.83 -> 1.00</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Mind the cost — and know when it applies</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The bill is <em>candidates × held-out examples</em> model calls per round, times the rounds — easily hundreds of calls to tune one prompt. That is fine because you pay it <em>once, offline</em>, then ship the winning instruction. But APE only works when you have the two things it needs: a labelled dev set and a scorer. No examples, or no way to grade an output, means no APE — reach for a hand-written prompt or an LLM-judge instead.</p>
+        <div class="relative"><pre>// 6. Count the cost; require a dev set + a scorer.
+const calls = candidates.length * heldout.length * rounds;   // offline, one-time
+if (!haveDevSet || !haveScorer) useHandWrittenPrompt();      // APE needs both
+else ship(winner.instruction);      // then reuse the found prompt in prod
+// cousins: DSPy optimizers, OPRO, evolutionary prompt search -- same idea.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 33 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Automatic Prompt Engineer (APE, Zhou et al., 2022): describe a task with a few input→output demos, let a model <strong>propose</strong> candidate instructions, <strong>score</strong> each by execution accuracy on a held-out set, <strong>select</strong> the argmax, and optionally <strong>resample</strong> near the winner to climb higher. The key shift is treating the prompt as something to <em>search for</em> rather than hand-write — the model is both the proposer and the executor, and an objective scorer replaces human eyeballing. It finds phrasings people miss, but it needs a labelled dev set and a scorer, and it spends many calls (candidates × evaluations) — paid once, offline, then the winning instruction is reused in production. It is the ancestor of today's gradient-free prompt optimizers (DSPy, OPRO, evolutionary search). <strong>👉 Tomorrow — Day 34: Chain-of-Density — squeeze a summary tighter and tighter, packing in more entities per word with each pass.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Automatic Prompt Engineer -- propose, score, select, resample =====
+// Fully scripted & deterministic. No live model. Mirrors the real APE loop
+// (Zhou et al., 2022): a model proposes candidate instructions from a few demos,
+// each is scored by execution accuracy on a held-out set the proposer never saw,
+// the argmax is selected, then a second round resamples near the winner and
+// scores at least as high. Every candidate carries the exact outputs it would
+// produce on the held-out inputs, so the scores below are computed, not asserted.
+/* ==DATA_START== */
+const TASKS = [
+  {
+    id:"antonyms", tag:"antonyms", title:"Given a word, output its opposite",
+    demos:[
+      { in:"happy", out:"sad" }, { in:"hot", out:"cold" },
+      { in:"fast", out:"slow" }, { in:"up", out:"down" }, { in:"big", out:"small" }
+    ],
+    heldout:[
+      { in:"light", exp:"dark" }, { in:"open", exp:"closed" }, { in:"wet", exp:"dry" },
+      { in:"loud", exp:"quiet" }, { in:"early", exp:"late" }, { in:"hard", exp:"soft" }
+    ],
+    rounds:[
+      { kind:"propose", candidates:[
+        { text:"Write the antonym of the input word.",                 preds:["dark","closed","dry","quiet","late","easy"] },
+        { text:"Respond with the word that means the contrary.",       preds:["dark","close","dry","quiet","late","easy"] },
+        { text:"Give the opposite of the word.",                       preds:["dark","close","dry","quiet","soon","easy"] },
+        { text:"Reverse the meaning of the word.",                     preds:["heavy","closed","dry","silent","sooner","difficult"] },
+        { text:"Output a word related to the input word.",             preds:["lamp","door","dry","noise","morning","rock"] }
+      ]},
+      { kind:"resample", candidates:[
+        { text:"Write the single-word antonym (exact opposite) of the input word.",       preds:["dark","closed","dry","quiet","late","soft"] },
+        { text:"Give the antonym of the input word as a single lowercase word.",          preds:["dark","closed","dry","quiet","late","easy"] },
+        { text:"Write the precise antonym of the input word; prefer the direct opposite.",preds:["dark","closed","dry","quiet","late","easy"] }
+      ]}
+    ]
+  },
+  {
+    id:"date", tag:"format a date", title:"Rewrite an ISO date as a long US date",
+    demos:[
+      { in:"2026-07-11", out:"July 11, 2026" }, { in:"2025-01-05", out:"January 5, 2025" },
+      { in:"2024-12-25", out:"December 25, 2024" }
+    ],
+    heldout:[
+      { in:"2023-03-09", exp:"March 9, 2023" }, { in:"2022-11-30", exp:"November 30, 2022" },
+      { in:"2026-02-01", exp:"February 1, 2026" }, { in:"2021-08-14", exp:"August 14, 2021" },
+      { in:"2020-06-07", exp:"June 7, 2020" }, { in:"2019-10-22", exp:"October 22, 2019" }
+    ],
+    rounds:[
+      { kind:"propose", candidates:[
+        { text:"Rewrite the date in 'Month D, YYYY' format.",          preds:["March 9, 2023","November 30, 2022","February 1, 2026","August 14, 2021","June 07, 2020","October 22, 2019"] },
+        { text:"Change the date format to Month Day, Year.",           preds:["March 9, 2023","November 30, 2022","February 01, 2026","August 14, 2021","June 07, 2020","October 22, 2019"] },
+        { text:"Turn the ISO date into a US long date like 'January 5, 2025'.", preds:["March 9, 2023","November 30, 2022","Feb 1, 2026","Aug 14, 2021","June 7, 2020","Oct 22, 2019"] },
+        { text:"Reformat the date so it is easy to read.",             preds:["03/09/2023","11/30/2022","02/01/2026","08/14/2021","06/07/2020","10/22/2019"] }
+      ]},
+      { kind:"resample", candidates:[
+        { text:"Rewrite the date as 'Month D, YYYY' with no leading zero on the day.", preds:["March 9, 2023","November 30, 2022","February 1, 2026","August 14, 2021","June 7, 2020","October 22, 2019"] },
+        { text:"Convert the date to 'Month DD, YYYY' with a zero-padded day.",         preds:["March 09, 2023","November 30, 2022","February 01, 2026","August 14, 2021","June 07, 2020","October 22, 2019"] },
+        { text:"Rewrite in long US form, e.g. 'March 9, 2023' (day without leading zero).", preds:["March 9, 2023","November 30, 2022","February 1, 2026","August 14, 2021","June 7, 2020","Oct 22, 2019"] }
+      ]}
+    ]
+  }
+];
+// --- APE scoring: execution accuracy on the held-out set ---
+function scoreCandidate(cand, heldout){
+  let correct = 0;
+  for(let i=0;i<heldout.length;i++){ if(cand.preds[i] === heldout[i].exp) correct++; }
+  return { correct, total: heldout.length, pct: Math.round(correct/heldout.length*100) };
+}
+function rankCandidates(cands, heldout){
+  return cands.map(c => ({ cand:c, score: scoreCandidate(c, heldout) }))
+              .sort((a,b) => b.score.correct - a.score.correct);
+}
+function selectBest(cands, heldout){ return rankCandidates(cands, heldout)[0]; }
+function roundBest(task, roundIdx){ return selectBest(task.rounds[roundIdx].candidates, task.heldout).score; }
+/* ==DATA_END== */
+
+const taskChips = document.getElementById("taskChips");
+const taskTitle = document.getElementById("taskTitle");
+const demoBody  = document.getElementById("demoBody");
+const heldBody  = document.getElementById("heldBody");
+const roundSeg  = document.getElementById("roundSeg");
+const autoRound = document.getElementById("autoRound");
+const phaseBar  = document.getElementById("phaseBar");
+const roundNote = document.getElementById("roundNote");
+const candList  = document.getElementById("candList");
+const winBox    = document.getElementById("winBox");
+const winPct    = document.getElementById("winPct");
+const winInstr  = document.getElementById("winInstr");
+const verdict   = document.getElementById("verdict");
+const scoreChart= document.getElementById("scoreChart");
+const evalNum   = document.getElementById("evalNum");
+const heldNum   = document.getElementById("heldNum");
+const bestNum   = document.getElementById("bestNum");
+const bestBar   = document.getElementById("bestBar");
+const bestNote  = document.getElementById("bestNote");
+
+let curTask = 0, curRound = 0;
+const ROUND_LABELS = ["Round 1 · propose from demos", "Round 2 · resample near winner"];
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+TASKS.forEach((t,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = t.tag;
+  c.onclick = () => { curTask = i; curRound = 0; syncChips(); syncRoundSeg(); render(); };
+  taskChips.appendChild(c);
+});
+function syncChips(){ taskChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curTask)); }
+
+function buildRoundSeg(){
+  roundSeg.innerHTML = "";
+  ROUND_LABELS.forEach((lab,i)=>{
+    const b = document.createElement("button");
+    b.className = "segbtn" + (i===curRound ? " on" : "");
+    b.textContent = lab;
+    b.dataset.r = i;
+    b.onclick = () => { curRound = i; syncRoundSeg(); render(); };
+    roundSeg.appendChild(b);
+  });
+}
+function syncRoundSeg(){ roundSeg.querySelectorAll(".segbtn").forEach((b,i)=> b.classList.toggle("on", i===curRound)); }
+
+let autoTimer = null;
+autoRound.onclick = () => {
+  if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoRound.textContent="▶ Auto-play rounds"; return; }
+  autoRound.textContent="⏸ Pause"; curRound=0; syncRoundSeg(); render();
+  autoTimer = setInterval(()=>{
+    if(curRound>=ROUND_LABELS.length-1){ clearInterval(autoTimer); autoTimer=null; autoRound.textContent="▶ Replay rounds"; return; }
+    curRound++; syncRoundSeg(); render();
+  }, 2200);
+};
+
+function render(){
+  const task = TASKS[curTask];
+  taskTitle.textContent = task.title;
+
+  // demos + held-out tables
+  demoBody.innerHTML = task.demos.map(d =>
+    `<tr><td>${escapeHtml(d.in)}</td><td class="arrow">→</td><td class="out">${escapeHtml(d.out)}</td></tr>`).join("");
+  heldBody.innerHTML = task.heldout.map(h =>
+    `<tr><td>${escapeHtml(h.in)}</td><td class="arrow">→</td><td class="out">${escapeHtml(h.exp)}</td></tr>`).join("");
+
+  // phase indicator
+  const isResample = task.rounds[curRound].kind === "resample";
+  const firstPill = isResample ? "Resample near winner" : "Propose from demos";
+  phaseBar.innerHTML =
+    `<span class="pill on">${firstPill}</span><span class="arr">→</span>` +
+    `<span class="pill on">Score on held-out</span><span class="arr">→</span>` +
+    `<span class="pill on">Select argmax</span>`;
+  roundNote.textContent = isResample
+    ? "Round 2 asks the model for variations of round 1's winning instruction, then scores those the same way. Local search around a high-scorer usually finds an even better phrasing."
+    : "Round 1: the model reads only the demos and drafts several candidate instructions. Each is then run on the held-out inputs and graded by exact-match accuracy.";
+
+  // rank candidates for this round
+  const ranked = rankCandidates(task.rounds[curRound].candidates, task.heldout);
+  candList.innerHTML = ranked.map((r,idx)=>{
+    const win = idx===0;
+    const chips = task.heldout.map((h,i)=>{
+      const ok = r.cand.preds[i]===h.exp;
+      return `<span class="exchip ${ok?'ok':'no'}">${escapeHtml(h.in)}→${escapeHtml(r.cand.preds[i])} ${ok?'✓':'✗'}</span>`;
+    }).join("");
+    return `<div class="cand ${win?'win':''} row-appear">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <span class="instr">${win?'👑 ':''}"${escapeHtml(r.cand.text)}"</span>
+        <span class="stat font-bold ${win?'text-violet-700':'text-slate-500'} whitespace-nowrap">${r.score.pct}% · ${r.score.correct}/${r.score.total}</span>
+      </div>
+      <div class="bar ${win?'':'lose'} mb-1"><span style="width:${r.score.pct}%"></span></div>
+      <div>${chips}</div>
+    </div>`;
+  }).join("");
+
+  // selected instruction
+  const best = ranked[0];
+  winPct.textContent = best.score.pct + "%";
+  winInstr.textContent = '"' + best.cand.text + '"';
+
+  // best-score-per-round chart
+  const r1 = roundBest(task, 0), r2 = roundBest(task, 1);
+  const bars = [ {lab:"Round 1<br>propose", pct:r1.pct}, {lab:"Round 2<br>resample", pct:r2.pct} ];
+  scoreChart.innerHTML = bars.map((b,i)=>{
+    const on = i===curRound;
+    return `<div class="hbar-wrap"><div class="text-xs font-bold ${on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}%</div>`+
+      `<div class="hbar ${on?'':'dim'}" style="height:${Math.max(6,b.pct)}%"></div>`+
+      `<div class="hlab ${on?'font-bold':''}">${b.lab}${on?'<br>◀ here':''}</div></div>`;
+  }).join("");
+
+  // search-so-far panel (cumulative through the current round)
+  let evaluated = 0;
+  for(let ri=0; ri<=curRound; ri++){ evaluated += task.rounds[ri].candidates.length * task.heldout.length; }
+  const bestSoFar = curRound===0 ? r1 : (r2.pct>=r1.pct ? r2 : r1);
+  evalNum.textContent = evaluated;
+  heldNum.textContent = task.heldout.length;
+  bestNum.textContent = bestSoFar.pct + "%";
+  bestBar.style.width = bestSoFar.pct + "%";
+  bestNote.innerHTML = curRound===0
+    ? `Round 1's best instruction scores <strong>${r1.pct}%</strong>. Advance to round 2 to resample near it.`
+    : (r2.pct>r1.pct
+        ? `Resampling lifted the best from <strong>${r1.pct}%</strong> to <strong style="color:#7c3aed">${r2.pct}%</strong> — a phrasing round 1 didn't propose.`
+        : `Resampling held the best at <strong style="color:#7c3aed">${r2.pct}%</strong> (never worse than round 1's ${r1.pct}%).`);
+
+  // verdict
+  if(curRound===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>Proposed & scored.</strong> The model drafted ${task.rounds[0].candidates.length} instructions from the demos alone; the held-out set ranked them objectively and the argmax — <span class="text-violet-700 font-semibold">${r1.pct}%</span> — was selected. Good, but a related word or an ambiguous phrasing still trips it. Step to round 2.</span>`;
+  } else {
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▲ Resampled to ${r2.pct}%.</strong> Variations near round 1's winner were scored the same way, and the new champion${r2.pct>r1.pct?` beats it (${r1.pct}% → ${r2.pct}%)`:` matches it (${r2.pct}%)`}. Nobody hand-wrote this instruction — it was searched for and measured.</span>`;
+  }
+}
+
+buildRoundSeg();
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. Prompt engineering is search over instructions", why:"A prompt is not a fixed artifact you write once — it is a <strong>point in a huge space of possible instructions</strong>, and small wording changes can swing accuracy by double digits. The usual workflow is manual hill-climbing: try a phrasing, look at a few outputs, tweak, repeat. That is slow, subjective, and it explores only the handful of phrasings you happen to think of. APE reframes the whole problem: if the space of instructions can be <em>searched</em>, and each instruction can be <em>scored</em>, then finding a good prompt is an optimization problem — and optimization is something you can automate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">instruction space (huge)<br>"do X" &middot; "please X" &middot; "X, step by step" &middot; ...<br>each phrasing -> a different accuracy<br>manual: try a few by hand (subjective, slow)<br>v<br>APE: SEARCH the space with a score to guide it</div>`, code:`// a prompt is a point in a space; wording moves the score.
+// manual tuning explores only what you think to type.
+// APE: make it an optimization problem instead.
+//   maximize   accuracy(instruction)   over instructions` },
+ { title:"2. The APE idea (Zhou et al., 2022)", why:"\"Large Language Models Are Human-Level Prompt Engineers\" (Zhou, Muru, Han, Yuan, et al., 2022) proposes using an LLM to <strong>generate, score, and select its own instructions</strong>. The elegant twist: the model plays two roles. As the <em>proposer</em> it drafts candidate instructions from a few examples; as the <em>executor</em> it runs each candidate to measure how well it works. There is no fine-tuning and no gradients — just sampling instructions and evaluating them. On instruction-induction benchmarks, APE's discovered prompts matched or beat human-written ones.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">the model is BOTH:<br>PROPOSER -> drafts candidate instructions<br>EXECUTOR -> runs each to measure accuracy<br>no fine-tuning &middot; no gradients<br>-- Zhou et al., 2022 --</div>`, code:`// LLM as proposer AND executor. no training, no gradients.
+const candidates = await propose(demos);        // proposer role
+const scored = await Promise.all(
+  candidates.map(c => execAccuracy(c, heldout)) // executor role
+);` },
+ { title:"3. Forward generation: infer the instruction from demos", why:"APE bootstraps candidates by <strong>forward (instruction) generation</strong>: show the model a few input→output demonstrations and ask, in effect, \"what instruction would produce these mappings?\" Sampled several times at nonzero temperature, this yields a diverse pool — \"Write the antonym of the input\", \"Give the opposite\", \"Reverse the meaning\". You are not writing prompts; you are asking the model to <em>reverse-engineer</em> the task from examples. (A reverse/'fill-in-the-blank' variant places the instruction between demos and completion — but forward generation is the workhorse.)", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">demos:  happy->sad  hot->cold  fast->slow<br>|  ask: "what instruction maps these?"<br>v (sample x N, temp 0.9)<br>"Write the antonym"  "Give the opposite"<br>"Reverse the meaning"  "Output the contrary"</div>`, code:`function proposePrompt(demos){
+  const shown = demos.map(d => \`Input: \${d.in}\\nOutput: \${d.out}\`).join("\\n\\n");
+  return shown + "\\n\\nWrite the instruction that maps input to output.";
+}
+// sample it many times -> a diverse candidate pool.` },
+ { title:"4. The scoring function: execution accuracy on held-out", why:"Every candidate needs an <strong>objective score</strong>, and the score must use examples the proposer never saw — otherwise you are just memorizing the demos. The standard scorer is <strong>execution accuracy</strong>: run the instruction on each held-out input and count exact matches. An alternative is the <em>log-probability</em> the model assigns to the correct output under the instruction, which is smoother and cheaper. Either way, the held-out split is what makes the number trustworthy — it measures generalization, not recall.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">candidate: "Write the antonym of the input word."<br>held-out:  light->dark? &check;  open->closed? &check;<br>&nbsp;wet->dry? &check;  hard->easy? &cross;<br>score = 5/6 = 83%  (execution accuracy)<br>alt: log P(correct output | instruction)</div>`, code:`async function score(instruction, heldout){
+  let correct = 0;
+  for(const ex of heldout){
+    const pred = await llm(\`\${instruction}\\nInput: \${ex.in}\\nOutput:\`);
+    if(pred.trim().toLowerCase() === ex.out) correct++;
+  }
+  return correct / heldout.length;   // exec accuracy on UNSEEN examples
+}` },
+ { title:"5. Select the best (argmax)", why:"With every candidate scored, selection is trivial: <strong>sort by score and keep the top instruction</strong>. This is the moment that replaces human taste with measurement — the chosen prompt is the one that <em>demonstrably</em> works best on held-out data, not the one that read most elegantly. Ties can be broken by a secondary signal (shorter instruction, higher log-prob), but the core is a plain argmax over the objective.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"Write the antonym..."      83%  <- argmax<br>"Respond with the contrary" 67%<br>"Give the opposite"         50%<br>"Reverse the meaning"       33%<br>"Output a related word"     17%<br>SELECT the top. measured, not eyeballed.</div>`, code:`scored.sort((a,b) => b.acc - a.acc);
+const best = scored[0];        // argmax over the objective
+// best.instruction -> the automatically-engineered prompt` },
+ { title:"6. Iterative Monte-Carlo: resample around winners", why:"One round of proposals rarely hits the ceiling. APE adds an <strong>iterative resampling</strong> step (an evolutionary / Monte-Carlo search): take the current best instruction and ask the model for <em>semantically similar variations</em> of it, then score those too and keep the new champion. This is local search around high-scoring points — it explores the neighborhood of what already works and often discovers a sharper phrasing (\"single-word antonym\", \"no leading zero on the day\") that the first, broader round never proposed. Repeat for a few rounds; the best score is monotonic because you always keep the incumbent.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">round 1 winner: "Write the antonym" (83%)<br>|  resample near it (same meaning, varied)<br>v<br>"single-word antonym, exact opposite" (100%)<br>keep the champion -> best score never drops</div>`, code:`async function resample(best, heldout){
+  const variants = await llm(
+    \`Generate varied rephrasings, same meaning:\\n"\${best.instruction}"\`);
+  const rescored = await scoreAll(variants, heldout);
+  return [best, ...rescored].sort((a,b)=>b.acc-a.acc)[0];  // >= old best
+}` },
+ { title:"7. Why it beats hand-writing", why:"APE consistently finds instructions humans would not write, for two reasons. First, <strong>coverage</strong>: it samples dozens of phrasings and tests all of them, while a person tries three or four. Second, <strong>objectivity</strong>: it selects on measured accuracy, so it is immune to the intuition traps that fool us — the phrasing that <em>sounds</em> authoritative is often not the one that scores best. It surfaces unglamorous but effective wordings (adding \"single word\", pinning a format detail) that a human skims past. The famous result: on some tasks APE's found prompt (\"Let's work this out step by step to be sure we have the right answer\") beat the canonical human one.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">human: tries 3-4 phrasings, picks by feel<br>APE:   tries dozens, picks by MEASURED score<br>-> finds wordings humans skip:<br>&nbsp;"single word" &middot; "exact opposite" &middot; format pins<br>coverage + objectivity = better prompt</div>`, code:`// APE explores far more of the space AND
+// selects on evidence, not on how good it sounds.
+// classic find: an APE prompt beat the hand-written
+// "Let's think step by step" on several benchmarks.` },
+ { title:"8. The cost: many candidate evaluations", why:"APE's price tag is real: each round costs <strong>candidates × held-out examples</strong> model calls (the executor runs every instruction on every held-out input), times the number of rounds — hundreds of calls to tune one prompt is normal. The saving grace is <em>when</em> you pay it: APE runs <strong>offline, once</strong>, as a build step, and then you ship the single winning instruction and reuse it forever in production at no extra cost. Levers to control it: keep the held-out set small but representative, cap the candidate pool, use the cheaper log-prob scorer, and stop early when scores plateau.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost/round = candidates x held-out examples<br>8 candidates x 20 held-out = 160 calls<br>x rounds -> hundreds of calls per prompt<br>BUT paid OFFLINE, once -> ship the winner<br>levers: small dev set &middot; cap pool &middot; log-prob &middot; early stop</div>`, code:`const callsPerRound = candidates.length * heldout.length;
+const total = callsPerRound * rounds;   // offline, one-time build cost
+// then: ship(best.instruction); reuse in prod for free.` },
+ { title:"9. Relation to DSPy and gradient-free optimizers", why:"APE is the seed of a whole family of <strong>automatic prompt optimizers</strong>. <strong>DSPy</strong> generalizes it: you declare a program of LLM \"modules\" with a metric, and optimizers (BootstrapFewShot, MIPRO, COPRO) search over instructions <em>and</em> few-shot examples to maximize that metric — APE's propose/score/select loop, industrialized. <strong>OPRO</strong> (\"LLMs as Optimizers\") feeds the score history back to the model and asks it to propose better prompts. All are <strong>gradient-free</strong>: they treat the LLM as a black box and optimize the text you feed it, not the weights. If you like APE, these are where it grew up.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">APE  = propose -> score -> select (+ resample)<br>DSPy = compile a program to a metric<br>&nbsp;(BootstrapFewShot / MIPRO / COPRO)<br>OPRO = feed score history back, ask for better<br>all GRADIENT-FREE: optimize text, not weights</div>`, code:`// DSPy: same loop, industrialized.
+import dspy
+opt = dspy.MIPROv2(metric=exact_match)      // the scorer
+compiled = opt.compile(program, trainset=demos)
+// searches instructions + few-shot demos to max the metric.` },
+ { title:"10. The limits: you need a dev set and a scorer", why:"APE only works where its two ingredients exist. First, a <strong>labelled dev set</strong>: without input→output examples there is nothing to propose from and nothing to score against. Second, a <strong>programmatic scorer</strong>: the objective has to be computable — exact match, F1, a regex, a unit test, or at least an LLM-judge. Open-ended tasks with no ground truth (\"write an engaging intro\") have no clean number to optimize, so APE degenerates. Other cautions: it can <em>overfit</em> a tiny held-out set (keep it representative and, ideally, hold out a final test split), and the found prompt is tuned to <em>one</em> model — re-run APE when you switch models. No examples or no scorer? Fall back to a hand-written prompt or a rubric-based LLM-judge.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">NEEDS: labelled dev set + a computable scorer<br>&nbsp;(exact match / F1 / unit test / LLM-judge)<br>FAILS: open-ended tasks w/ no ground truth<br>WATCH: overfit tiny dev set &middot; prompt is model-specific<br>no examples/scorer? -> hand-write or use a judge</div>`, code:`if(!haveDevSet || !haveScorer){
+  // no objective to optimize -> APE can't run
+  return useHandWrittenPromptOrLlmJudge();
+}
+// and: hold out a FINAL test split; re-run APE per model.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let cur = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ cur=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,cur-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,cur+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(cur>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(cur+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
