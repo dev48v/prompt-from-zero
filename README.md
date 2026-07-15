@@ -40,6 +40,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 31 — Emotion-Prompting](https://dev48v.infy.uk/prompt/day31-emotion-prompting.html) — `day31-emotion-prompting.html`
 - [PromptFromZero · Day 32 — Multi-Agent Debate](https://dev48v.infy.uk/prompt/day32-multi-agent-debate.html) — `day32-multi-agent-debate.html`
 - [PromptFromZero · Day 33 — Automatic Prompt Engineer (APE)](https://dev48v.infy.uk/prompt/day33-ape.html) — `day33-ape.html`
+- [PromptFromZero · Day 34 — Directional Stimulus Prompting](https://dev48v.infy.uk/prompt/day34-directional-stimulus.html) — `day34-directional-stimulus.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

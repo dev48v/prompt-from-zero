@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 34 — Directional Stimulus Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:20px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .5s ease; }
+  .bar.lose > span { background:#cbd5e1; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .otext { font-size:13.5px; color:#1e293b; line-height:1.55; margin:7px 0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .exchip { display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 6px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #e2e8f0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .exchip.ok { background:#f5f3ff; border-color:#c4b5fd; color:#6d28d9; }
+  .exchip.no { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.frozen { background:#e2e8f0; color:#475569; border-color:#cbd5e1; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 34</div>
+      <h1 class="text-xl font-bold">🧭 Directional Stimulus Prompting — you can't fine-tune a black-box LLM, so train a tiny <em>policy</em> model instead: for every input it emits a short <em>directional stimulus</em> (a few hint keywords) that you paste beside the prompt, nudging the frozen LLM toward the output you actually want — and the policy is optimized with the LLM's own task score as its reward (Li et al., 2023)</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">You can't touch the big model's weights — so steer it from the outside. A small trained policy writes per-input hint keywords; drop them beside the prompt and watch the frozen LLM's answer snap toward the facts you care about.</h2>
+        <p class="text-slate-500 mb-5">A giant black-box LLM (an API you can't fine-tune) gives you one lever: the text you feed it. <strong>Directional Stimulus Prompting</strong> (Li et al., 2023) turns that lever into precise steering. Instead of hand-writing one prompt, you train a <em>tiny</em> policy model that, for each specific input, generates a short <strong>directional stimulus</strong> — a handful of instance-specific hint keywords. You concatenate those hints with the prompt and send the whole thing to the <em>frozen</em> LLM; the hints pull its output toward the target. The policy is trained cheaply (supervised warm-up, then reinforcement learning using the LLM's <em>downstream task score</em> — ROUGE, key-point coverage, a reward model — as the signal), while the LLM never changes. Below: pick a task, toggle the hint keywords the policy proposes, and compare the frozen LLM's answer <em>without</em> stimulus versus <em>with</em> it. Everything is scripted and deterministic — no live model — but faithful to DSP's policy → stimulus → frozen-LLM loop.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <span id="taskChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="taskTitle" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div id="inputLabel" class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Input to the frozen LLM</div>
+            <div id="inputBox" class="inputbox mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Directional stimulus <span class="text-slate-400 normal-case font-normal">— hints from the policy model</span></div>
+            <p class="text-[11px] text-slate-400 mb-2 leading-snug">Click a hint to toggle it. Each keyword steers the frozen LLM toward one key-point. This is what the trained policy would emit for <em>this</em> input.</p>
+            <div id="hintChips" class="flex flex-wrap gap-1.5 mb-3"></div>
+
+            <button id="stimToggle" class="w-full bg-white border border-violet-300 text-violet-700 hover:bg-violet-50 px-3 py-1.5 rounded-lg font-semibold text-xs mb-2"></button>
+            <button id="autoBtn" class="w-full bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-demo — add hints one by one</button>
+            <p class="text-xs text-slate-400 mt-3 leading-snug">The big LLM is frozen — its weights never change. All you change is the stimulus you prepend. More on-target hints ⇒ more of the target key-points survive in the answer.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The DSP pipeline (only the policy is trained)</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2">A small, tuneable policy reads the input and writes the stimulus. The huge LLM stays frozen — you only steer <em>what you feed it</em>, never its weights.</div>
+          </div>
+
+          <div class="sect">Frozen LLM — without stimulus vs with directional stimulus</div>
+          <div id="baseCard"></div>
+          <div id="steerCard"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Target key-point coverage</div>
+              <div class="text-xs text-slate-400 mb-2">Same frozen model both times. The only difference is the stimulus prepended to the prompt.</div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">This run</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">target key-points</span><span id="statTotal" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">hints active</span><span id="statHints" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">covered w/ stimulus</span><span id="statPct" class="stat font-bold text-violet-700 text-lg"></span></div>
+              <div class="bar mb-2"><span id="statBar"></span></div>
+              <div id="improveNote" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 You never changed the model — you changed what you fed it, per input, automatically.</strong> Directional Stimulus Prompting keeps the expensive LLM completely frozen and instead trains a small, cheap policy to write <em>instance-specific</em> hints. Because the policy is optimized against the LLM's own downstream score, it learns which keywords actually move the output — not what merely sounds good to a human. That makes it work even when the LLM is a black-box API you have no access to fine-tune, and it beats a single hand-written prompt because the guidance is tailored to each input rather than fixed. Its two requirements: a way to <strong>score</strong> the output (so the policy has a reward) and enough data to <strong>train</strong> the little policy. Where those exist, a model you can't touch becomes a model you can precisely aim.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Policy model reads the input → emits directional stimulus (hint keywords) → hints are prepended to the prompt → frozen LLM produces a steered output. Train the policy with the LLM's task score as reward; keep the LLM frozen forever.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Directional Stimulus Prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Directional Stimulus Prompting is a small policy model wrapped around a frozen LLM you don't control. The policy reads each input and writes a short <em>stimulus</em> (hint keywords); you prepend it to the prompt and call the LLM; you score the output; and you train <em>only the policy</em> to maximize that score. No fine-tuning of the big model — just learning what to feed it. Here is the whole thing.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">A frozen black-box LLM + a tiny tuneable policy</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The big model is a <em>black box</em> — an API you call, whose weights you cannot change. The only thing you control is the text you send. So you add a second, <strong>small</strong> model (e.g. a T5-base) whose whole job is to write hints. Only this one is ever trained.</p>
+        <div class="relative"><pre>// 1. Two models. Only the small one will learn.
+async function frozenLLM(prompt) {           // black box, never fine-tuned
+  return callApi(prompt);                    // you only control the text in
+}
+const policy = new SmallSeq2Seq("t5-base");  // ~220M params, tuneable
+// the giant LLM might be 100x+ bigger AND unreachable for training.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Policy generates the directional stimulus (per input)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Feed the input to the policy; it emits a short, <em>instance-specific</em> stimulus — hint keywords for summarization, dialogue-act + slot values for a chatbot, aspect words for controlled generation. This is not a fixed global prompt: every input gets its own tailored hints.</p>
+        <div class="relative"><pre>// 2. stimulus = policy(input). Short, and specific to THIS input.
+function makeStimulus(input) {
+  return policy.generate(input);   // e.g. "Aurora X1; foldable; $2,199; March; pre-orders"
+}
+const stimulus = makeStimulus(article);   // a few hint keywords, not a paragraph</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Prepend the stimulus, call the frozen LLM</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Concatenate the hints with your normal prompt and send the whole thing to the frozen LLM. The hints act as a soft constraint — the model tends to weave them into its answer, so its output moves in the direction you chose.</p>
+        <div class="relative"><pre>// 3. Build the stimulus-augmented prompt; run the frozen LLM.
+function steer(input, stimulus, task) {
+  const prompt =
+    `${task}\n\nHint keywords: ${stimulus}\n\nInput: ${input}\n\nAnswer:`;
+  return frozenLLM(prompt);        // same model, better-aimed input
+}
+const steered = await steer(article, stimulus, "Summarize the article.");</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Score the output — that score is the reward</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You need a number that says how good the steered output is: ROUGE against a reference summary, key-point coverage, task success, or a reward model. This score is the training signal for the policy — the frozen LLM's behavior becomes the reward function.</p>
+        <div class="relative"><pre>// 4. Downstream metric on the frozen LLM's output = the reward.
+function reward(steered, reference) {
+  return rouge(steered, reference);      // or coverage / task-success / RM score
+}
+const r = reward(steered, goldSummary);  // e.g. 0.20 (no hints) -> 1.00 (good hints)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Train the policy: SFT warm-up, then RL on the reward</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Two stages. First <strong>supervised fine-tuning</strong>: extract pseudo-hints from references (e.g. keywords present in the gold summary) and teach the policy to imitate them — a sane starting point. Then <strong>reinforcement learning</strong> (PPO): sample stimuli, run the frozen LLM, and push the policy toward hints that earn a higher reward. The gradients flow only into the small policy.</p>
+        <div class="relative"><pre>// 5a. SFT warm-up: imitate pseudo-hints pulled from references.
+policy.fit(trainInputs, extractKeywords(references));   // cheap, stabilizing
+
+// 5b. RL (PPO): reward = the frozen LLM's downstream score.
+for (const input of trainInputs) {
+  const stim   = policy.sample(input);            // explore hint variants
+  const out    = await frozenLLM(buildPrompt(input, stim));
+  const R      = reward(out, refFor(input));      // LLM behavior -> scalar
+  policy.ppoUpdate(input, stim, R);               // ONLY the policy learns
+}
+// the giant LLM is never touched -> works even for API-only models.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Serve it — and know when it fits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">At inference the loop is trivial: <code>policy(input) → stimulus → frozen LLM → output</code>, with everything frozen. DSP shines when you <em>can't</em> fine-tune the LLM (closed API), the task is steerable by keywords/slots, and you have a scorer + some training data. If you have no reward signal or no data for the policy, fall back to a hand-written prompt or few-shot examples instead.</p>
+        <div class="relative"><pre>// 6. Inference: freeze everything; just aim.
+function serve(input) {
+  const stimulus = policy.generate(input);        // trained, now frozen
+  return frozenLLM(buildPrompt(input, stimulus)); // steered output
+}
+// use it when: LLM is black-box + task is steerable + you have a scorer.
+if (!haveScorer || !haveTrainData) useHandWrittenPrompt();  // DSP needs both</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 34 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned Directional Stimulus Prompting (DSP, Li et al., 2023): when the big LLM is a frozen black box you can't fine-tune, train a <strong>tiny policy model</strong> to emit a short, <em>per-input</em> directional stimulus — hint keywords — that you prepend to the prompt to steer the frozen LLM's output. The policy is warmed up with supervised learning on pseudo-hints, then optimized with reinforcement learning using the LLM's own downstream score (ROUGE, coverage, task success) as the reward. The key shift: you don't change the expensive model, you learn <em>what to feed it</em>, and the guidance is tailored to each input instead of a single fixed prompt. It works precisely because the LLM stays untouched — so it applies to closed APIs — and it needs two things: a scorer for the reward and data to train the policy. <strong>👉 Next up — more ways to precisely steer a model whose weights you don't control.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Directional Stimulus Prompting -- policy -> stimulus -> frozen LLM =====
+// Fully scripted & deterministic. No live model. Mirrors the real DSP loop
+// (Li et al., 2023): a small tuneable policy emits per-input hint keywords
+// (the "directional stimulus"); those hints are prepended to the prompt and
+// fed to a FROZEN black-box LLM; the output is scored by a downstream metric,
+// which is the reward that trains ONLY the policy. Here the steered output is
+// assembled from whichever hints are active, so the coverage below is computed,
+// not asserted -- toggle hints to see how each one steers the frozen model.
+/* ==DATA_START== */
+const TASKS = [
+  {
+    id:"summ", tag:"summarize",
+    title:"Summarize a product-launch article — steer which facts survive the summary",
+    inputLabel:"Article (input to the frozen LLM)",
+    input:"TechCorp today unveiled the Aurora X1, its first foldable laptop, at an event in Berlin. Priced at $2,199, it ships in March and folds a 17-inch OLED screen down to tablet size. CEO Lena Vogt said pre-orders open next week.",
+    baseOutput:"TechCorp showed off a new laptop at an event this week.",
+    keypoints:[
+      { id:"name",  label:"names the product" },
+      { id:"cat",   label:"says it's a foldable laptop" },
+      { id:"price", label:"gives the price" },
+      { id:"ship",  label:"says when it ships" },
+      { id:"pre",   label:"mentions pre-orders" }
+    ],
+    baseCovers:["cat"],
+    lead:"TechCorp unveiled",
+    hints:[
+      { kw:"Aurora X1",       covers:"name",  frag:"the Aurora X1" },
+      { kw:"foldable laptop", covers:"cat",   frag:"its first foldable laptop" },
+      { kw:"$2,199",          covers:"price", frag:"priced at $2,199" },
+      { kw:"ships March",     covers:"ship",  frag:"shipping in March" },
+      { kw:"pre-orders",      covers:"pre",   frag:"with pre-orders opening next week" }
+    ]
+  },
+  {
+    id:"dialog", tag:"chatbot reply",
+    title:"Write an assistant reply — steer it to honour every constraint the user gave",
+    inputLabel:"Conversation (input to the frozen LLM)",
+    input:"User: I want dinner tonight for 4 people, somewhere with good vegan options that isn't too pricey.",
+    baseOutput:"Sure, I can help you find a restaurant.",
+    keypoints:[
+      { id:"vegan", label:"addresses vegan options" },
+      { id:"party", label:"handles the party of 4" },
+      { id:"budget",label:"respects the budget" },
+      { id:"tonight",label:"checks tonight's availability" },
+      { id:"book",  label:"offers to book it" }
+    ],
+    baseCovers:[],
+    lead:"I'd suggest Green Fork downtown — it",
+    hints:[
+      { kw:"vegan menu",      covers:"vegan",  frag:"has a big vegan menu" },
+      { kw:"table for 4",     covers:"party",  frag:"can seat your group of 4" },
+      { kw:"budget-friendly", covers:"budget", frag:"won't break the bank" },
+      { kw:"free tonight",    covers:"tonight",frag:"has a table free tonight" },
+      { kw:"offer to book",   covers:"book",   frag:"Shall I book it for you?", mode:"tail" }
+    ]
+  }
+];
+
+function listJoin(a){
+  if(a.length<=1) return a.join("");
+  if(a.length===2) return a[0]+" and "+a[1];
+  return a.slice(0,-1).join(", ")+", and "+a[a.length-1];
+}
+function assemble(task, activeHints){
+  const clauses = activeHints.filter(h=>h.mode!=="tail").map(h=>h.frag);
+  const tails   = activeHints.filter(h=>h.mode==="tail").map(h=>h.frag);
+  let s = task.lead;
+  if(clauses.length) s += " " + listJoin(clauses);
+  s = s.trim();
+  if(!/[.?!]$/.test(s)) s += ".";
+  if(tails.length) s += " " + tails.join(" ");
+  return s;
+}
+/* ==DATA_END== */
+
+const taskChips = document.getElementById("taskChips");
+const taskTitle = document.getElementById("taskTitle");
+const inputLabel= document.getElementById("inputLabel");
+const inputBox  = document.getElementById("inputBox");
+const hintChips = document.getElementById("hintChips");
+const stimToggle= document.getElementById("stimToggle");
+const autoBtn   = document.getElementById("autoBtn");
+const phaseBar  = document.getElementById("phaseBar");
+const baseCard  = document.getElementById("baseCard");
+const steerCard = document.getElementById("steerCard");
+const verdict   = document.getElementById("verdict");
+const coverChart= document.getElementById("coverChart");
+const statTotal = document.getElementById("statTotal");
+const statHints = document.getElementById("statHints");
+const statPct   = document.getElementById("statPct");
+const statBar   = document.getElementById("statBar");
+const improveNote = document.getElementById("improveNote");
+
+let cur = 0;
+let active = new Set(TASKS[0].hints.map((_,i)=>i));  // policy proposes full stimulus by default
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+TASKS.forEach((t,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = t.tag;
+  c.onclick = () => { cur = i; active = new Set(TASKS[cur].hints.map((_,k)=>k)); stopAuto(); syncChips(); render(); };
+  taskChips.appendChild(c);
+});
+function syncChips(){ taskChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===cur)); }
+
+let autoTimer = null;
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-demo — add hints one by one"; } }
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  active.clear(); render(); autoBtn.textContent="⏸ Pause";
+  let i = 0;
+  autoTimer = setInterval(()=>{
+    if(i >= TASKS[cur].hints.length){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay — add hints one by one"; return; }
+    active.add(i); i++; render();
+  }, 1100);
+};
+stimToggle.onclick = () => {
+  stopAuto();
+  if(active.size>0) active.clear();
+  else TASKS[cur].hints.forEach((h,i)=>active.add(i));
+  render();
+};
+
+function coverChips(coveredSet, task){
+  return task.keypoints.map(k=>{
+    const ok = coveredSet.has(k.id);
+    return `<span class="exchip ${ok?'ok':'no'}">${escapeHtml(k.label)} ${ok?'✓':'✗'}</span>`;
+  }).join("");
+}
+
+function render(){
+  const t = TASKS[cur];
+  taskTitle.textContent = t.title;
+  inputLabel.textContent = t.inputLabel;
+  inputBox.textContent = t.input;
+
+  // hint chips
+  hintChips.innerHTML = t.hints.map((h,i)=>
+    `<span class="chip ${active.has(i)?'sel':''}" data-i="${i}">${escapeHtml(h.kw)}</span>`).join("");
+  hintChips.querySelectorAll(".chip").forEach(c=> c.onclick = () => {
+    stopAuto();
+    const i = +c.dataset.i;
+    active.has(i) ? active.delete(i) : active.add(i);
+    render();
+  });
+  stimToggle.textContent = active.size>0 ? "⨯ Turn stimulus OFF (use base prompt)" : "✦ Turn stimulus ON (full policy output)";
+
+  // compute
+  const activeHints = t.hints.filter((h,i)=>active.has(i));
+  const anyHint = activeHints.length>0;
+  const baseCovered  = new Set(t.baseCovers);
+  const steerCovered = anyHint ? new Set(activeHints.map(h=>h.covers)) : new Set(t.baseCovers);
+  const steerOutput  = anyHint ? assemble(t, activeHints) : t.baseOutput;
+  const total   = t.keypoints.length;
+  const basePct = Math.round(baseCovered.size / total * 100);
+  const steerPct= Math.round(steerCovered.size / total * 100);
+  const win = steerPct > basePct;
+
+  // pipeline phase bar
+  phaseBar.innerHTML =
+    `<span class="pill tune">policy model · tuneable</span><span class="arr">→</span>` +
+    `<span class="pill ${anyHint?'on':''}">stimulus: ${anyHint?activeHints.length+" hint"+(activeHints.length>1?"s":""):"none"}</span><span class="arr">→</span>` +
+    `<span class="pill frozen">🔒 frozen LLM</span><span class="arr">→</span>` +
+    `<span class="pill ${anyHint?'on':''}">steered output</span>`;
+
+  // base card (no stimulus)
+  baseCard.innerHTML = `<div class="cand row-appear">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <span class="badge muted">without stimulus · frozen LLM default</span>
+        <span class="stat font-bold text-slate-500 whitespace-nowrap">${basePct}% · ${baseCovered.size}/${total}</span>
+      </div>
+      <div class="otext">"${escapeHtml(t.baseOutput)}"</div>
+      <div class="bar lose mb-1"><span style="width:${basePct}%"></span></div>
+      <div>${coverChips(baseCovered, t)}</div>
+    </div>`;
+
+  // steered card (with stimulus)
+  steerCard.innerHTML = `<div class="cand ${win?'win':''} row-appear">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <span class="badge call">${anyHint?'with directional stimulus':'stimulus off → same as base'}</span>
+        <span class="stat font-bold ${win?'text-violet-700':'text-slate-500'} whitespace-nowrap">${steerPct}% · ${steerCovered.size}/${total}</span>
+      </div>
+      <div class="otext">"${escapeHtml(steerOutput)}"</div>
+      <div class="bar ${win?'':'lose'} mb-1"><span style="width:${steerPct}%"></span></div>
+      <div>${coverChips(steerCovered, t)}</div>
+    </div>`;
+
+  // coverage chart
+  const bars = [ {lab:"without<br>stimulus", pct:basePct, on:false}, {lab:"with<br>stimulus", pct:steerPct, on:true} ];
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}%</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // stats
+  statTotal.textContent = total;
+  statHints.textContent = activeHints.length + " / " + t.hints.length;
+  statPct.textContent = steerPct + "%";
+  statBar.style.width = steerPct + "%";
+  improveNote.innerHTML = win
+    ? `The stimulus lifted coverage from <strong>${basePct}%</strong> to <strong style="color:#7c3aed">${steerPct}%</strong> — the same frozen model, aimed by ${activeHints.length} hint${activeHints.length>1?"s":""}.`
+    : (anyHint
+        ? `These ${activeHints.length} hint${activeHints.length>1?"s":""} land at <strong>${steerPct}%</strong> — no better than the ${basePct}% default. Add the on-target keywords.`
+        : `No stimulus → the frozen LLM falls back to its generic answer (<strong>${basePct}%</strong>). Turn hints on to steer it.`);
+
+  // verdict
+  verdict.innerHTML = win
+    ? `<span class="text-violet-800"><strong>▲ Steered.</strong> The policy's hints pulled the frozen LLM from <span class="font-semibold">${basePct}%</span> to <span class="text-violet-700 font-semibold">${steerPct}%</span> key-point coverage — nothing about the model changed, only the stimulus prepended to the prompt did.</span>`
+    : (anyHint
+        ? `<span class="text-slate-600"><strong>Not there yet.</strong> The active hints don't cover the target points, so the output matches the ${basePct}% baseline. Toggle the on-target keywords to see coverage climb.</span>`
+        : `<span class="text-slate-600"><strong>Base prompt.</strong> With no directional stimulus the frozen LLM gives its generic answer (${basePct}%). Switch the stimulus on to steer it toward the target.</span>`);
+}
+
+syncChips();
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: steering a model you can't fine-tune", why:"The strongest LLMs are often <strong>black boxes</strong> — you reach them through an API and cannot touch their weights, and even open models are expensive to fine-tune for every little behavior. Yet you frequently need to <em>bend</em> the output: hit specific facts in a summary, honour every slot a user mentioned, keep a required entity. Your only real lever is the <strong>text you send in</strong>. Hand-writing one clever prompt helps a little, but it is a single fixed instruction applied to wildly different inputs, so it under-steers the hard cases. DSP asks: what if we could generate a <em>tailored</em> nudge for every single input, automatically, without ever changing the big model?", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">BIG LLM = black box (API, weights locked)<br>your only lever = the TEXT you send in<br>one hand-written prompt = fixed, under-steers<br>v<br>want: a TAILORED nudge per input, no fine-tuning</div>`, code:`// you can call it, but you can't train it:
+async function frozenLLM(prompt){ return callApi(prompt); }
+// lever = the input text only. one fixed prompt is too blunt.
+// goal: steer per-input WITHOUT touching the model.` },
+ { title:"2. The DSP idea (Li et al., 2023)", why:"\"Guiding Large Language Models via Directional Stimulus Prompting\" (Li, Peng, He, Galley, Gao, Yan, 2023) adds a <strong>small, tuneable policy model</strong> in front of the frozen LLM. For each input, the policy writes a short <strong>directional stimulus</strong> — instance-specific hints — that gets prepended to the prompt. The tiny policy (a T5-scale model) is the <em>only</em> thing trained; the giant LLM stays frozen. The elegant part: the policy is optimized against the LLM's <em>own downstream score</em>, so it learns exactly which nudges move the black box. On summarization and dialogue benchmarks, a small policy steering a frozen large model beat much stronger baselines.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">input -> [ small POLICY (tuneable) ] -> stimulus<br>stimulus + prompt -> [ 🔒 frozen LLM ] -> output<br>only the little policy learns<br>-- Li et al., 2023 --</div>`, code:`const policy = new SmallSeq2Seq("t5-base");  // trainable
+async function dsp(input){
+  const stimulus = policy.generate(input);   // the directional nudge
+  return frozenLLM(build(input, stimulus));   // big model untouched
+}` },
+ { title:"3. What the \"directional stimulus\" is", why:"The stimulus is a <strong>compact, instance-specific hint</strong> — not a paragraph, not a global instruction. Its exact shape depends on the task: <em>keywords</em> the summary should contain, a <em>dialogue act + slot values</em> a chatbot turn should realise, <em>aspect/attribute words</em> for controlled generation. Because it is generated per input, it can point the model at what matters for <em>this</em> example specifically — the way a director gives an actor a one-line note, not a new script. Prepended to the prompt, these hints act as a soft constraint the model tends to satisfy, tilting its distribution toward the target without hard-coding the answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">summarize -> keywords: "Aurora X1; $2,199; March"<br>chatbot   -> act+slots: inform(vegan, party=4)<br>controlled gen -> aspect words: "concise; upbeat"<br>short &middot; per-input &middot; a soft constraint, not the answer</div>`, code:`// the stimulus format is task-shaped, always short & specific:
+"Aurora X1; foldable; $2,199; March; pre-orders"   // summarization
+"inform(restaurant); vegan=yes; party=4; price=cheap" // dialogue
+// prepended to the prompt -> the frozen LLM tends to include them.` },
+ { title:"4. Two models, wildly different sizes — only one learns", why:"DSP deliberately splits the labor. The <strong>frozen LLM</strong> supplies raw fluency and world knowledge; it may be 100&times; bigger than the policy and completely out of reach for training. The <strong>policy model</strong> is small and cheap, and it carries the <em>controllable</em> part of the system — the part you actually tune. This separation is why DSP is practical: fine-tuning a frontier model per task is impossible or ruinously expensive, but fine-tuning a T5-base to write good hints is a laptop-scale job. You get a lever on the big model's behavior at a tiny fraction of the cost, and it keeps working even when the LLM is a closed API.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">frozen LLM  ~ huge, locked, fluent + knowledgeable<br>policy     ~ tiny (T5-base), tuneable, cheap<br>tune the SMALL one to control the BIG one<br>cost of steering &ll; cost of fine-tuning the LLM</div>`, code:`// gradients touch ONLY the small policy:
+policy.trainable = true;     // ~220M params, laptop-scale
+llm.trainable    = false;    // frozen; maybe API-only, maybe 100x bigger
+// you buy control of the big model for the price of a tiny one.` },
+ { title:"5. Stage 1 — supervised warm-up (SFT)", why:"Reinforcement learning from scratch on a black-box reward is unstable, so DSP first gives the policy a <strong>supervised starting point</strong>. From a small labeled set it extracts <em>pseudo-stimuli</em> — for summarization, the keywords that actually appear in the gold summary; for dialogue, the acts/slots in the reference turn — and trains the policy to reproduce them from the input. This teaches the policy the <em>shape</em> of a reasonable stimulus and lands it in a sane region of the space, so the later RL step explores productively instead of flailing. It is the same warm-start logic as SFT-before-RLHF: imitate first, optimize second.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">references -> extract pseudo-hints<br>&nbsp;(keywords in the gold summary / slots in the reply)<br>policy.fit(input -> pseudo-hints)   // imitation<br>-> a sane starting point before any RL</div>`, code:`// pull pseudo-stimuli out of the references, then imitate them:
+const pseudo = references.map(extractKeywords);   // e.g. gold-summary words
+policy.fit(trainInputs, pseudo);                  // supervised warm-up
+// stabilizes the RL that follows (imitate first, optimize second).` },
+ { title:"6. Stage 2 — RL with the LLM's score as reward", why:"Now the core trick: <strong>optimize the policy with reinforcement learning where the reward is the frozen LLM's downstream performance</strong>. For each input the policy <em>samples</em> a stimulus, you run the frozen LLM on the augmented prompt, and you score the output (ROUGE, key-point coverage, task success, a reward model). That scalar reward is fed to PPO, which nudges the policy to raise the probability of hints that scored well and lower the rest. Crucially the LLM is treated as part of the (non-differentiable) environment — you don't backprop through it, you just use its output as a signal — which is exactly why this works on black-box APIs. Over many samples the policy learns which nudges genuinely move <em>this</em> model.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">policy.sample(input) -> stimulus<br>frozen LLM(prompt+stimulus) -> output<br>reward = score(output)   // ROUGE / coverage / RM<br>PPO: push policy toward high-reward hints<br>LLM = environment, never differentiated through</div>`, code:`for(const x of trainInputs){
+  const stim = policy.sample(x);                 // explore hint variants
+  const out  = await frozenLLM(build(x, stim));  // black box = environment
+  const R    = reward(out, refFor(x));           // its score = the reward
+  policy.ppoUpdate(x, stim, R);                  // only the policy moves
+}` },
+ { title:"7. Inference: policy → stimulus → frozen LLM", why:"Once trained, serving is a clean two-hop pipeline and everything is frozen. The input goes to the policy, which emits the stimulus; the stimulus is prepended to the prompt; the frozen LLM produces the steered output. There is no search, no scoring, no extra rounds at run time — just one small model call plus one big model call. The cost over a plain prompt is a single cheap forward pass through the policy, and in return you get input-specific steering that a fixed prompt cannot match. The demo in the LOOK tab is exactly this loop: toggling hints is toggling the stimulus the policy would have produced.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">input -> policy(input) = stimulus  (1 cheap call)<br>-> prepend to prompt<br>-> frozen LLM (1 call) = steered output<br>no search / no re-scoring at run time</div>`, code:`function serve(input){
+  const stimulus = policy.generate(input);        // trained, now frozen
+  return frozenLLM(build(input, stimulus));        // steered output
+}
+// overhead vs a plain prompt = one small forward pass. that's it.` },
+ { title:"8. Why per-input hints beat one fixed prompt", why:"A hand-written prompt is a <strong>single instruction for every input</strong>; it can encode general intent (\"be concise\", \"include key facts\") but it cannot say <em>which</em> facts matter for a document it has never seen. DSP's stimulus is generated fresh per input, so it can name the specific entities, slots, or aspects this example needs — the difference between \"include the key details\" and \"include Aurora X1, $2,199, ships March\". And because the policy was trained on the LLM's measured score, it favors the hints that <em>demonstrably</em> move the output, not the ones that merely sound helpful. Coverage-style gains in the LOOK demo show the effect: the un-steered answer is generically fine but misses the targets; the steered one hits them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fixed prompt: "include the key facts"  (blind to the input)<br>DSP stimulus: "Aurora X1; $2,199; March" (this input)<br>+ chosen by MEASURED effect on the LLM<br>-> tailored steering a global prompt can't give</div>`, code:`// fixed prompt: same words for a phone review AND a merger filing.
+// DSP: policy(reviewText) -> different hints than policy(filingText).
+// per-input + reward-selected -> it steers the hard cases too.` },
+ { title:"9. DSP vs fine-tuning, soft prompts, and RLHF", why:"DSP sits in a useful middle ground. Unlike <strong>fine-tuning the LLM</strong>, it never changes the big model, so it works on closed APIs and costs a fraction as much. Unlike <strong>soft prompts / prefix-tuning</strong> (which learn continuous vectors and need gradient access to the model), DSP's stimulus is <em>discrete, readable text</em> and treats the LLM as a black box — you can literally see the hints. Unlike <strong>RLHF</strong>, which uses RL to change the LLM's own weights toward human preferences, DSP uses RL to train a <em>separate</em> steering policy while the LLM is untouched. It is closest in spirit to learned prompt-optimization (APE, RLPrompt), but it optimizes a <em>per-input</em> generator of hints rather than one static instruction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fine-tune LLM : change big weights (costly, no API)<br>soft prompts  : learn vectors, need gradient access<br>RLHF          : RL changes the LLM's own weights<br>DSP           : RL trains a SEPARATE policy; LLM frozen<br>&nbsp;+ stimulus is discrete, readable text</div>`, code:`// DSP = black-box-friendly, discrete, per-input.
+// APE/RLPrompt: optimize ONE static instruction.
+// DSP: optimize a policy that WRITES a fresh stimulus per input.
+// soft-prompt/prefix-tuning: continuous, needs model gradients.` },
+ { title:"10. The limits: you need a scorer and training data", why:"DSP is not free. It requires a <strong>reward signal</strong> — a way to score the LLM's output (ROUGE, exact-match, task success, a reward model). Open-ended tasks with no measurable target give the policy nothing to optimize. It also needs <strong>training data</strong> for the policy (inputs, and references or a metric), plus the compute for the SFT + RL loop — small next to fine-tuning the LLM, but not nothing. Other cautions: a <em>badly</em> trained policy can emit misleading hints that hurt the output; the policy is tuned to one target LLM, so switching models can require re-training; and the task has to be genuinely steerable by short hints. No scorer or no data? Fall back to a well-crafted hand-written or few-shot prompt.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">NEEDS: a scorer (reward) + data to train the policy<br>+ compute for SFT + RL (small, not zero)<br>RISK: bad hints can mislead &middot; policy is LLM-specific<br>FAILS: no measurable target / not keyword-steerable<br>no scorer/data? -> hand-write or few-shot instead</div>`, code:`if(!haveScorer || !haveTrainData){
+  // no reward or nothing to train the policy on:
+  return useHandWrittenOrFewShotPrompt();
+}
+// and: re-train the policy if you switch the target LLM.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
