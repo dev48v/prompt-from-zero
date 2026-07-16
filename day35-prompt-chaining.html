@@ -1,0 +1,624 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 35 — Prompt Chaining</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:20px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .5s ease; }
+  .bar.lose > span { background:#cbd5e1; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .otext { font-size:13.5px; color:#1e293b; line-height:1.55; margin:7px 0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .exchip { display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 6px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #e2e8f0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .exchip.ok { background:#f5f3ff; border-color:#c4b5fd; color:#6d28d9; }
+  .exchip.no { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.frozen { background:#e2e8f0; color:#475569; border-color:#cbd5e1; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  /* chain-specific */
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iolabel.out { color:#7c3aed; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .iobox.out { background:#f5f3ff; border-color:#ddd6fe; color:#3b0764; }
+  .prompttag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; color:#6d28d9; background:#faf5ff; border:1px dashed #c4b5fd; border-radius:8px; padding:7px 9px; margin:6px 0; white-space:pre-wrap; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  .stepnum { width:26px; height:26px; border-radius:999px; background:#7c3aed; color:#fff; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .flawchip { display:inline-flex; align-items:center; gap:3px; font-size:10.5px; padding:2px 7px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 35</div>
+      <h1 class="text-xl font-bold">🔗 Prompt Chaining — instead of one mega-prompt that must <em>extract, reason and write</em> all at once, split the task into a pipeline of small focused prompts where each step's output becomes the next step's input (extract → transform → summarize); every stage does exactly one job, so accuracy climbs and you can inspect exactly where it broke</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't ask one prompt to do everything. Break the task into a chain — and step through it to watch each stage's output flow into the next.</h2>
+        <p class="text-slate-500 mb-5">A single <strong>mega-prompt</strong> that must extract facts, reason over them, <em>and</em> write the final answer in one shot is doing three jobs at once — so it drops details, mixes up its priorities, and hands you one opaque paragraph you can't debug. <strong>Prompt Chaining</strong> decomposes that into a <em>pipeline</em>: a sequence of small, single-purpose prompts where <strong>each step's output is the next step's input</strong>. A classic shape is <span class="mono text-violet-700">extract → transform → summarize</span>. Each step is easy for the model because it only does one thing; each intermediate result is a <em>checkpoint</em> you can read, validate, and fix in isolation. Below: pick a task, then flip between the single mega-prompt and the 3-step chain. Step through the chain one prompt at a time and watch the state pass from stage to stage — everything is scripted and deterministic (no live model), but faithful to how a real chain runs.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3 text-center text-sm">
+        <span class="text-slate-500">Task:</span>
+        <span id="taskChips" class="inline-flex gap-1.5 mx-2 align-middle"></span>
+        <div id="taskTitle" class="text-slate-800 font-semibold mt-1"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div id="inputLabel" class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Raw input</div>
+            <div id="inputBox" class="inputbox mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">How to run it</div>
+            <div class="flex gap-2 mb-3">
+              <button id="segSingle" class="segbtn flex-1">🧠 Single prompt</button>
+              <button id="segChain"  class="segbtn flex-1 on">🔗 3-step chain</button>
+            </div>
+
+            <div id="chainCtrls" class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run the chain</button>
+              </div>
+            </div>
+            <div id="singleCtrls" class="text-xs text-slate-500 leading-snug" style="display:none;">
+              The whole task goes to the model as <strong>one prompt</strong>. There are no intermediate steps — you get a single output and no way to see how it got there.
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Each chain step is one focused LLM call. The <span class="text-violet-600 font-semibold">output</span> of a step is literally pasted in as the <span class="text-slate-600 font-semibold">input</span> of the next — that's the "state" flowing down the pipeline.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The pipeline</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2">One mega-prompt collapses all three jobs into a single opaque call. The chain keeps them separate, so state — and blame — flows one stage at a time.</div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the task</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Required facts captured</div>
+              <div class="text-xs text-slate-400 mb-2">Same task, same (simulated) model. The only difference is <em>one prompt</em> vs a <em>chain of focused prompts</em>.</div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">This run</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">required facts</span><span id="statTotal" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">steps run</span><span id="statSteps" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">inspectable checkpoints</span><span id="statChk" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">facts captured</span><span id="statPct" class="stat font-bold text-violet-700 text-lg"></span></div>
+              <div class="bar mb-2"><span id="statBar"></span></div>
+              <div id="improveNote" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 A chain trades one hard call for three easy ones — and buys you visibility.</strong> Each step in the pipeline has a single, narrow job, so the model performs it far more reliably than when it has to juggle extraction, reasoning and writing in one breath. Just as important: every intermediate result is a <strong>checkpoint</strong>. When the answer is wrong you don't stare at one opaque paragraph — you open the Extract output, the Transform output, the Summarize output, and see <em>exactly</em> which stage failed. You can validate between steps, retry a single stage, or swap one prompt without touching the rest. The cost is more calls and more latency, so you chain when the task genuinely has distinct phases — not to over-engineer a one-liner.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Prompt chaining = decompose a task into a pipeline of single-purpose prompts, pass each step's output as the next step's input, and gate/inspect between steps. More reliable and far more debuggable than a single mega-prompt — at the price of extra calls.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Prompt Chaining works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A prompt chain is just a small pipeline: one function per step, and the output of each step handed to the next. No framework required. Here is the whole thing — an <span class="mono text-violet-700">extract → transform → summarize</span> chain with validation gates between the stages, and the mega-prompt it replaces for comparison.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The mega-prompt you're replacing</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First, the thing that <em>almost</em> works: one prompt that has to do everything. It's tempting because it's one call — but the model has to extract, reason and write simultaneously, and you get a single opaque blob back. When it's wrong, you have no idea which part broke.</p>
+        <div class="relative"><pre>// ❌ One prompt, three jobs at once. Fluent, but unreliable + opaque.
+async function megaPrompt(rawReviews) {
+  return llm(`Read every review, find the single most common complaint,
+             quantify it, and write a one-paragraph exec summary with a
+             recommendation.\n\nReviews:\n${rawReviews}`);
+}
+// returns ONE paragraph. No checkpoints. Can't tell where it slipped.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Step 1 — Extract (narrow, structured)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The first link does <strong>only</strong> extraction: turn messy input into clean, structured rows. Ask for a machine-readable shape (one line per item, or JSON) — no analysis, no prose. A tiny, single-purpose prompt is something the model gets right almost every time.</p>
+        <div class="relative"><pre>// ✅ Step 1: extract only. Structured out, nothing else.
+async function extract(rawReviews) {
+  const out = await llm(`For EACH review, emit one line:
+    + positives  ·  - negative theme in {app,battery,shipping,price,comfort,sound}
+    Reviews:\n${rawReviews}`);
+  return out;                       // e.g. "R1 +overall · -app ..."
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Step 2 — Transform (operate on the structure)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The second link takes <em>step 1's output</em> as its input and does the reasoning: aggregate, count, rank, classify. Because it works on clean rows rather than raw text, the reasoning is far more reliable — the hard parsing already happened upstream.</p>
+        <div class="relative"><pre>// ✅ Step 2: transform. Its INPUT is step 1's OUTPUT.
+async function transform(rows) {
+  return llm(`From these tagged rows, tally NEGATIVE mentions per theme,
+             sort descending, and list POSITIVE themes separately.
+             Rows:\n${rows}`);      // rows === extract()'s return value
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Step 3 — Summarize (present, don't compute)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The last link only writes prose, and only from the tally step 2 produced. Separating "figure out the answer" from "phrase the answer" means the writing step can't quietly change the facts — it just presents what the pipeline already computed.</p>
+        <div class="relative"><pre>// ✅ Step 3: summarize. Presentation only, over step 2's tally.
+async function summarize(tally) {
+  return llm(`Using ONLY this tally, write one paragraph:
+             overall sentiment, the #1 complaint WITH its count,
+             and a concrete recommendation.\n\nTally:\n${tally}`);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Chain them — with validation gates between steps</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The pipeline is just the three calls in order, each fed the previous result. The bonus of visible checkpoints: you can <strong>gate</strong> between steps — validate the shape, and fail (or retry just that one step) the moment something looks wrong, instead of discovering it in the final answer.</p>
+        <div class="relative"><pre>// ✅ The chain. State flows down; gates catch problems early.
+async function run(rawReviews) {
+  const rows  = await extract(rawReviews);
+  assert(rows.includes("-"), "extract produced no tagged rows");   // gate
+
+  const tally = await transform(rows);
+  assert(/\d/.test(tally), "transform produced no counts");        // gate
+
+  const answer = await summarize(tally);
+  return { rows, tally, answer };   // keep intermediates → debuggable!
+}
+// if the answer is wrong, open rows/tally to see WHICH step failed.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know when to chain — and when not to</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Chaining shines when a task has <em>distinct phases</em> (parse, then reason, then write), when reliability and debuggability matter, or when you want validation between stages. The cost is real: more calls, more latency, and an error in an early step propagates downstream. For a simple, single-shot task, one good prompt is better — don't build a pipeline for a one-liner.</p>
+        <div class="relative"><pre>// Decide before you build:
+if (taskHasDistinctPhases && needReliabilityOrDebugging) {
+  usePromptChain();          // extract -> transform -> summarize
+} else if (isSimpleOneShot) {
+  useSinglePrompt();         // a chain would just add latency
+}
+// watch out: early-step errors flow downstream -> gate aggressively.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 35 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Prompt Chaining</strong>: instead of one mega-prompt that must extract, reason and write all at once, decompose the task into a <strong>pipeline of single-purpose prompts</strong> where each step's output becomes the next step's input — the classic <span class="mono">extract → transform → summarize</span> shape. Each step is easy because it does one job, so accuracy climbs; and each intermediate result is an <strong>inspectable checkpoint</strong>, so you can validate between stages, retry a single step, and know exactly where a failure happened instead of staring at one opaque answer. The trade-off is more calls and latency, plus errors that can propagate downstream — so chain when the task has genuinely distinct phases, and gate between steps. <strong>👉 Next up — Routing: classify the input first, then dispatch it to the specialized prompt (or chain) built for that case.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Prompt Chaining -- single mega-prompt vs a 3-step pipeline =====
+// Fully scripted & deterministic. No live model. Mirrors how a real chain runs:
+// each step is one focused LLM call, and the OUTPUT of step N is literally the
+// INPUT of step N+1 (the "state" flowing down the pipeline). The single-prompt
+// path is the baseline it replaces -- one opaque call that does all three jobs
+// at once. Coverage below is computed from which required facts each path
+// captures; step through the chain to watch it climb, checkpoint by checkpoint.
+/* ==DATA_START== */
+const TASKS = [
+  {
+    id:"reviews", tag:"reviews → insight",
+    title:"Turn a messy pile of customer reviews into one quantified executive insight",
+    inputLabel:"Raw input — 5 unstructured customer reviews",
+    input:`“Love the headphones — but the app keeps crashing on Android.”   ·   “Battery lasts for days, amazing. Shipping took 3 weeks though, way too slow.”   ·   “Sound quality is great, but $299 is honestly too expensive.”   ·   “The app crashed AGAIN after the update. So frustrating.”   ·   “Really comfortable fit, no complaints there.”`,
+    items:[
+      { id:"pos",   label:"notes the positives" },
+      { id:"issue", label:"names the #1 complaint" },
+      { id:"count", label:"quantifies it (2 of 5)" },
+      { id:"rec",   label:"gives a recommendation" }
+    ],
+    mega:{
+      prompt:`You are a product analyst. Read ALL of these reviews and, in one paragraph, name the single most common complaint and give a recommendation.`,
+      output:`Overall customers are happy with the headphones — they love the sound and the battery life. The main complaint seems to be slow shipping, and a couple of people mentioned the app. Sentiment is positive.`,
+      captures:["pos"],
+      flaws:["picked the WRONG #1 (app crashes ×2 > shipping ×1)","never quantified anything","no concrete recommendation","one opaque call — can't see where it slipped"]
+    },
+    steps:[
+      { name:"Extract", job:"Pull one structured row per review — capture only, no analysis.",
+        prompt:`For EACH review, emit one line:  + positives  ·  − negative theme ∈ {app, battery, shipping, price, comfort, sound}`,
+        output:`R1  + overall     ·  − app (crash, Android)
+R2  + battery     ·  − shipping (3 wks)
+R3  + sound       ·  − price ($299)
+R4                ·  − app (crash, after update)
+R5  + comfort`,
+        adds:["pos"] },
+      { name:"Transform", job:"Aggregate the rows — tally & rank the negatives, set positives aside.",
+        prompt:`From the rows: count NEGATIVE mentions per theme, sort descending. List POSITIVE themes separately.`,
+        output:`NEGATIVES (ranked)
+  1. app crashes …… 2
+  2. shipping slow … 1
+  3. price high …… 1
+POSITIVES: battery, sound, comfort`,
+        adds:["issue","count"] },
+      { name:"Summarize", job:"Write the one-paragraph insight from the tally — the only step that writes prose.",
+        prompt:`Using ONLY the tally, write one paragraph: overall sentiment, the #1 complaint with its count, and a concrete recommendation.`,
+        output:`Sentiment is largely positive — customers praise battery life, sound and comfort. The #1 recurring issue is app crashes on Android, cited in 2 of 5 reviews, ahead of slow shipping and price. Recommendation: ship an Android app-stability fix before the next hardware push.`,
+        adds:["rec"] }
+    ]
+  },
+  {
+    id:"meeting", tag:"transcript → action items",
+    title:"Turn a rambling meeting transcript into a clean, owned action-item digest",
+    inputLabel:"Raw input — unstructured meeting transcript",
+    input:`“Priya, can you get the API contract over to the vendor by Friday?” “Yep.” “We're pushing the launch to August. Tom — chase legal on the DPA, it's blocking us.” “Oh, marketing budget got approved — $40k.” “Someone book the venue… Sara?” “Sure, I'll do it by Wednesday.”`,
+    items:[
+      { id:"a1",        label:"Priya · API contract (Fri)" },
+      { id:"a2",        label:"Tom · unblock legal / DPA" },
+      { id:"a3",        label:"Sara · book venue (Wed)" },
+      { id:"ctxLaunch", label:"launch → August" },
+      { id:"ctxBudget", label:"$40k budget approved" }
+    ],
+    mega:{
+      prompt:`Read this transcript and list the action items with owners and due dates, plus any key decisions.`,
+      output:`The team discussed the upcoming launch and assigned some follow-ups. Priya and Tom have tasks to complete, and the marketing budget was approved. The launch timeline was also updated.`,
+      captures:["a1","ctxLaunch"],
+      flaws:["dropped Sara / the venue entirely","lost every due date (Fri, Wed)","didn't separate decisions from tasks","reads fine — you'd never notice it missed a task"]
+    },
+    steps:[
+      { name:"Extract", job:"Capture every line that is a task, decision or fact — verbatim, no owners/dates yet.",
+        prompt:`List each utterance that states a task, a decision, or a fact. Capture only — don't structure it.`,
+        output:`- Priya: get API contract to vendor by Friday
+- decision: launch pushed to August
+- Tom: chase legal on the DPA (blocking)
+- fact: marketing budget approved, $40k
+- Sara: book the venue by Wednesday`,
+        adds:["a1","a2","a3"] },
+      { name:"Transform", job:"Structure it — split ACTIONS (owner·task·due·priority) from CONTEXT.",
+        prompt:`Turn the captured lines into a table: ACTIONS with owner, task, due, priority; and a separate CONTEXT list.`,
+        output:`ACTIONS
+  Priya | API contract → vendor | Fri  | normal
+  Tom   | chase legal on DPA    | ASAP | BLOCKER
+  Sara  | book venue            | Wed  | normal
+CONTEXT
+  • launch moved to August
+  • marketing budget approved ($40k)`,
+        adds:["ctxLaunch"] },
+      { name:"Summarize", job:"Compose the digest from the table — presentation only.",
+        prompt:`Write a short digest: one line per action item (owner, task, due), then an FYI line for context.`,
+        output:`Action items from today's sync — Priya: send the API contract to the vendor by Friday. Tom (top priority — we're blocked): chase legal on the DPA. Sara: book the venue by Wednesday. FYI: launch is now August, and the $40k marketing budget is approved.`,
+        adds:["ctxBudget"] }
+    ]
+  }
+];
+/* ==DATA_END== */
+
+const taskChips = document.getElementById("taskChips");
+const taskTitle = document.getElementById("taskTitle");
+const inputLabel= document.getElementById("inputLabel");
+const inputBox  = document.getElementById("inputBox");
+const segSingle = document.getElementById("segSingle");
+const segChain  = document.getElementById("segChain");
+const chainCtrls= document.getElementById("chainCtrls");
+const singleCtrls=document.getElementById("singleCtrls");
+const runNext   = document.getElementById("runNext");
+const resetBtn  = document.getElementById("resetBtn");
+const autoBtn   = document.getElementById("autoBtn");
+const phaseBar  = document.getElementById("phaseBar");
+const flow      = document.getElementById("flow");
+const flowLabel = document.getElementById("flowLabel");
+const verdict   = document.getElementById("verdict");
+const coverChart= document.getElementById("coverChart");
+const statTotal = document.getElementById("statTotal");
+const statSteps = document.getElementById("statSteps");
+const statChk   = document.getElementById("statChk");
+const statPct   = document.getElementById("statPct");
+const statBar   = document.getElementById("statBar");
+const improveNote = document.getElementById("improveNote");
+
+let cur = 0;
+let mode = "chain";      // "single" | "chain"
+let stepIdx = 0;         // chain progress: 0..3
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+TASKS.forEach((t,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = t.tag;
+  c.onclick = () => { cur = i; stepIdx = 0; stopAuto(); syncChips(); render(); };
+  taskChips.appendChild(c);
+});
+function syncChips(){ taskChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===cur)); }
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run the chain"; } }
+
+segSingle.onclick = () => { stopAuto(); mode="single"; render(); };
+segChain.onclick  = () => { stopAuto(); mode="chain";  render(); };
+runNext.onclick   = () => { stopAuto(); if(stepIdx<3){ stepIdx++; render(); } };
+resetBtn.onclick  = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  mode="chain"; stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=3){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay the chain"; return; }
+    stepIdx++; render();
+  }, 1500);
+};
+
+function coverChips(coveredSet, task){
+  return task.items.map(k=>{
+    const ok = coveredSet.has(k.id);
+    return `<span class="exchip ${ok?'ok':'no'}">${escapeHtml(k.label)} ${ok?'✓':'✗'}</span>`;
+  }).join("");
+}
+function chainCovered(){
+  const t = TASKS[cur]; const set = new Set();
+  for(let i=0;i<stepIdx;i++) t.steps[i].adds.forEach(a=>set.add(a));
+  return set;
+}
+
+function render(){
+  const t = TASKS[cur];
+  taskTitle.textContent = t.title;
+  inputLabel.textContent = t.inputLabel;
+  inputBox.textContent = t.input;
+
+  segSingle.classList.toggle("on", mode==="single");
+  segChain.classList.toggle("on", mode==="chain");
+  chainCtrls.style.display  = mode==="chain"  ? "flex"  : "none";
+  singleCtrls.style.display = mode==="single" ? "block" : "none";
+  flowLabel.textContent = mode==="single" ? "The single mega-prompt" : "The chain — step through it";
+
+  const total = t.items.length;
+  const covered = mode==="single" ? new Set(t.mega.captures) : chainCovered();
+  const pct = Math.round(covered.size / total * 100);
+  const singlePct = Math.round(new Set(t.mega.captures).size / total * 100);
+
+  // phase bar
+  if(mode==="single"){
+    phaseBar.innerHTML =
+      `<span class="pill on">input</span><span class="arr">→</span>` +
+      `<span class="pill tune">🧠 one mega-prompt<br><span style="font-weight:600;text-transform:none;font-size:9px;">extract + transform + summarize at once</span></span><span class="arr">→</span>` +
+      `<span class="pill on">output</span>`;
+  } else {
+    let html = `<span class="pill ${stepIdx>0?'on':'tune'}">input</span>`;
+    t.steps.forEach((s,i)=>{
+      const done = i < stepIdx, next = i === stepIdx;
+      html += `<span class="arr">→</span><span class="pill ${done?'on':(next?'tune':'')}">${done?'✓ ':''}${s.name}</span>`;
+    });
+    html += `<span class="arr">→</span><span class="pill ${stepIdx>=3?'on':''}">output</span>`;
+    phaseBar.innerHTML = html;
+  }
+
+  // body
+  if(mode==="single"){
+    flow.innerHTML = `<div class="cand row-appear">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <span class="badge muted">single mega-prompt · 1 opaque call</span>
+        <span class="stat font-bold text-slate-500 whitespace-nowrap">${singlePct}% · ${new Set(t.mega.captures).size}/${total}</span>
+      </div>
+      <div class="iolabel">the one prompt</div>
+      <div class="prompttag">${escapeHtml(t.mega.prompt)}</div>
+      <div class="iolabel out">its single output</div>
+      <div class="iobox out">${escapeHtml(t.mega.output)}</div>
+      <div class="mt-2">${t.mega.flaws.map(f=>`<span class="flawchip">✗ ${escapeHtml(f)}</span>`).join("")}</div>
+      <div class="bar lose mt-2 mb-1"><span style="width:${singlePct}%"></span></div>
+      <div>${coverChips(new Set(t.mega.captures), t)}</div>
+    </div>`;
+  } else {
+    let html = "";
+    if(stepIdx === 0){
+      html = `<div class="cand row-appear" style="text-align:center;color:#64748b;padding:26px;">
+        <div style="font-size:26px;">🔗</div>
+        <div class="text-sm mt-1">The chain is idle. Hit <strong>▶ Run step 1</strong> to fire <strong>Extract</strong> — then watch its output become the input to <strong>Transform</strong>.</div>
+      </div>`;
+    } else {
+      for(let i=0;i<stepIdx;i++){
+        const s = t.steps[i];
+        const inText = i===0 ? t.input : t.steps[i-1].output;
+        const inFrom = i===0 ? "raw input" : (t.steps[i-1].name + " output ↑");
+        html += `<div class="cand win row-appear">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum">${i+1}</div>
+            <div><div class="font-bold text-slate-800 text-sm">${s.name}</div><div class="text-[11px] text-slate-500">${escapeHtml(s.job)}</div></div>
+          </div>
+          <div class="iolabel">input — from ${escapeHtml(inFrom)}</div>
+          <div class="iobox mb-1">${escapeHtml(inText)}</div>
+          <div class="prompttag">▸ prompt: ${escapeHtml(s.prompt)}</div>
+          <div class="iolabel out">output — this becomes the next step's input</div>
+          <div class="iobox out">${escapeHtml(s.output)}</div>
+        </div>`;
+        const showConn = (i < stepIdx-1) || (i === stepIdx-1 && stepIdx < 3);
+        if(showConn){
+          const nextName = (i+1 < 3) ? t.steps[i+1].name : "final output";
+          html += `<div class="flowconn"><span class="ln"></span>↓ ${escapeHtml(s.name)} output → ${escapeHtml(nextName)} input<span class="ln"></span></div>`;
+        }
+      }
+      if(stepIdx >= 3){
+        html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Final answer</strong> = the Summarize output above, assembled from three focused, inspectable steps. Every required fact is present — and if one were wrong, you'd know exactly which step to open.</div>`;
+      }
+    }
+    flow.innerHTML = html;
+  }
+
+  // control labels
+  runNext.disabled = stepIdx >= 3;
+  runNext.style.opacity = stepIdx >= 3 ? ".55" : "1";
+  runNext.textContent = stepIdx >= 3 ? "✓ Chain complete" : `▶ Run step ${stepIdx+1}: ${t.steps[stepIdx].name}`;
+
+  // comparison chart: single vs chain
+  const chainBarPct = mode==="chain" ? pct : 100;
+  const chainLab = mode==="chain" ? `chain<br>(${stepIdx}/3 steps)` : "chain<br>(3 steps)";
+  const bars = [
+    { lab:"single<br>mega-prompt", pct:singlePct, on:false },
+    { lab:chainLab,                pct:chainBarPct, on:true }
+  ];
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}%</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // stats
+  statTotal.textContent = total;
+  statSteps.textContent = mode==="chain" ? (stepIdx + " / 3") : "1 (all-in-one)";
+  statChk.textContent   = mode==="chain" ? stepIdx : "0";
+  statPct.textContent   = pct + "%";
+  statBar.style.width   = pct + "%";
+
+  improveNote.innerHTML =
+    mode==="single"
+      ? `The mega-prompt does all three jobs in one call and captures <strong>${singlePct}%</strong>. Switch to the chain to compare.`
+      : (stepIdx===0
+          ? `Run the chain to beat the <strong>${singlePct}%</strong> single-prompt baseline.`
+          : (stepIdx<3
+              ? `${stepIdx} of 3 steps run — <strong style="color:#7c3aed">${pct}%</strong> of the facts locked in, each one checkable.`
+              : `The chain hit <strong style="color:#7c3aed">100%</strong> across 3 inspectable steps; the single prompt stalled at <strong>${singlePct}%</strong>.`));
+
+  // verdict
+  if(mode==="single"){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>One opaque call.</strong> The mega-prompt returned a fluent paragraph — but it captured only <span class="font-semibold">${singlePct}%</span> of the required facts${cur===0?" and confidently named the <em>wrong</em> top issue":", silently dropping a whole task"}. There's no checkpoint to inspect, so you can't tell <em>where</em> it went wrong — only that it did.</span>`;
+  } else if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>Chain idle.</strong> Same task, three small prompts. Run them one at a time and watch state flow from step to step.</span>`;
+  } else if(stepIdx<3){
+    const doneStep = t.steps[stepIdx-1];
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▸ ${doneStep.name} done.</strong> Its output above is now the <em>exact</em> input to <strong>${t.steps[stepIdx].name}</strong>. Coverage so far: <span class="text-violet-700 font-semibold">${pct}%</span>. Inspect it, then run the next step.</span>`;
+  } else {
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▲ Chain complete.</strong> Three focused calls lifted coverage to <span class="text-violet-700 font-semibold">100%</span> vs the mega-prompt's ${singlePct}% — and because every step is a visible checkpoint, a failure would be isolated to one step instead of buried in one big answer.</span>`;
+  }
+}
+
+syncChips();
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: one prompt doing three jobs", why:"The natural first move is to write a single <strong>mega-prompt</strong>: \"read this, figure out the answer, and write it up.\" It often <em>almost</em> works — the output is fluent and confident. But under the hood the model is doing extraction, reasoning, and writing <strong>simultaneously</strong>, and attention is finite: it drops a detail, miscounts, picks the wrong priority, or quietly skips a whole sub-task. Worse, you get back <em>one opaque blob</em>. When it's wrong you can't see <em>why</em> — there's no seam to pull apart, no place to look. You just have a bad paragraph and a shrug.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">raw input -> [ 🧠 ONE mega-prompt ] -> answer<br>&nbsp;&nbsp;(extract + reason + write, all at once)<br>fluent but: drops facts &middot; wrong priority &middot; opaque<br>wrong? -> no seam to inspect, can't tell where</div>`, code:`// one prompt, three jobs -> unreliable AND undebuggable:
+const answer = await llm("Read all reviews, find the top complaint, " +
+                         "quantify it, and write a summary + recommendation.");
+// returns ONE paragraph. no checkpoints. no way to see the failure.` },
+ { title:"2. The idea: a pipeline of focused prompts", why:"Prompt chaining <strong>decomposes</strong> the task into a sequence of small, single-purpose prompts — a <em>pipeline</em>. Each link does exactly one thing, and the <strong>output of one link is the input of the next</strong>. A canonical shape is <span class=\"mono\">extract → transform → summarize</span>: first pull the structured facts, then reason over that structure, then write from the result. Instead of one impossibly broad instruction, you hand the model a series of narrow ones — each of which it can nail. It's the Unix-pipe philosophy applied to LLM calls: small tools, composed.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">input -> [Extract] -> rows<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;rows -> [Transform] -> tally<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;tally -> [Summarize] -> answer<br>one job per step &middot; output N = input N+1</div>`, code:`// three narrow prompts, chained:
+const rows   = await extract(rawInput);   // step 1
+const tally  = await transform(rows);     // step 2  (eats step 1)
+const answer = await summarize(tally);    // step 3  (eats step 2)` },
+ { title:"3. The core mechanic: passing state", why:"The whole technique lives in one line: <strong>each step's output is literally the next step's input.</strong> That intermediate value — the extracted rows, the tally — is the <em>state</em> travelling down the pipeline. Because it's real, inspectable data (text, JSON, a table), you control exactly what each step sees. You can shape step 1's output specifically so step 2 finds it easy to consume — e.g. ask step 1 for clean tagged rows, not prose, so step 2's reasoning is trivial. Designing the hand-off between steps is most of the craft of chaining.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">step1.output ===== step2.input<br>step2.output ===== step3.input<br>the intermediate value = STATE in the pipe<br>shape step N's output to make step N+1 easy</div>`, code:`const rows  = await extract(input);        // structured, not prose
+const tally = await transform(rows);       // <-- rows is the input here
+//            ^^^^ the SAME value flows in. that's the "chain".
+const out   = await summarize(tally);      // <-- tally flows in here` },
+ { title:"4. Link type: Extract (parse, don't think)", why:"The first link almost always <strong>extracts</strong>: it turns messy, unstructured input into a clean, structured shape and does <em>nothing else</em>. No analysis, no opinions — just \"pull these fields into this format.\" Ask for a machine-readable output (one line per item, JSON, a table). This is the step that de-risks everything downstream: once the hard parsing is done <em>once</em>, every later step operates on tidy data instead of re-parsing raw text. A narrow extraction prompt is something even a small model gets right almost every time.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">messy text -> [ EXTRACT ] -> structured rows<br>&nbsp;&nbsp;\"pull fields into THIS shape, nothing else\"<br>no analysis &middot; machine-readable out<br>-> the hard parsing happens exactly once</div>`, code:`// step 1 does ONLY extraction, structured output:
+const rows = await llm(\`For EACH review emit one line:
+  + positives  ·  - negative theme in {app,battery,shipping,...}
+  \${rawReviews}\`);   // "R1 +overall · -app  /  R2 +battery · -shipping ..."` },
+ { title:"5. Link type: Transform (reason over structure)", why:"The middle link does the actual <strong>reasoning</strong> — but over step 1's clean structure, never the raw input. Aggregate, count, rank, classify, filter, join. This is dramatically more reliable than reasoning inside the mega-prompt, because the model isn't also fighting to parse messy text at the same time; the extraction step already handed it tidy rows. Separating \"understand the input\" from \"reason about it\" is exactly why each step's accuracy is high.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">rows -> [ TRANSFORM ] -> tally / ranking<br>count, rank, classify, filter, join<br>reasons over CLEAN structure, not raw text<br>-> the hard reasoning is now easy</div>`, code:`// step 2 reasons over step 1's rows (not the raw text):
+const tally = await llm(\`Tally NEGATIVE mentions per theme, sort desc,
+  list positives separately.\\nRows:\\n\${rows}\`);
+// "app crashes: 2  /  shipping: 1  /  price: 1  /  +battery,sound,comfort"` },
+ { title:"6. Link type: Summarize (present, don't compute)", why:"The final link only <strong>writes</strong>, and only from what the pipeline already computed. Its job is presentation — turn the tally into a paragraph, the table into an email — <em>without</em> changing the facts. Because the answer was decided in the transform step, the writing step can't quietly invent a different top issue or forget a number; it's constrained to phrase what it's given. This split (\"decide the answer\" vs \"phrase the answer\") is what stops fluent prose from silently overriding correct analysis.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">tally -> [ SUMMARIZE ] -> final prose<br>present only, over the computed result<br>facts are already fixed upstream<br>-> writing can't overwrite the analysis</div>`, code:`// step 3 only presents step 2's tally as prose:
+const answer = await llm(\`Using ONLY this tally, write one paragraph:
+  sentiment, the #1 complaint WITH its count, a recommendation.
+  \\nTally:\\n\${tally}\`);   // it phrases the facts; it can't change them.` },
+ { title:"7. The payoff: error isolation & debuggability", why:"This is the big win over the mega-prompt. Every intermediate output is a <strong>checkpoint you can read</strong>. When the final answer is wrong you don't stare at one blob guessing — you open the Extract output, then Transform, then Summarize, and the failure is <em>localized</em>: \"ah, Extract missed review 4, so the count was off.\" You fix (or re-run) that one step. A single mega-prompt has zero seams, so a bug anywhere looks the same: a bad paragraph. Chaining converts an opaque failure into a pinpointed one.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">answer wrong?<br>open extract -> ok<br>open transform -> ❌ miscounted HERE<br>open summarize -> (fine)<br>-> failure isolated to ONE step, not the whole call</div>`, code:`const { rows, tally, answer } = await run(input);
+// keep every intermediate -> inspect to localize the bug:
+console.log(rows);    // did extraction capture everything?
+console.log(tally);   // did the reasoning count correctly?  <-- bug here
+console.log(answer);  // (only presentation)` },
+ { title:"8. Validation gates between steps", why:"Visible checkpoints let you do something a mega-prompt can't: <strong>gate</strong> between stages. After each step, cheaply validate its output — is the JSON parseable? are there any rows? does the tally contain numbers? — and if not, <em>fail fast</em> or retry <em>just that one step</em> before the error propagates. You can even branch on the intermediate result. This turns a chain into a small, controllable program with the LLM calls as its steps, instead of one hope-for-the-best request.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">extract -> [✓ gate: rows exist?] -> transform<br>transform -> [✓ gate: has counts?] -> summarize<br>fail fast &middot; retry ONE step &middot; branch on state<br>-> a controllable program, not one big wish</div>`, code:`const rows = await extract(input);
+assert(rows.includes("-"), "extract gave no tagged rows"); // gate 1
+const tally = await transform(rows);
+assert(/\\d/.test(tally), "transform gave no counts");      // gate 2
+// a failed gate -> retry that step, not the whole pipeline.` },
+ { title:"9. Why focused steps beat one big prompt", why:"Reliability compounds in your favor. A mega-prompt's accuracy is the probability it nails <em>all</em> sub-tasks at once; each narrow step has a much higher success rate on its <em>one</em> job, and you can make each nearly bulletproof with tight instructions and validation. The result is a final answer that's both more complete and more correct — as the demo shows, the chain captures 100% of the required facts while the single prompt stalls (and can be confidently wrong). The price is real: more LLM calls, so more latency and token cost. You're buying reliability and visibility with calls.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 broad prompt: P(all jobs right) = LOW<br>3 narrow prompts: each P(right) = HIGH<br>-> more complete + more correct answer<br>cost: more calls = more latency + tokens</div>`, code:`// reliability of the whole ~ product of each step's reliability,
+// and narrow steps are FAR more reliable than one broad one.
+// chain:  complete + correct, but 3 calls (slower, pricier)
+// mega:   1 call (fast/cheap) but drops facts, opaque errors` },
+ { title:"10. When to chain — and the limits", why:"Chain when the task has genuinely <strong>distinct phases</strong> (parse → reason → write), when reliability and debuggability matter, or when you want validation between stages. Don't chain a one-liner: for a simple single-shot task, one good prompt is faster and cheaper, and a pipeline just adds latency. Mind the limits: more calls mean more latency and cost; an error in an early step <em>propagates</em> downstream (garbage in, garbage out — so gate aggressively); and too many tiny steps is its own kind of over-engineering. Chaining is one of the fundamental agent building-blocks — next you'll see how to <em>route</em> inputs to different chains.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE when: distinct phases + need reliability/debug<br>SKIP when: simple one-shot task (chain = wasted latency)<br>WATCH: latency &middot; cost &middot; early errors propagate<br>gate between steps &middot; don't over-decompose</div>`, code:`if (taskHasDistinctPhases && needReliabilityOrDebug) {
+  usePromptChain();      // extract -> transform -> summarize
+} else if (isSimpleOneShot) {
+  useSinglePrompt();     // a chain would only add latency
+}
+// early-step errors flow downstream -> gate aggressively.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
