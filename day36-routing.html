@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 36 — Prompt Routing</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:20px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .5s ease; }
+  .bar.lose > span { background:#cbd5e1; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .otext { font-size:13.5px; color:#1e293b; line-height:1.55; margin:7px 0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .cand.fb { border-color:#f59e0b; background:#fffbeb; box-shadow:0 4px 16px rgba(245,158,11,.16); }
+  .exchip { display:inline-flex; align-items:center; gap:3px; font-size:10px; padding:2px 6px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #e2e8f0; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .exchip.ok { background:#f5f3ff; border-color:#c4b5fd; color:#6d28d9; }
+  .exchip.no { background:#fef2f2; border-color:#fecaca; color:#b91c1c; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.fb { background:#f59e0b; color:#fff; border-color:#f59e0b; box-shadow:0 2px 8px rgba(245,158,11,.35); }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  /* routing-specific */
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iolabel.out { color:#7c3aed; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .iobox.out { background:#f5f3ff; border-color:#ddd6fe; color:#3b0764; }
+  .prompttag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; color:#6d28d9; background:#faf5ff; border:1px dashed #c4b5fd; border-radius:8px; padding:7px 9px; margin:6px 0; white-space:pre-wrap; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn.fb { color:#b45309; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  .stepnum { width:26px; height:26px; border-radius:999px; background:#7c3aed; color:#fff; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .stepnum.fb { background:#f59e0b; }
+  .flawchip { display:inline-flex; align-items:center; gap:3px; font-size:10.5px; padding:2px 7px; border-radius:6px; margin:3px 3px 0 0; border:1px solid #fecaca; background:#fef2f2; color:#b91c1c; }
+  .rt { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .rt .nm { width:168px; font-size:11.5px; font-weight:700; color:#64748b; display:flex; align-items:center; gap:5px; }
+  .rt .track { flex:1; height:16px; background:#f1f5f9; border-radius:6px; overflow:hidden; position:relative; }
+  .rt .fill { position:absolute; left:0; top:0; bottom:0; background:#cbd5e1; border-radius:6px; transition:width .55s ease; }
+  .rt.win .fill { background:#7c3aed; }
+  .rt.tie .fill { background:#f59e0b; }
+  .rt .pctlab { width:40px; text-align:right; font-size:11px; font-variant-numeric:tabular-nums; color:#64748b; }
+  .rt.win .nm, .rt.win .pctlab { color:#6d28d9; }
+  .confpill { display:inline-block; font-size:11px; font-weight:800; padding:2px 9px; border-radius:999px; }
+  .confpill.hi { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .confpill.lo { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .qinput { width:100%; background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:8px 10px; font-size:12.5px; color:#334155; }
+  .qinput:focus { outline:none; border-color:#a78bfa; box-shadow:0 0 0 3px rgba(124,58,237,.12); }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 36</div>
+      <h1 class="text-xl font-bold">🧭 Prompt Routing — instead of one bloated do-everything prompt that must handle billing, bugs <em>and</em> chit-chat all at once, <strong>first classify</strong> the incoming message, <strong>then dispatch</strong> it to the small specialized prompt (or chain) built for that case; a cheap router LLM picks the handler — and when it isn't sure, it <em>falls back</em> instead of guessing</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't make one prompt handle every kind of request. Classify the input first — then watch the router pick the specialist built for it.</h2>
+        <p class="text-slate-500 mb-5">A single <strong>do-everything prompt</strong> that must answer billing questions, debug code, <em>and</em> make small talk is carrying every instruction and every tool at once — so it's bloated, expensive, and only mediocre at each job. Worse, it can't tell you when a message is <em>ambiguous</em>: it just picks an interpretation and confidently runs with it. <strong>Prompt Routing</strong> is a two-move pattern: a small, cheap <strong>router</strong> LLM first <em>classifies</em> the message into one of a fixed set of routes, then the input is <strong>dispatched</strong> to the focused specialist prompt (or chain) for that route. The router also returns a <strong>confidence</strong> — and if it's low or the top routes tie, the request goes to a <strong>fallback</strong> that asks a clarifying question or hands off to a human, rather than guessing. Below: pick or type a query, then flip between the single do-everything prompt and the router. Step through the router — classify, then dispatch — and watch it choose (including the fallback). Everything is scripted/deterministic client-side (no live model), but faithful to how a real router runs.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="text-center text-sm">
+          <span class="text-slate-500">Pick a query:</span>
+          <span id="queryChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div class="flex gap-2 mt-2 max-w-2xl mx-auto">
+          <input id="customQ" class="qinput" placeholder="…or type your own message and route it (try mixing 'refund' + 'error')" />
+          <button id="routeCustom" class="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs whitespace-nowrap">🧭 Route it</button>
+        </div>
+        <div id="queryTitle" class="text-slate-800 font-semibold mt-2 text-center text-sm"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Incoming message</div>
+            <div id="inputBox" class="inputbox mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">How to handle it</div>
+            <div class="flex gap-2 mb-3">
+              <button id="segSingle" class="segbtn flex-1">🧠 One do-everything prompt</button>
+              <button id="segRouter" class="segbtn flex-1 on">🧭 Router + specialists</button>
+            </div>
+
+            <div id="routerCtrls" class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run the router</button>
+              </div>
+            </div>
+            <div id="singleCtrls" class="text-xs text-slate-500 leading-snug" style="display:none;">
+              The whole message goes to <strong>one giant prompt</strong> that carries billing, debugging and chat instructions plus every tool. There's no classification step — you get a single answer, and it never signals when it's unsure which job you actually wanted.
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">The router is a tiny <span class="text-violet-600 font-semibold">classifier</span> call: message in → <span class="text-violet-600 font-semibold">route + confidence</span> out. The chosen route's <span class="text-slate-600 font-semibold">specialist</span> then answers with a small, sharp prompt of its own.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The pipeline</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2">One do-everything prompt collapses every job into a single bloated call. The router adds one cheap classify step, then hands off to exactly one focused specialist — or to the fallback when it isn't sure.</div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the router</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Answer quality on this message</div>
+              <div class="text-xs text-slate-400 mb-2">Same message, same (simulated) model. The only difference is <em>one prompt doing everything</em> vs a <em>router that picks a focused specialist</em>.</div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Router decision</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">routes considered</span><span id="statRoutes" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">top route</span><span id="statTop" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">confidence bar</span><span id="statThr" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">confidence</span><span id="statConf" class="stat font-bold text-violet-700 text-lg"></span></div>
+              <div class="bar mb-2"><span id="statBar"></span></div>
+              <div id="improveNote" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Routing turns one impossible prompt into a switchboard of specialists — plus an escape hatch.</strong> A cheap classifier reads the message once and decides <em>which</em> handler should take it; each handler is a small, sharp prompt (with only its own instructions and tools), so it answers its narrow job far better than a bloated generalist could — and often cheaper, since no single call has to carry everything. The real superpower is the <strong>confidence gate</strong>: when the router is unsure or two routes tie, it doesn't bluff — it falls back to a clarifying question or a human. The costs are real: the router adds one hop of latency, and a <em>misroute</em> sends the message to the wrong specialist, so keep the route set small, keep a fallback, and use a cheap model for the classify step.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Prompt routing = classify the input into one of a fixed set of routes, then dispatch it to the specialized prompt/chain for that route; gate on confidence and fall back when unsure. Better, cheaper answers per case than one do-everything prompt — at the price of a classify hop and the risk of a misroute.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Prompt Routing works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A router is just a tiny classifier plus a lookup table of specialists. No framework required. Here is the whole thing — a <span class="mono text-violet-700">classify → gate on confidence → dispatch</span> router with a fallback path, and the do-everything prompt it replaces for comparison.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The do-everything prompt you're replacing</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First, the thing that <em>almost</em> works: one prompt that handles every kind of request. It's tempting because it's a single call — but it has to carry billing rules, debugging know-how, a chat persona <em>and</em> every tool at once, so it's bloated and pricey and mediocre at each job. And it can never say "I'm not sure which of these you meant" — it just picks one and runs.</p>
+        <div class="relative"><pre>// ❌ One prompt for billing + code + chat + every tool. Jack of all trades.
+async function doEverything(msg) {
+  return llm(`You handle BILLING (refunds, charges, invoices),
+             CODE bugs (errors, stack traces, APIs), AND general chat.
+             You have every tool. Read the message and just do
+             whatever is needed.\n\nUser: ${msg}`);
+}
+// bloated + pricey, only OK at each, and it can't flag "which did you want?"</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Define the routes + their specialist prompts</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The heart of routing is a small registry: one entry per route, each a <strong>focused</strong> specialist with only its own system prompt and its own tools. The billing specialist never carries debugging instructions; the debugger never sees the refund tool. Small, sharp prompts are reliable and cheap.</p>
+        <div class="relative"><pre>// ✅ Each route = one small, focused specialist. No cross-contamination.
+const ROUTES = {
+  billing: { sys: "Billing specialist. Tools: ledger.lookup, refund.issue." },
+  code:    { sys: "Senior engineer. Diagnose stack traces, give a concrete fix." },
+  chat:    { sys: "Friendly general assistant for greetings & how-tos." },
+};
+const runSpecialist = (route, msg) =>
+  llm(ROUTES[route].sys + "\n\nUser: " + msg);   // one narrow, cheap call</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The router — classify into ONE route + confidence</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The router is a tiny classifier prompt whose <em>only</em> job is to pick a label. Constrain it to the fixed set of routes, ask for machine-readable JSON with a <strong>confidence</strong> and a short reason, and give it an explicit <span class="mono">"fallback"</span> option for when nothing fits. Use a small, cheap, fast model here — this call runs on every request.</p>
+        <div class="relative"><pre>// ✅ The router: message -> one route + confidence. Small/cheap model.
+async function classify(msg) {
+  const out = await llm(
+    `Classify the message into ONE of: billing | code | chat.
+     Reply as JSON: {"route": "...", "confidence": 0-1, "reason": "..."}.
+     If none fit or you're unsure, use route "fallback".
+     Message: ${msg}`);
+  return JSON.parse(out);            // { route, confidence, reason }
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Dispatch — gate on confidence, else fall back</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Dispatch is a lookup — but gate it first. If the router returned <span class="mono">"fallback"</span>, or its confidence is under your threshold, do <strong>not</strong> guess a specialist: ask a clarifying question or escalate to a human. This confidence gate is the whole safety story — it's what stops a router from confidently sending an ambiguous message to the wrong expert.</p>
+        <div class="relative"><pre>// ✅ Dispatch to the chosen specialist — but gate on confidence first.
+const CONF_MIN = 0.6;
+async function dispatch({ route, confidence }, msg) {
+  if (route === "fallback" || confidence < CONF_MIN)
+    return clarifyOrEscalate(msg);          // the safety net — never guess
+  return runSpecialist(route, msg);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Put it together — classify → gate → dispatch</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole router is two calls: classify, then dispatch. Keep the decision around — the route, confidence and reason make routing auditable, so when an answer is off you can see whether it was a <em>misroute</em> (wrong route chosen) or a bad <em>specialist</em> answer. A route can itself be a whole chain from Day 35, so routing and chaining compose cleanly.</p>
+        <div class="relative"><pre>// ✅ The whole router: classify -> gate -> dispatch (or fall back).
+async function handle(msg) {
+  const decision = await classify(msg);          // 1 cheap classify call
+  console.log(decision.route, decision.confidence, decision.reason); // audit
+  return dispatch(decision, msg);                // 1 focused specialist call
+}
+// low confidence or a tie -> clarifyOrEscalate, never a blind guess.
+// a route's handler can be a full extract->transform->summarize CHAIN.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Know when to route — and the limits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Route when incoming inputs fall into <em>distinct kinds</em> that each need different handling (different instructions, tools, or a different chain). For one uniform kind of input, a router is just an extra hop. Mind the limits: the classify call adds latency and a bit of cost (use a cheap model), a <strong>misroute</strong> propagates into a confidently wrong answer, and too many routes get hard to maintain — so keep the set small, keep a fallback, and log routes to catch drift. Routing is a core agent building-block; next you'll fan one input out to many prompts at once.</p>
+        <div class="relative"><pre>// Decide before you build:
+if (inputsSplitIntoDistinctKinds && eachNeedsDifferentHandling) {
+  useRouting();        // classify -> specialist (or specialist chain)
+} else if (oneUniformKindOfInput) {
+  useSinglePrompt();   // a router would only add a hop
+}
+// always keep a fallback; a misroute = a confidently wrong answer.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 36 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Prompt Routing</strong>: instead of one bloated do-everything prompt, a cheap <strong>router</strong> LLM first <em>classifies</em> the input into one of a fixed set of routes, then the message is <strong>dispatched</strong> to the small specialized prompt (or chain) built for that route — the <span class="mono">classify → gate → dispatch</span> shape. Each specialist is focused and cheap, so it answers its narrow job far better than a generalist; and because the router returns a <strong>confidence</strong>, a low-confidence or ambiguous message hits a <strong>fallback</strong> (clarify or hand to a human) instead of a confident wrong answer. The trade-offs are a classify hop of latency and the risk of a misroute — so keep the route set small, keep a fallback, and use a cheap model to classify. <strong>👉 Next up — Parallelization: fan the same input out to several prompts at once and aggregate their results (sectioning + voting).</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Prompt Routing -- one do-everything prompt vs classify-then-dispatch =====
+// Fully scripted & deterministic. No live model. Mirrors how a real router runs:
+// a cheap classifier reads the message once and emits { route, confidence }, then
+// the input is dispatched to that route's focused specialist. Preset queries carry
+// hand-tuned router scores + scripted answers; the free-text box runs a real
+// keyword classifier so you can watch the pick (and the fallback) on your own input.
+/* ==DATA_START== */
+const CONF_MIN = 0.6;      // dispatch only if the top route clears this
+const MARGIN_MIN = 0.34;   // ...and beats the runner-up by this margin, else FALLBACK
+
+const ROUTE = {
+  billing:  { key:"billing",  emoji:"💳", name:"Billing Specialist",
+              sys:`You are the Billing Specialist. Tools: ledger.lookup(), refund.issue().\nResolve charge, refund, invoice & subscription questions with exact amounts and dates. Never speculate about code.` },
+  code:     { key:"code",     emoji:"🐛", name:"Code Debugger",
+              sys:`You are a Senior Engineer on call. Diagnose errors and stack traces:\nidentify the likely root cause, ask for a repro if needed, and give a concrete fix. Never discuss billing.` },
+  chat:     { key:"chat",     emoji:"💬", name:"General Assistant",
+              sys:`You are a friendly general assistant. Handle greetings, capability\nquestions and general help; hand specialised requests to the right specialist.` },
+  fallback: { key:"fallback", emoji:"🛟", name:"Fallback · Clarify",
+              sys:`Router NOT confident. Do NOT pick a specialist. Ask ONE clarifying\nquestion, or escalate to a human agent.` }
+};
+const ROUTE_ORDER = ["billing","code","chat"];
+
+const ROUTER_PROMPT = `Classify the user message into exactly ONE route:  billing · code · chat
+Return JSON { "route": <one of the above | "fallback">, "confidence": 0-1, "reason": "…" }.
+If none fit, or the top two routes are too close, set route:"fallback".`;
+
+const MEGA_PROMPT = `You are an all-purpose support bot. You handle BILLING (refunds, charges, invoices, subscriptions), CODE bugs (errors, stack traces, APIs), AND general chat. You also carry every tool (ledger.lookup, refund.issue, log.search, deploy.status…). Read the message and just do whatever is needed.`;
+
+// keyword lexicon for the free-text classifier (substring match, weighted)
+const LEX = {
+  billing: [["refund",3],["charged",3],["charge",2],["overcharg",3],["invoice",3],["subscription",3],["payment",2],["billed",3],["bill",2],["money back",4],["money",1],["price",2],["pricing",2],["plan",1],["receipt",2],["card ",2],["double",1],["cancel my",2]],
+  code:    [["nullpointer",4],["exception",3],["stack trace",3],["stacktrace",3],["traceback",3],["error",3],["crash",3],["bug",3],["500",2],["undefined",2],["null",2],["deploy",2],["build",1],["api",1],["endpoint",2],["function",1],["throws",2],["broken",3],["not working",2],["doesn't work",2]],
+  chat:    [["hello",3],["hey",3],["hi ",2],[" hi",2],["help",2],["what can you",3],["how do i",1],["thanks",2],["thank you",2],["how are you",3],["who are you",2],["good morning",3],["tell me about",1]]
+};
+
+const PRESETS = [
+  {
+    tag:"💳 clear billing",
+    query:`Why was I charged twice for my Pro subscription this month?`,
+    scores:{ billing:9, code:1, chat:0 },
+    reason:`Signals "charged twice", "Pro subscription" and "this month" are all payments vocabulary — billing dominates; code/chat are negligible.`,
+    answer:`Pulled your account: two Pro-plan charges — $29 on Jul 3 and a duplicate $29 on Jul 4 (a failed-payment retry that double-posted). I've issued refund #RF-8842 for $29 to the card ending 4242; it clears in 3-5 business days. Anything else on billing?`,
+    single:{ quality:40,
+      answer:`It looks like you may have been billed more than once. I'd recommend checking your bank statement and reaching out to our support team, who can look into any duplicate charges for you.`,
+      flaws:["no refund actually issued — never reached for the refund tool","generic 'contact support' deflection","doesn't cite the two charges or the amount"] },
+    routedQuality:95
+  },
+  {
+    tag:"🐛 clear code bug",
+    query:`My app throws a NullPointerException at OrderService.save() right after the latest deploy.`,
+    scores:{ billing:0, code:9, chat:1 },
+    reason:`"NullPointerException", a method name (OrderService.save()) and "deploy" are unmistakable engineering signals — code route wins outright.`,
+    answer:`A NullPointerException in OrderService.save() right after a deploy almost always means a newly-required field is null. The latest migration made order.customer non-nullable — any caller that saves an order without a customer now NPEs. Fix: add a null-guard / @NotNull upstream and backfill the nulls. Paste the full stack trace and I'll point at the exact line.`,
+    single:{ quality:35,
+      answer:`Sorry you're running into trouble! Try restarting the app and making sure you're on the latest version. If the problem continues, please reach out to support with the details.`,
+      flaws:["'restart & update' boilerplate — never read the exception","no root cause, no fix","doesn't ask for the stack trace"] },
+    routedQuality:92
+  },
+  {
+    tag:"💬 general chat",
+    query:`Hey! What kinds of things can you help me with?`,
+    scores:{ billing:0, code:1, chat:8 },
+    reason:`A greeting ("Hey!") plus an open capability question, with zero billing or code vocabulary — general chat, comfortably.`,
+    answer:`Hey! 👋 I can help with three things: billing (charges, refunds, invoices), technical bugs (errors, crashes, APIs), and general how-tos. Which would you like to start with?`,
+    single:{ quality:80,
+      answer:`Hi there! I'm an all-purpose support bot — I can try to help with billing, technical issues, or general questions. What do you need?`,
+      flaws:["fine answer here — but this one prompt still carries billing + code + every tool it doesn't need","slower & pricier than a tiny chat-only prompt"] },
+    routedQuality:88
+  },
+  {
+    tag:"⚠️ ambiguous → fallback",
+    query:`It's broken and I want my money back for this thing.`,
+    scores:{ billing:4, code:4, chat:0 },
+    reason:`"broken" → code, "money back" → billing. The top two routes tie at 50% — under the 60% confidence bar and with zero margin — so the router refuses to guess and hands to the fallback.`,
+    answer:`I want to get you to the right place fast. Two things could be going on: a refund (billing) or something not working (technical). Which is it — "I want my money back" or "help me fix it"? Tell me and I'll connect you to the right specialist.`,
+    single:{ quality:25,
+      answer:`I'm sorry your item isn't working — I've gone ahead and opened a technical troubleshooting ticket for a broken device and assigned an engineer.`,
+      flaws:["confidently picked ONE reading (technical) and ran with it","the user actually wanted a refund — wrong outcome","never noticed it was ambiguous, never asked"] },
+    routedQuality:90
+  }
+];
+/* ==DATA_END== */
+
+const queryChips = document.getElementById("queryChips");
+const customQ    = document.getElementById("customQ");
+const routeCustomBtn = document.getElementById("routeCustom");
+const queryTitle = document.getElementById("queryTitle");
+const inputBox   = document.getElementById("inputBox");
+const segSingle  = document.getElementById("segSingle");
+const segRouter  = document.getElementById("segRouter");
+const routerCtrls= document.getElementById("routerCtrls");
+const singleCtrls= document.getElementById("singleCtrls");
+const runNext    = document.getElementById("runNext");
+const resetBtn   = document.getElementById("resetBtn");
+const autoBtn    = document.getElementById("autoBtn");
+const phaseBar   = document.getElementById("phaseBar");
+const flow       = document.getElementById("flow");
+const flowLabel  = document.getElementById("flowLabel");
+const verdict    = document.getElementById("verdict");
+const coverChart = document.getElementById("coverChart");
+const statRoutes = document.getElementById("statRoutes");
+const statTop    = document.getElementById("statTop");
+const statThr    = document.getElementById("statThr");
+const statConf   = document.getElementById("statConf");
+const statBar    = document.getElementById("statBar");
+const improveNote= document.getElementById("improveNote");
+
+let Q = null;            // active query object (preset or custom)
+let curIdx = 0;          // selected preset index, or -1 for custom
+let mode = "router";     // "single" | "router"
+let stepIdx = 0;         // router progress: 0 idle, 1 classified, 2 dispatched
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---- classifier core: scores -> { route, conf, top, second, margin, total, ambiguous } ----
+function classify(scores){
+  const entries = ROUTE_ORDER.map(r => [r, scores[r]||0]);
+  const total = entries.reduce((s,[,v])=>s+v, 0);
+  if(total === 0) return { route:"fallback", conf:0, top:null, second:null, margin:0, total:0, ambiguous:true, noSignal:true };
+  const sorted = entries.slice().sort((a,b)=> b[1]-a[1]);
+  const topR = sorted[0][0], topV = sorted[0][1];
+  const secondR = sorted[1] ? sorted[1][0] : null, secondV = sorted[1] ? sorted[1][1] : 0;
+  const conf = topV/total;
+  const margin = topV ? (topV-secondV)/topV : 0;
+  const ok = conf >= CONF_MIN && margin >= MARGIN_MIN;
+  return { route: ok ? topR : "fallback", conf, top:topR, second:secondR, margin, total, ambiguous: !ok };
+}
+
+// ---- free-text scorer ----
+function scoreText(text){
+  const t = " " + text.toLowerCase().replace(/\s+/g," ") + " ";
+  const scores = { billing:0, code:0, chat:0 };
+  const hits = { billing:[], code:[], chat:[] };
+  for(const route of ROUTE_ORDER){
+    for(const [kw,w] of LEX[route]){
+      if(t.includes(kw)){ scores[route]+=w; hits[route].push(kw.trim()); }
+    }
+  }
+  return { scores, hits };
+}
+
+function buildCustom(text){
+  const { scores, hits } = scoreText(text);
+  const d = classify(scores);
+  let reason;
+  if(d.noSignal){
+    reason = `No billing, code or chat keywords detected in the message — nothing to key on, so the router declines to guess and hands to the fallback.`;
+  } else if(d.route === "fallback"){
+    reason = `Top signals: ${ROUTE[d.top].name} (${hits[d.top].map(h=>'"'+h+'"').join(", ")||"—"}) vs ${ROUTE[d.second].name} (${hits[d.second].map(h=>'"'+h+'"').join(", ")||"—"}). The two are too close / below the confidence bar → fallback rather than a blind guess.`;
+  } else {
+    reason = `Matched ${ROUTE[d.route].name} keywords: ${hits[d.route].map(h=>'"'+h+'"').join(", ")}. That route clears the confidence bar and beats the runner-up, so it's dispatched.`;
+  }
+  const specAns = {
+    billing:`[Billing Specialist] I've pulled up your account. Based on your message I'll check the relevant charges/invoices and process any refund that's due — with exact amounts and dates.`,
+    code:`[Code Debugger] Sounds like a technical issue. Share the full stack trace and steps to reproduce, and I'll pinpoint the root cause and give you a concrete fix.`,
+    chat:`[General Assistant] Happy to help! I can point you to billing, technical support, or answer a general how-to — what would you like?`,
+    fallback:`[Fallback] I'm not confident which specialist should take this. Is it a billing question, a technical bug, or something general? Tell me and I'll route you to the right place.`
+  }[d.route];
+  const routedQuality = d.route === "fallback" ? 85 : 90;
+  return {
+    tag:"✍️ your message", custom:true, query:text, scores,
+    reason, answer:specAns,
+    single:{ quality:50,
+      answer:`I'll do my best to help with that! Could you share a little more detail so I can point you in the right direction?`,
+      flaws:["one prompt carrying billing + code + chat + every tool","generic 'tell me more' — no specialist focus"] },
+    routedQuality
+  };
+}
+
+// ---- chip wiring ----
+PRESETS.forEach((p,i)=>{
+  const c = document.createElement("span");
+  c.className = "chip" + (i===0 ? " sel" : "");
+  c.textContent = p.tag;
+  c.onclick = () => { curIdx = i; Q = PRESETS[i]; stepIdx = 0; stopAuto(); syncChips(); render(); };
+  queryChips.appendChild(c);
+});
+function syncChips(){ queryChips.querySelectorAll(".chip").forEach((c,i)=> c.classList.toggle("sel", i===curIdx && curIdx>=0)); }
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run the router"; } }
+
+routeCustomBtn.onclick = () => {
+  const txt = (customQ.value||"").trim();
+  if(!txt){ customQ.focus(); return; }
+  stopAuto(); curIdx = -1; Q = buildCustom(txt); stepIdx = 0; mode = "router"; syncChips(); render();
+};
+customQ.addEventListener("keydown", e => { if(e.key==="Enter") routeCustomBtn.onclick(); });
+
+segSingle.onclick = () => { stopAuto(); mode="single"; render(); };
+segRouter.onclick = () => { stopAuto(); mode="router"; render(); };
+runNext.onclick   = () => { stopAuto(); if(stepIdx<2){ stepIdx++; render(); } };
+resetBtn.onclick  = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  mode="router"; stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=2){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay the router"; return; }
+    stepIdx++; render();
+  }, 1600);
+};
+
+function candidateBars(scores, decision){
+  const total = decision.total;
+  return ROUTE_ORDER.map(r=>{
+    const sc = scores[r]||0;
+    const pct = total ? Math.round(sc/total*100) : 0;
+    const isWin = decision.route!=="fallback" && r===decision.route;
+    const isTie = decision.route==="fallback" && (r===decision.top || r===decision.second) && sc>0;
+    const cls = isWin ? "win" : (isTie ? "tie" : "");
+    return `<div class="rt ${cls}"><div class="nm">${ROUTE[r].emoji} ${ROUTE[r].name}</div>`+
+      `<div class="track"><div class="fill" style="width:${pct}%"></div></div>`+
+      `<div class="pctlab">${pct}%</div></div>`;
+  }).join("");
+}
+
+function render(){
+  if(!Q){ Q = PRESETS[0]; }
+  const decision = classify(Q.scores);
+  const confPct = Math.round(decision.conf*100);
+  const dispatched = decision.route !== "fallback";
+  const chosen = ROUTE[decision.route];
+
+  queryTitle.textContent = Q.custom ? "Your message (classified live by keyword)" : "";
+  inputBox.textContent = Q.query;
+
+  segSingle.classList.toggle("on", mode==="single");
+  segRouter.classList.toggle("on", mode==="router");
+  routerCtrls.style.display = mode==="router" ? "flex"  : "none";
+  singleCtrls.style.display = mode==="single" ? "block" : "none";
+  flowLabel.textContent = mode==="single" ? "The single do-everything prompt" : "The router — classify, then dispatch";
+
+  // phase bar
+  if(mode==="single"){
+    phaseBar.innerHTML =
+      `<span class="pill on">message</span><span class="arr">→</span>`+
+      `<span class="pill tune">🧠 one do-everything prompt<br><span style="font-weight:600;text-transform:none;font-size:9px;">billing + code + chat + every tool</span></span><span class="arr">→</span>`+
+      `<span class="pill on">answer</span>`;
+  } else {
+    const routerDone = stepIdx>=1, dispDone = stepIdx>=2;
+    const specPill = dispatched
+      ? `<span class="pill ${dispDone?'on':(routerDone?'tune':'')}">${dispDone?'✓ ':''}${chosen.emoji} ${chosen.name}</span>`
+      : `<span class="pill ${dispDone?'fb':(routerDone?'tune':'')}">${dispDone?'🛟 Fallback':'🛟 Fallback?'}</span>`;
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">message</span><span class="arr">→</span>`+
+      `<span class="pill ${routerDone?'on':(stepIdx===0?'tune':'')}">${routerDone?'✓ ':''}🧭 Router<br><span style="font-weight:600;text-transform:none;font-size:9px;">classify</span></span><span class="arr">→</span>`+
+      specPill + `<span class="arr">→</span>`+
+      `<span class="pill ${dispDone?(dispatched?'on':'fb'):''}">answer</span>`;
+  }
+
+  // body
+  if(mode==="single"){
+    flow.innerHTML = `<div class="cand row-appear">
+      <div class="flex items-center justify-between mb-1 gap-2">
+        <span class="badge muted">one do-everything prompt · every job in 1 call</span>
+        <span class="stat font-bold text-slate-500 whitespace-nowrap">quality ${Q.single.quality}/100</span>
+      </div>
+      <div class="iolabel">the one prompt (always fully loaded)</div>
+      <div class="prompttag">${escapeHtml(MEGA_PROMPT)}</div>
+      <div class="iolabel out">its single answer</div>
+      <div class="iobox out">${escapeHtml(Q.single.answer)}</div>
+      <div class="mt-2">${Q.single.flaws.map(f=>`<span class="flawchip">✗ ${escapeHtml(f)}</span>`).join("")}</div>
+      <div class="bar lose mt-2 mb-1"><span style="width:${Q.single.quality}%"></span></div>
+    </div>`;
+  } else {
+    let html = "";
+    if(stepIdx===0){
+      html = `<div class="cand row-appear" style="text-align:center;color:#64748b;padding:26px;">
+        <div style="font-size:26px;">🧭</div>
+        <div class="text-sm mt-1">The router is idle. Hit <strong>▶ Step 1: Classify</strong> to run the classifier — it reads the message once and picks a route (with a confidence).</div>
+      </div>`;
+    } else {
+      // step 1 — router / classify
+      html += `<div class="cand ${dispatched?'win':'fb'} row-appear">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="stepnum">1</div>
+          <div><div class="font-bold text-slate-800 text-sm">🧭 Router — classify</div><div class="text-[11px] text-slate-500">One cheap call: read the message, output a route + confidence.</div></div>
+        </div>
+        <div class="iolabel">input — the raw message</div>
+        <div class="iobox mb-1">${escapeHtml(Q.query)}</div>
+        <div class="prompttag">▸ router prompt: ${escapeHtml(ROUTER_PROMPT)}</div>
+        <div class="iolabel out">output — the route decision</div>
+        <div class="iobox out">{ "route": "${decision.route}", "confidence": ${decision.conf.toFixed(2)}, "reason": "${escapeHtml(Q.reason)}" }</div>
+        <div class="mt-2 mb-1 flex items-center gap-2 flex-wrap">
+          <span class="confpill ${decision.conf>=CONF_MIN && !decision.ambiguous?'hi':'lo'}">confidence ${confPct}% ${decision.conf>=CONF_MIN && !decision.ambiguous?'≥ bar → dispatch':'&lt; bar / tie → fallback'}</span>
+        </div>
+        <div class="iolabel">candidate route scores</div>
+        ${candidateBars(Q.scores, decision)}
+      </div>`;
+
+      if(stepIdx<2){
+        html += dispatched
+          ? `<div class="flowconn"><span class="ln"></span>↓ route = ${decision.route} → dispatch to ${escapeHtml(chosen.name)}<span class="ln"></span></div>`
+          : `<div class="flowconn fb"><span class="ln"></span>↓ low confidence / tie → hand to fallback (don't guess)<span class="ln"></span></div>`;
+      }
+
+      // step 2 — dispatch / specialist (or fallback)
+      if(stepIdx>=2){
+        html += `<div class="cand ${dispatched?'win':'fb'} row-appear">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum ${dispatched?'':'fb'}">2</div>
+            <div><div class="font-bold text-slate-800 text-sm">${chosen.emoji} ${escapeHtml(chosen.name)} ${dispatched?'— dispatch':'— safety net'}</div><div class="text-[11px] text-slate-500">${dispatched?'The chosen route\'s focused specialist answers with its own small prompt + tools.':'Router wasn\'t sure — so instead of guessing, it clarifies / escalates.'}</div></div>
+          </div>
+          <div class="iolabel">this specialist's system prompt (focused — only its own job)</div>
+          <div class="prompttag">${escapeHtml(chosen.sys)}</div>
+          <div class="iolabel out">${dispatched?'the specialist\'s answer':'the fallback response'}</div>
+          <div class="iobox out">${escapeHtml(Q.answer)}</div>
+        </div>`;
+        html += dispatched
+          ? `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Routed.</strong> The classifier picked <strong>${escapeHtml(chosen.name)}</strong> at ${confPct}% confidence and dispatched — the answer came from a small, focused prompt, not a bloated generalist.</div>`
+          : `<div class="mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900"><strong>🛟 Fell back — on purpose.</strong> Confidence was ${confPct}% (top two routes too close). A router that isn't sure <em>asks</em> instead of confidently sending you to the wrong specialist — that's the safety net a do-everything prompt doesn't have.</div>`;
+      }
+    }
+    flow.innerHTML = html;
+  }
+
+  // control labels
+  runNext.disabled = stepIdx>=2;
+  runNext.style.opacity = stepIdx>=2 ? ".55" : "1";
+  if(stepIdx===0) runNext.textContent = "▶ Step 1: Classify (run the router)";
+  else if(stepIdx===1) runNext.textContent = dispatched ? `▶ Step 2: Dispatch → ${chosen.name}` : "▶ Step 2: Hand to Fallback 🛟";
+  else runNext.textContent = "✓ Routed";
+
+  // comparison chart: single vs router quality
+  const showRouted = mode==="router" ? (stepIdx>=2 ? Q.routedQuality : (stepIdx===1 ? Math.round(Q.routedQuality*0.5) : 0)) : Q.routedQuality;
+  const bars = [
+    { lab:"one do-everything<br>prompt", pct:Q.single.quality, on:false },
+    { lab: mode==="router" ? `router +<br>${dispatched?'specialist':'fallback'}` : "router +<br>specialist", pct:showRouted, on:true }
+  ];
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // stats
+  statRoutes.textContent = ROUTE_ORDER.length + " + fallback";
+  statTop.textContent = decision.top ? (ROUTE[decision.top].name + (decision.ambiguous && decision.second ? " (tie)" : "")) : "— none —";
+  statThr.textContent = Math.round(CONF_MIN*100) + "%";
+  statConf.textContent = (mode==="router" && stepIdx===0) ? "—" : confPct + "%";
+  statBar.style.width = (mode==="router" && stepIdx===0) ? "0%" : confPct + "%";
+  statBar.parentElement.classList.toggle("lose", decision.ambiguous);
+
+  improveNote.innerHTML =
+    mode==="single"
+      ? `The do-everything prompt scores <strong>${Q.single.quality}</strong>/100 here — one bloated call juggling every job. Switch to the router to compare.`
+      : (stepIdx===0
+          ? `Run the router to beat the <strong>${Q.single.quality}</strong>/100 do-everything baseline.`
+          : (dispatched
+              ? `Routed to <strong style="color:#7c3aed">${chosen.name}</strong> at ${confPct}% — a focused specialist scoring <strong style="color:#7c3aed">${Q.routedQuality}</strong> vs the generalist's ${Q.single.quality}.`
+              : `Confidence ${confPct}% is under the ${Math.round(CONF_MIN*100)}% bar → <strong style="color:#b45309">fallback</strong>. Safely clarifying beats the generalist's confidently-wrong ${Q.single.quality}.`));
+
+  // verdict
+  if(mode==="single"){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>One prompt, every job.</strong> The do-everything prompt answered from a single bloated call — quality <span class="font-semibold">${Q.single.quality}</span>/100${decision.ambiguous?" — and on an <em>ambiguous</em> message it just picked one reading and confidently ran the wrong way":", carrying instructions and tools it didn't need for this message"}. It has no way to say "I'm not sure which you meant".</span>`;
+  } else if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>Router idle.</strong> Same message — first a cheap classify, then a dispatch to one focused specialist. Run step 1 to watch it pick a route (and its confidence).</span>`;
+  } else if(stepIdx===1){
+    verdict.innerHTML = dispatched
+      ? `<span class="text-violet-800"><strong>▸ Classified → ${escapeHtml(chosen.name)} at ${confPct}%.</strong> Above the ${Math.round(CONF_MIN*100)}% bar, so the router will dispatch. Inspect the reason + scores, then run step 2.</span>`
+      : `<span class="text-amber-800"><strong>▸ Classified → fallback (${confPct}%).</strong> The top two routes are too close / below the confidence bar. Rather than guess, the router routes to the fallback. Run step 2 to see it clarify.</span>`;
+  } else {
+    verdict.innerHTML = dispatched
+      ? `<span class="text-violet-800"><strong>▲ Routed.</strong> A focused specialist (${escapeHtml(chosen.name)}) answered at quality <span class="text-violet-700 font-semibold">${Q.routedQuality}</span> vs the do-everything prompt's ${Q.single.quality} — better <em>and</em> from a smaller, cheaper prompt.</span>`
+      : `<span class="text-amber-800"><strong>▲ Fell back — the point of routing.</strong> An unsure router asked to clarify instead of misrouting; the generalist confidently answered the wrong request (${Q.single.quality}/100). Not-guessing <em>is</em> the correct move here.</span>`;
+  }
+}
+
+Q = PRESETS[0];
+syncChips();
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: one prompt for every kind of request", why:"The natural first move is a single <strong>do-everything prompt</strong>: \"you handle billing, and bugs, and chit-chat — here are all the rules and every tool.\" It often <em>almost</em> works, but it's a jack of all trades: the prompt is bloated (so it's slower and more expensive on every call), and because it juggles unrelated instructions and tools at once, it's only mediocre at each job. Worse, a single prompt has no notion of \"which of these did you mean?\" — hand it an ambiguous message and it silently picks one interpretation and runs with it, confidently, in the wrong direction.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">message -> [ 🧠 ONE do-everything prompt ] -> answer<br>&nbsp;&nbsp;(billing + code + chat + EVERY tool, always loaded)<br>bloated &middot; pricey &middot; only OK at each job<br>ambiguous input? -> picks one, confidently wrong</div>`, code:`// one prompt, every job -> bloated AND can't flag uncertainty:
+const answer = await llm(SYSTEM_ALL_IN_ONE + userMessage);
+// mediocre at each, pricey, and it never says "which did you want?"` },
+ { title:"2. The idea: classify first, then dispatch", why:"Routing is a two-move pattern. First a cheap <strong>router</strong> LLM <em>classifies</em> the incoming message into one of a fixed set of routes; then the message is <strong>dispatched</strong> to the specialized prompt (or chain) built for that route. Instead of one prompt that must be good at everything, you keep a set of narrow experts and a switchboard in front of them. It mirrors how a support desk works: a receptionist figures out what you need, then sends you to the right department — nobody expects one person to be billing, engineering and reception at once.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">message -> [ 🧭 ROUTER: classify ] -> route<br>&nbsp;&nbsp;&nbsp;&nbsp;route -> [ specialist prompt for THAT route ] -> answer<br>a receptionist, then the right department<br>classify (cheap) THEN dispatch (focused)</div>`, code:`// routing = classify first, THEN dispatch to a specialist:
+const { route, confidence } = await classify(userMessage);  // cheap call
+const answer = await SPECIALISTS[route].run(userMessage);    // focused call` },
+ { title:"3. The router: a tiny classifier LLM", why:"The router is a small prompt whose <em>only</em> job is to output a label. Constrain it hard: give it the fixed list of routes, and ask for machine-readable output — JSON like <span class=\"mono\">{route, confidence, reason}</span>. Keep it cheap and fast, because it runs on <em>every</em> request; a small model is usually plenty for picking one of a handful of buckets. The <em>reason</em> field is worth asking for too — it makes every routing decision auditable when you need to debug a misroute later.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">message -> [ classifier prompt ] -> {route, confidence, reason}<br>fixed route set &middot; JSON out &middot; small/cheap model<br>runs on EVERY request -> keep it tiny<br>reason field -> decisions are auditable</div>`, code:`// the router is a tiny classifier prompt -> a label + confidence:
+const classify = (msg) => llm(
+  \`Classify into ONE of: billing | code | chat.
+   Return JSON {"route","confidence":0-1,"reason"}.
+   If unsure, route:"fallback".  Message: \${msg}\`);` },
+ { title:"4. The specialists: small, sharp, isolated", why:"Each route points to its own <strong>specialist</strong> — a focused prompt carrying only its own instructions, its own few-shot examples, and only the tools it needs. The billing specialist has the refund tool and the ledger, and knows nothing about stack traces; the debugger reads exceptions and can't touch billing. Because each prompt is narrow, it's reliable and cheap, and you can improve one specialist without risking the others. This isolation is exactly what the bloated do-everything prompt gives up.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">billing -> [💳 refund + ledger tools only]<br>code&nbsp;&nbsp;&nbsp;-> [🐛 reads stack traces, gives a fix]<br>chat&nbsp;&nbsp;&nbsp;-> [💬 greetings + how-tos]<br>each prompt: only its own job + its own tools</div>`, code:`const SPECIALISTS = {
+  billing: { sys:"Billing expert + refund/ledger tools", run:runBilling },
+  code:    { sys:"Senior engineer, reads stack traces",  run:runCode },
+  chat:    { sys:"Friendly general assistant",           run:runChat },
+};  // small + sharp -> no cross-contamination between roles` },
+ { title:"5. Confidence + the threshold gate", why:"A router shouldn't just return a route — it should return how <em>sure</em> it is. That confidence is what turns routing from a guess into a decision you can control: set a threshold and only dispatch when the top route clears it (and comfortably beats the runner-up). A useful extra check is the <em>margin</em> between the top two routes — a 51%/49% split is a coin-flip dressed up as a decision, and should be treated as low-confidence even though 51% sounds high. The gate is one <span class=\"mono\">if</span> — but it's the difference between a router that bluffs and one that knows its limits.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">classify -> {route, confidence}<br>confidence &ge; 0.6 AND clear margin -> dispatch ✅<br>confidence &lt; 0.6 OR top-two tie -> fallback 🛟<br>a threshold turns a guess into a decision</div>`, code:`const { route, confidence } = await classify(msg);
+if (confidence < 0.6) return fallback(msg);   // gate! don't dispatch a guess
+return SPECIALISTS[route].run(msg);` },
+ { title:"6. The fallback path (the safety net)", why:"When confidence is low, the input is ambiguous, or it's simply out of scope, the router must <strong>not</strong> guess. That's what the <em>fallback</em> route is for: ask one clarifying question, hand off to a human, or use a safe default. This is the single biggest advantage over a do-everything prompt — the generalist can't tell it's unsure, so it answers anyway and sometimes sends you down entirely the wrong path. A router that says \"do you mean a refund, or a bug?\" is far more useful than one that confidently opens the wrong ticket.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">unsure / ambiguous / out-of-scope<br>-> DON'T guess a specialist<br>-> ask ONE clarifying question<br>-> or hand to a human / safe default</div>`, code:`function fallback(msg){
+  // the router is not confident -> never bluff a route.
+  return askClarifyingQuestion(msg);   // or handToHuman(msg)
+}
+// "did you mean a refund (billing) or something broken (code)?"` },
+ { title:"7. Routing vs chaining — and how they compose", why:"Day 35's <strong>chaining</strong> runs the <em>same</em> steps every time: extract, then transform, then summarize. <strong>Routing</strong> is different — it picks <em>one</em> of several different handlers depending on the input, so different messages take different paths. They're complementary, not rival, and they compose beautifully: a single route can itself be a full chain (e.g. the billing route runs an extract→lookup→reply chain), and a chain can contain a routing step. Chaining is \"do A then B then C\"; routing is \"do A <em>or</em> B <em>or</em> C, depending.\"", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">chaining: SAME path every time<br>&nbsp;&nbsp;extract -> transform -> summarize<br>routing: pick ONE path by input<br>&nbsp;&nbsp;route(msg) -> billingChain | codeChain | chat<br>they compose: a route CAN be a chain</div>`, code:`// chaining: same steps, always
+extract -> transform -> summarize
+// routing: pick ONE of many handlers by input
+route(msg) -> billingChain | codeChain | chat
+// a route can itself be a chain -> nest them freely.` },
+ { title:"8. The cost & latency tradeoff", why:"Routing isn't free — it adds one extra call (the classify step) before any answer, so it's one more hop of latency. But it's usually a <em>net win</em> on cost: the router runs on a small, cheap model, and each specialist prompt is far shorter than one giant prompt stuffed with every instruction and every tool, so the tokens you pay per request often go <em>down</em>, not up. The rule of thumb: make the router as cheap and fast as you can (small model, short prompt), and let the savings come from specialists that only carry what they need.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost = 1 tiny classify call + 1 SMALL specialist call<br>vs 1 GIANT prompt (every instruction + every tool)<br>-> often cheaper overall + better answers<br>use a small/cheap model for the router</div>`, code:`// +1 tiny classify call, but each specialist prompt is SMALL,
+// vs one giant prompt carrying every instruction + tool.
+// net: often cheaper + better. cheap model for the router.` },
+ { title:"9. How to build the classifier", why:"The router doesn't have to be an LLM. You have three common options, and they trade off flexibility against speed and cost. An <strong>LLM classifier</strong> handles nuance and phrasing you didn't anticipate, but costs a call. <strong>Embeddings + nearest-route</strong> embeds the message and picks the closest route vector — fast, cheap, and great when routes are semantically distinct. Plain <strong>keyword/rules</strong> are deterministic and free, but brittle. In practice a hybrid is common: cheap rules catch the obvious cases, and the LLM handles only the fuzzy ones — which is also exactly how the demo on the LOOK tab classifies your free-text input.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">llmClassifier(msg)&nbsp;&nbsp;&nbsp;&nbsp;// flexible, handles nuance<br>embedThenNearest(msg)&nbsp;// fast + cheap, vector match<br>keywordRules(msg)&nbsp;&nbsp;&nbsp;&nbsp;// deterministic, zero-cost<br>hybrid: rules first, LLM on the fuzzy ones</div>`, code:`// three ways to classify:
+llmClassifier(msg)          // flexible, handles nuance (small LLM)
+embedThenNearestRoute(msg)  // fast + cheap, vector match
+keywordRules(msg)           // deterministic, zero-cost
+// often a hybrid: rules first, LLM only on the ambiguous ones.` },
+ { title:"10. When to route — and the limits", why:"Route when your inputs fall into genuinely <strong>distinct kinds</strong> that each need different handling — different instructions, different tools, or a different chain. For one uniform kind of input, a router is just a wasted hop. Mind the limits: the classify call adds latency and a little cost; a <strong>misroute</strong> propagates — the wrong specialist gives a confidently wrong answer, so log routes and watch for drift; and too many routes get hard to maintain, so keep the set small and always keep a fallback. Routing is one of the fundamental agent building-blocks — next you'll see <em>parallelization</em>: fanning one input out to several prompts at once and aggregating them.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">USE when: inputs split into distinct kinds<br>SKIP when: one uniform kind (router = wasted hop)<br>WATCH: latency &middot; misroute propagates &middot; too many routes<br>keep the set small &middot; always keep a fallback</div>`, code:`if (inputsSplitIntoDistinctKinds && eachNeedsDifferentHandling) {
+  useRouting();        // classify -> specialist (or specialist chain)
+} else if (oneUniformKindOfInput) {
+  useSinglePrompt();   // a router would only add a hop
+}
+// a misroute = a confidently wrong answer -> log routes, keep a fallback.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
