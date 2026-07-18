@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 37 — Prompt Parallelization</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .bar { height:20px; border-radius:6px; background:#ede9fe; overflow:hidden; position:relative; }
+  .bar > span { position:absolute; left:0; top:0; bottom:0; background:#7c3aed; border-radius:6px; width:0; transition:width .5s ease; }
+  .bar.lose > span { background:#cbd5e1; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out both; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .cand.fb { border-color:#f59e0b; background:#fffbeb; box-shadow:0 4px 16px rgba(245,158,11,.16); }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.fan { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .phase .arr.fan { color:#0f172a; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .segbtn.on.seq { background:#0f172a; border-color:#0f172a; }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iolabel.out { color:#7c3aed; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .iobox.out { background:#f5f3ff; border-color:#ddd6fe; color:#3b0764; }
+  .prompttag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; color:#6d28d9; background:#faf5ff; border:1px dashed #c4b5fd; border-radius:8px; padding:7px 9px; margin:6px 0; white-space:pre-wrap; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  .stepnum { width:26px; height:26px; border-radius:999px; background:#7c3aed; color:#fff; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .stepnum.agg { background:#0f172a; }
+  /* vote tally rows */
+  .rt { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .rt .nm { width:150px; font-size:11.5px; font-weight:700; color:#64748b; display:flex; align-items:center; gap:5px; }
+  .rt .track { flex:1; height:16px; background:#f1f5f9; border-radius:6px; overflow:hidden; position:relative; }
+  .rt .fill { position:absolute; left:0; top:0; bottom:0; background:#cbd5e1; border-radius:6px; transition:width .55s ease; }
+  .rt.win .fill { background:#7c3aed; }
+  .rt .pctlab { width:54px; text-align:right; font-size:11px; font-variant-numeric:tabular-nums; color:#64748b; }
+  .rt.win .nm, .rt.win .pctlab { color:#6d28d9; }
+  .confpill { display:inline-block; font-size:11px; font-weight:800; padding:2px 9px; border-radius:999px; }
+  .confpill.hi { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .confpill.lo { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .votechip { display:inline-flex; align-items:center; gap:4px; font-size:11px; font-weight:800; padding:2px 9px; border-radius:6px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .votechip.hit { background:#f5f3ff; border:1px solid #c4b5fd; color:#6d28d9; }
+  .votechip.miss{ background:#fef2f2; border:1px solid #fecaca; color:#b91c1c; }
+  /* gantt timeline */
+  .gantt { display:flex; flex-direction:column; gap:12px; }
+  .grow { display:flex; align-items:flex-start; gap:10px; }
+  .grow .glab { width:96px; flex:0 0 auto; font-size:11px; font-weight:800; color:#64748b; padding-top:2px; text-align:right; line-height:1.2; }
+  .grow.act .glab { color:#7c3aed; }
+  .gwrap { flex:1; }
+  .gtrack { position:relative; width:100%; height:18px; background:#f1f5f9; border-radius:5px; margin-bottom:3px; }
+  .gseg { position:absolute; top:2px; height:14px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:9px; font-weight:800; color:#fff; overflow:hidden; white-space:nowrap; box-shadow:0 1px 3px rgba(0,0,0,.15); transition:width .5s ease, left .5s ease; }
+  .gtot { font-size:11px; font-weight:800; margin-top:2px; }
+  .gtot.seq { color:#0f172a; }
+  .gtot.par { color:#7c3aed; }
+  .glane { display:block; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 37</div>
+      <h1 class="text-xl font-bold">⚡ Prompt Parallelization — instead of one prompt grinding through everything in a single slow serial pass, <strong>fan the same input out to several prompts that run at once</strong>, then <strong>aggregate</strong> their results: split a task into independent subtasks (<em>sectioning</em>) or run the same prompt N times and take the majority (<em>voting</em>). You win latency, or reliability — at the cost of N× the tokens.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't grind through everything in one long serial pass. Fan the work out to N prompts at once — then aggregate.</h2>
+        <p class="text-slate-500 mb-5">When a task naturally splits into <em>independent</em> pieces, running them one after another wastes wall-clock time, and asking one model <em>once</em> makes you hostage to a single flaky sample. <strong>Parallelization</strong> fixes both by fanning the same input out to several prompts that run <strong>at the same time</strong>, then combining their outputs with an <strong>aggregator</strong>. It comes in two flavors. <strong>Sectioning</strong> splits a task into independent subtasks (write the headline, the features, the FAQ, the tweet), runs each in its own focused prompt in parallel, and merges the pieces — the wall clock drops from the <em>sum</em> of the calls to the <em>slowest single one</em>. <strong>Voting</strong> runs the <em>same</em> prompt N times and aggregates by majority — random noise cancels out, so a shaky one-shot answer becomes a confident, self-consistent one. Both cost you N× the tokens. Below: pick a flavor and a task, choose <span class="mono">sequential</span> vs <span class="mono">parallel</span>, and watch the calls fire — see the wall-clock win, the majority-vote reliability win, and the token cost. Everything is scripted/deterministic client-side (no live model), but faithful to how a real fan-out runs.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="flex justify-center gap-2 mb-3">
+          <button id="flavSection" class="segbtn on" style="min-width:220px;">🧩 Sectioning &middot; split into subtasks</button>
+          <button id="flavVote"    class="segbtn"    style="min-width:220px;">🗳️ Voting &middot; same prompt ×N → majority</button>
+        </div>
+        <div class="text-center text-sm">
+          <span class="text-slate-500">Pick a task:</span>
+          <span id="taskChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div id="flavNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">The task (one input)</div>
+            <div id="inputBox" class="inputbox mb-4"></div>
+
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">How to run it</div>
+            <div class="flex gap-2 mb-3">
+              <button id="segSeq" class="segbtn flex-1">🐌 Sequential</button>
+              <button id="segPar" class="segbtn flex-1 on">⚡ Parallel</button>
+            </div>
+
+            <div class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run</button>
+              </div>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Parallel fires all <span id="statNsm" class="text-violet-600 font-semibold"></span> calls <span class="text-violet-600 font-semibold">at once</span> — so the wall clock is the <span class="text-slate-600 font-semibold">slowest single call</span>, not the sum. The <span class="text-slate-600 font-semibold">aggregator</span> then merges (sectioning) or takes the majority (voting).</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The pipeline</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2">Sequential runs each call end-to-end, so the wall clock is the <em>sum</em>. Parallel fans them out at once — wall clock = the <em>slowest</em> call — then a single aggregator step combines the results.</div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the fan-out</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Wall-clock: sequential vs parallel</div>
+            <div class="text-xs text-slate-400 mb-3">Same N calls, same per-call latency. The only difference is whether they run one-after-another or all at once.</div>
+            <div id="gantt" class="gantt"></div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1" id="qualTitle">Result quality / reliability</div>
+              <div class="text-xs text-slate-400 mb-2" id="qualSub"></div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Fan-out stats</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">calls fanned out</span><span id="statN" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">sequential time</span><span id="statSeq" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">parallel time</span><span id="statPar" class="stat font-bold text-violet-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">latency win</span><span id="statSpeed" class="stat font-bold text-violet-700 text-lg"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">token cost</span><span id="statCost" class="stat font-bold text-amber-600"></span></div>
+              <div id="statAgg" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Parallelization is map/reduce for prompts: fan one input out to N calls that run at once, then reduce them with an aggregator.</strong> <em>Sectioning</em> buys you <strong>latency</strong> — independent subtasks that used to run back-to-back now finish in the time of the slowest one, and each runs in its own focused prompt so the pieces are sharper too. <em>Voting</em> buys you <strong>reliability</strong> — running the same prompt N times and taking the majority cancels the random noise that makes a single sample flaky, and the vote share gives you a confidence number for free. The bill is the same for both: N calls means roughly <strong>N× the tokens</strong>, so reach for parallelization when the pieces are genuinely <em>independent</em> (sectioning) or when a correct answer is worth several tries (voting) — not to speed up steps that must feed each other in order (that's chaining, Day 35).
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Prompt parallelization = fan the same input out to several prompts that run concurrently, then aggregate — sectioning (split into independent subtasks → merge) or voting (same prompt ×N → majority + confidence). Win latency or reliability; pay N× the tokens.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Prompt Parallelization works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Parallelization is just <span class="mono text-violet-700">fan-out → aggregate</span> — a <span class="mono text-violet-700">Promise.all</span> and a reduce. No framework required. Here is the whole thing: the slow serial version, sectioning, the parallel fan-out, the aggregator, and voting.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The slow serial version you're replacing</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First, the thing that <em>almost</em> works: run each piece one after another with <span class="mono">await</span> in a loop. It's correct, but every call blocks the next — even though none of them actually depend on each other — so the wall clock is the <strong>sum</strong> of all the calls. (Cramming them into one giant prompt is the other trap: it's a single call, but thin and rushed at every piece.)</p>
+        <div class="relative"><pre>// ❌ Serial: each independent call blocks the next -> wall clock = SUM.
+async function serial(subtasks, input) {
+  const parts = [];
+  for (const t of subtasks) {
+    parts.push(await llm(t.prompt + input));   // waits for each, in turn
+  }
+  return merge(parts);
+}
+// 4 calls of ~1.5s each -> ~6s, even though none depend on another.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Sectioning — split into independent subtasks</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The first flavor. Break the task into pieces that <strong>don't need each other's output</strong>, and give each its own small, focused prompt. A launch brief becomes: headline, features, FAQ, tweet — four narrow prompts instead of one bloated one. Each is sharper on its own job, and because they're independent, they're ready to run at the same time.</p>
+        <div class="relative"><pre>// ✅ Sectioning: one input -> N independent, focused subtask prompts.
+const SUBTASKS = [
+  { key:"headline", prompt:"Write a punchy headline + tagline for: " },
+  { key:"features", prompt:"List the 3 flagship features of: " },
+  { key:"faq",      prompt:"Write 2 FAQ Q&As for: " },
+  { key:"tweet",    prompt:"Draft a 1-line launch tweet for: " },
+];
+// each carries ONLY its own job -> smaller, sharper than one mega-prompt.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Fan out with Promise.all — fire them all at once</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the whole trick. Instead of awaiting in a loop, kick off <em>every</em> call without awaiting, collect the promises, and <span class="mono">await Promise.all</span> once. Now they run concurrently, so the wall clock is the <strong>slowest single call</strong> — not the sum. Four 1.5s calls finish in ~1.5s, not ~6s.</p>
+        <div class="relative"><pre>// ✅ Parallel fan-out: start them all, then await once. Clock = MAX, not SUM.
+async function fanOut(subtasks, input) {
+  const calls = subtasks.map(t => llm(t.prompt + input)); // start ALL now
+  return await Promise.all(calls);                        // wait for the slowest
+}
+// 4×1.5s serially = ~6s;  fanned out = ~1.5s. Same tokens, 4× less waiting.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The aggregator — merge, or take the majority</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Fan-out is only half of it; the results have to come back together. The aggregator is the <em>reduce</em>. For sectioning it's a <strong>merge</strong> — stitch the sections into one document (sometimes with a final synthesis pass). For voting it's a <strong>tally</strong> — count the answers and take the majority, and the winning share is your confidence.</p>
+        <div class="relative"><pre>// ✅ Aggregate = the reduce. Two shapes:
+const merge = (parts) => parts.join("\n\n");        // sectioning: stitch pieces
+
+function majority(votes) {                          // voting: tally + confidence
+  const c = {}; votes.forEach(v => c[v] = (c[v]||0) + 1);
+  const winner = Object.keys(c).sort((a,b)=>c[b]-c[a])[0];
+  return { answer: winner, confidence: c[winner] / votes.length };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Voting — same prompt ×N for reliability</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The second flavor uses the <em>same</em> fan-out, but every call is the <strong>identical</strong> prompt (run warm, so samples vary). A single sample can be a coin-flip; run it N times and the majority cancels the random noise — a shaky one-shot becomes a confident, self-consistent answer, with the vote share as a built-in confidence score. Great for classification, extraction, and tricky reasoning where correctness matters more than cost.</p>
+        <div class="relative"><pre>// ✅ Voting: fan out the SAME prompt N times, then take the majority.
+async function vote(prompt, n = 5) {
+  const runs = Array.from({ length: n }, () => llm(prompt)); // identical prompt
+  const votes = await Promise.all(runs);                     // all at once
+  return majority(votes.map(parse));   // { answer, confidence } — noise cancels
+}
+// 2 of 5 samples fell for the trap answer; the majority still lands on truth.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Put it together — and know the limits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Both flavors are the same two moves: <span class="mono">fanOut → aggregate</span>. Reach for it when the work is genuinely <strong>independent</strong> (sectioning) or when a right answer is worth several samples (voting). Mind the limits: you pay <strong>N× the tokens</strong>; steps that feed each other can't be parallelized (that's chaining); and provider <strong>rate limits</strong> can throttle a big fan-out, so cap concurrency. Parallelization is a core agent building-block — next you'll add a lead model that <em>dynamically</em> decides the subtasks and hands them to workers.</p>
+        <div class="relative"><pre>// ✅ Both flavors, one shape: fan out -> aggregate.
+async function parallelize(input, mode) {
+  if (mode === "section")
+    return merge(await fanOut(SUBTASKS, input));   // latency win
+  if (mode === "vote")
+    return vote(input, 5);                         // reliability win
+}
+// only for INDEPENDENT work; costs N× tokens; cap concurrency vs rate limits.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 37 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Prompt Parallelization</strong>: fan the same input out to several prompts that run <em>at once</em>, then <strong>aggregate</strong> — the <span class="mono">fan-out → reduce</span> shape. <strong>Sectioning</strong> splits a task into independent subtasks and <em>merges</em> them, dropping the wall clock from the sum of the calls to the slowest one; <strong>voting</strong> runs the same prompt N times and takes the <em>majority</em>, so random noise cancels and a flaky one-shot becomes a confident, self-consistent answer with a free confidence score. The trade-off is a flat one: N calls means roughly N× the tokens, and only <em>independent</em> work can be fanned out — order-dependent steps stay as a chain. <strong>👉 Next up — Orchestrator–Workers: a lead model dynamically breaks a task into subtasks, delegates each to a worker, then synthesizes their results (dynamic fan-out, where parallelization is fixed).</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Prompt Parallelization -- sequential vs parallel fan-out + aggregate =====
+// Fully scripted & deterministic. No live model. Two flavors:
+//   sectioning -> N independent subtask prompts, merged
+//   voting     -> the SAME prompt run N times, aggregated by majority + confidence
+// Per-call latencies drive a real wall-clock model: sequential = sum, parallel = max.
+/* ==DATA_START== */
+const AGG_MS = 300;   // the aggregator/merge step's own little overhead
+
+const CALL_COLORS = ["#7c3aed","#8b5cf6","#a78bfa","#6d28d9","#c4b5fd","#9333ea"];
+
+const PRESETS = {
+  sectioning: [
+    {
+      tag:"📄 Launch brief",
+      task:`Write a launch brief for "Pulse", our new realtime analytics dashboard.`,
+      calls:[
+        { label:"§ Headline & tagline", prompt:`Write a punchy headline + one-line tagline for Pulse.`, ms:900,
+          out:`"Pulse — see your business as it happens."\nRealtime analytics that turns raw events into decisions in seconds.` },
+        { label:"§ Top 3 features", prompt:`List Pulse's three flagship features as tight bullets.`, ms:1400,
+          out:`• Live event stream, sub-second refresh\n• Drag-and-drop dashboards — no SQL\n• Smart alerts the moment a metric breaks trend` },
+        { label:"§ Mini-FAQ", prompt:`Write two FAQ Q&As for Pulse.`, ms:1600,
+          out:`Q: Need a data engineer? A: No — connect a source and Pulse auto-models it.\nQ: How fresh is the data? A: Streaming, usually under one second end-to-end.` },
+        { label:"§ Launch tweet", prompt:`Draft a one-line launch tweet for Pulse.`, ms:700,
+          out:`📈 Meet Pulse: realtime analytics that finally keeps up. Live dashboards, zero SQL, alerts that beat the incident. Try it free →` }
+      ],
+      singleQuality:61, parallelQuality:94,
+      mergeNote:`Four focused sections stitched into one brief.`
+    },
+    {
+      tag:"🔍 PR review",
+      task:`Review pull request #482 (checkout refactor) across every dimension.`,
+      calls:[
+        { label:"🔒 Security pass", prompt:`Scan the diff for security issues only.`, ms:1200,
+          out:`user-supplied couponCode is concatenated into SQL — parameterize it (injection risk).` },
+        { label:"⚡ Performance pass", prompt:`Scan the diff for performance issues only.`, ms:900,
+          out:`getCart() runs inside the render loop → N+1 queries. Hoist + batch (~40% fewer DB calls).` },
+        { label:"🎨 Style / lint pass", prompt:`Scan the diff for style & lint issues only.`, ms:600,
+          out:`3 unused imports, 2 shadowed vars, missing return type on applyDiscount().` },
+        { label:"🧪 Test-coverage pass", prompt:`Scan the diff for missing tests only.`, ms:1500,
+          out:`New discount branch has no test. Add: expired coupon, stacked coupons, zero-total cart.` }
+      ],
+      singleQuality:58, parallelQuality:92,
+      mergeNote:`Four specialist passes consolidated into one review.`
+    },
+    {
+      tag:"🌍 Translate ×4",
+      task:`Localize the release note into 4 languages at once.`,
+      calls:[
+        { label:"🇪🇸 Spanish", prompt:`Translate the release note to Spanish.`, ms:1000,
+          out:`"Pulse ya está disponible: analítica en tiempo real, sin SQL."` },
+        { label:"🇫🇷 French", prompt:`Translate the release note to French.`, ms:1100,
+          out:`« Pulse est arrivé : analytique en temps réel, sans SQL. »` },
+        { label:"🇩🇪 German", prompt:`Translate the release note to German.`, ms:1200,
+          out:`„Pulse ist da: Echtzeit-Analytics, ganz ohne SQL."` },
+        { label:"🇯🇵 Japanese", prompt:`Translate the release note to Japanese.`, ms:1300,
+          out:`「Pulse 登場：SQL不要のリアルタイム分析。」` }
+      ],
+      singleQuality:70, parallelQuality:95,
+      mergeNote:`Four independent translations bundled together.`
+    }
+  ],
+  voting: [
+    {
+      tag:"🔢 Bat & ball",
+      task:`A bat and a ball cost $1.10 total. The bat costs $1.00 more than the ball. How much is the ball?`,
+      samplePrompt:`Solve carefully. Answer with just the price of the ball.`,
+      options:["$0.05","$0.10"], correct:"$0.05",
+      calls:[
+        { label:"Sample 1", ms:1200, vote:"$0.10" },
+        { label:"Sample 2", ms:1000, vote:"$0.05" },
+        { label:"Sample 3", ms:1350, vote:"$0.05" },
+        { label:"Sample 4", ms:1100, vote:"$0.05" },
+        { label:"Sample 5", ms:1250, vote:"$0.10" }
+      ],
+      singleQuality:52, parallelQuality:84,
+      voteNote:`2 of 5 samples fell for the classic $0.10 trap; the majority still lands on the correct $0.05.`
+    },
+    {
+      tag:"💬 Sentiment",
+      task:`Sentiment of this review: "It broke on day two, but support refunded me within the hour."`,
+      samplePrompt:`Classify the sentiment as Positive, Negative, or Mixed. One word.`,
+      options:["Positive","Negative","Mixed"], correct:"Mixed",
+      calls:[
+        { label:"Sample 1", ms:800, vote:"Mixed" },
+        { label:"Sample 2", ms:950, vote:"Negative" },
+        { label:"Sample 3", ms:700, vote:"Mixed" },
+        { label:"Sample 4", ms:1050, vote:"Mixed" },
+        { label:"Sample 5", ms:900, vote:"Positive" }
+      ],
+      singleQuality:50, parallelQuality:88,
+      voteNote:`One sample said Negative, one Positive — a single call is a coin-flip. The majority correctly reads it as Mixed.`
+    },
+    {
+      tag:"⚖️ Fraud flag",
+      task:`Flag this transaction? $940 electronics · brand-new device · shipping country ≠ billing country · 2am.`,
+      samplePrompt:`Decide: Flag for review, or Allow? One word.`,
+      options:["Flag","Allow"], correct:"Flag",
+      calls:[
+        { label:"Sample 1", ms:1000, vote:"Flag" },
+        { label:"Sample 2", ms:1150, vote:"Flag" },
+        { label:"Sample 3", ms:900,  vote:"Allow" },
+        { label:"Sample 4", ms:1250, vote:"Flag" },
+        { label:"Sample 5", ms:1050, vote:"Flag" }
+      ],
+      singleQuality:72, parallelQuality:96,
+      voteNote:`4 of 5 samples flag it; the lone "Allow" is outvoted. Majority = Flag at 80% confidence.`
+    }
+  ]
+};
+/* ==DATA_END== */
+
+const flavSection = document.getElementById("flavSection");
+const flavVote    = document.getElementById("flavVote");
+const taskChips   = document.getElementById("taskChips");
+const flavNote    = document.getElementById("flavNote");
+const inputBox    = document.getElementById("inputBox");
+const segSeq      = document.getElementById("segSeq");
+const segPar      = document.getElementById("segPar");
+const runNext     = document.getElementById("runNext");
+const resetBtn    = document.getElementById("resetBtn");
+const autoBtn     = document.getElementById("autoBtn");
+const phaseBar    = document.getElementById("phaseBar");
+const phaseNote   = document.getElementById("phaseNote");
+const flow        = document.getElementById("flow");
+const flowLabel   = document.getElementById("flowLabel");
+const verdict     = document.getElementById("verdict");
+const gantt       = document.getElementById("gantt");
+const coverChart  = document.getElementById("coverChart");
+const qualTitle   = document.getElementById("qualTitle");
+const qualSub     = document.getElementById("qualSub");
+const statN       = document.getElementById("statN");
+const statNsm     = document.getElementById("statNsm");
+const statSeq     = document.getElementById("statSeq");
+const statPar     = document.getElementById("statPar");
+const statSpeed   = document.getElementById("statSpeed");
+const statCost    = document.getElementById("statCost");
+const statAgg     = document.getElementById("statAgg");
+
+let flavor = "sectioning";   // "sectioning" | "voting"
+let curIdx = 0;              // preset index within flavor
+let mode   = "parallel";     // "sequential" | "parallel"
+let stepIdx = 0;             // 0 idle, 1 calls fired, 2 aggregated
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtMs(ms){ return (ms/1000).toFixed(1) + "s"; }
+
+function Qget(){ return PRESETS[flavor][curIdx]; }
+function totals(Q){
+  const list = Q.calls.map(c=>c.ms);
+  const seq = list.reduce((a,b)=>a+b,0) + AGG_MS;
+  const par = Math.max.apply(null, list) + AGG_MS;
+  return { seq, par, speed: seq/par, N: Q.calls.length, maxMs: Math.max.apply(null, list) };
+}
+function tally(Q){
+  const counts = {};
+  Q.options.forEach(o=> counts[o]=0);
+  Q.calls.forEach(c=> counts[c.vote] = (counts[c.vote]||0)+1);
+  const order = Object.keys(counts).sort((a,b)=> counts[b]-counts[a]);
+  const winner = order[0], wc = counts[winner], N = Q.calls.length;
+  return { counts, order, winner, wc, N, conf: Math.round(wc/N*100), correct: winner===Q.correct };
+}
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run"; } }
+
+function buildChips(){
+  taskChips.innerHTML = "";
+  PRESETS[flavor].forEach((p,i)=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (i===curIdx ? " sel" : "");
+    c.textContent = p.tag;
+    c.onclick = () => { curIdx = i; stepIdx = 0; stopAuto(); render(); };
+    taskChips.appendChild(c);
+  });
+}
+
+flavSection.onclick = () => { if(flavor==="sectioning") return; flavor="sectioning"; curIdx=0; stepIdx=0; stopAuto(); render(); };
+flavVote.onclick    = () => { if(flavor==="voting")     return; flavor="voting";     curIdx=0; stepIdx=0; stopAuto(); render(); };
+segSeq.onclick = () => { stopAuto(); mode="sequential"; stepIdx=0; render(); };
+segPar.onclick = () => { stopAuto(); mode="parallel";   stepIdx=0; render(); };
+runNext.onclick = () => { stopAuto(); if(stepIdx<2){ stepIdx++; render(); } };
+resetBtn.onclick = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=2){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay"; return; }
+    stepIdx++; render();
+  }, 1600);
+};
+
+// ---- gantt timeline: sequential row (serial segments) + parallel row (all at 0) ----
+function buildGantt(Q){
+  const t = totals(Q);
+  const scale = t.seq;                       // longest wall clock defines the axis
+  // sequential row: one track, segments back-to-back, then aggregator
+  let off = 0, seqSegs = "";
+  Q.calls.forEach((c,i)=>{
+    const left = off/scale*100, w = c.ms/scale*100;
+    seqSegs += `<div class="gseg" style="left:${left}%;width:${w}%;background:${CALL_COLORS[i%CALL_COLORS.length]};">${i+1}</div>`;
+    off += c.ms;
+  });
+  seqSegs += `<div class="gseg" style="left:${off/scale*100}%;width:${AGG_MS/scale*100}%;background:#0f172a;">Σ</div>`;
+  const seqRow = `<div class="grow ${mode==="sequential"?"act":""}">
+      <div class="glab">🐌 Sequential${mode==="sequential"?"<br><span style='font-weight:600;color:#7c3aed;'>selected</span>":""}</div>
+      <div class="gwrap"><div class="gtrack">${seqSegs}</div>
+        <div class="gtot seq">total ${fmtMs(t.seq)} &nbsp;·&nbsp; sum of every call</div></div>
+    </div>`;
+  // parallel row: N lanes each starting at 0, plus an aggregator lane starting at maxMs
+  let parLanes = "";
+  Q.calls.forEach((c,i)=>{
+    const w = c.ms/scale*100;
+    parLanes += `<div class="gtrack" style="height:13px;margin-bottom:2px;"><div class="gseg" style="left:0;width:${w}%;height:9px;top:2px;background:${CALL_COLORS[i%CALL_COLORS.length]};">${i+1}</div></div>`;
+  });
+  parLanes += `<div class="gtrack" style="height:13px;"><div class="gseg" style="left:${t.maxMs/scale*100}%;width:${AGG_MS/scale*100}%;height:9px;top:2px;background:#0f172a;">Σ</div></div>`;
+  const parRow = `<div class="grow ${mode==="parallel"?"act":""}">
+      <div class="glab">⚡ Parallel${mode==="parallel"?"<br><span style='font-weight:600;color:#7c3aed;'>selected</span>":""}</div>
+      <div class="gwrap">${parLanes}
+        <div class="gtot par">total ${fmtMs(t.par)} &nbsp;·&nbsp; just the slowest call &nbsp;→&nbsp; <span style="color:#0f172a;">${t.speed.toFixed(1)}× faster</span></div></div>
+    </div>`;
+  return seqRow + parRow;
+}
+
+function render(){
+  const Q = Qget();
+  const t = totals(Q);
+  const isSection = flavor==="sectioning";
+  const N = t.N;
+
+  // flavor + chips
+  flavSection.classList.toggle("on", isSection);
+  flavVote.classList.toggle("on", !isSection);
+  buildChips();
+  flavNote.innerHTML = isSection
+    ? `<strong>Sectioning</strong> — the task splits into ${N} <em>independent</em> subtasks; each runs its own focused prompt, and the aggregator <strong>merges</strong> the pieces. The win is <strong>latency</strong>.`
+    : `<strong>Voting</strong> — the <em>same</em> prompt is run ${N} times; the aggregator takes the <strong>majority</strong> and reports a confidence. The win is <strong>reliability</strong>.`;
+
+  inputBox.textContent = Q.task;
+
+  // run-mode segmented
+  segSeq.classList.toggle("on", mode==="sequential");
+  segSeq.classList.toggle("seq", mode==="sequential");
+  segPar.classList.toggle("on", mode==="parallel");
+  statNsm.textContent = N;
+
+  flowLabel.textContent = mode==="sequential"
+    ? (isSection ? "Run the subtasks — one after another" : "Run the samples — one after another")
+    : (isSection ? "Fan out the subtasks — all at once" : "Fan out the samples — all at once");
+
+  // phase bar
+  const fired = stepIdx>=1, done = stepIdx>=2;
+  if(mode==="sequential"){
+    let serial = "";
+    Q.calls.forEach((c,i)=>{
+      serial += `<span class="pill ${fired?'on':'tune'}">${i+1}</span><span class="arr">→</span>`;
+    });
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr">→</span>`+
+      serial +
+      `<span class="pill ${done?'fan':(fired?'tune':'')}">${done?'✓ ':''}${isSection?'🧩 merge':'🗳️ tally'}</span><span class="arr">→</span>`+
+      `<span class="pill ${done?'on':''}">result</span>`;
+  } else {
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${fired?'fan':'tune'}">${fired?'✓ ':''}⚡ ${N} calls at once</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${done?'fan':(fired?'tune':'')}">${done?'✓ ':''}${isSection?'🧩 merge':'🗳️ tally'}</span><span class="arr">→</span>`+
+      `<span class="pill ${done?'on':''}">result</span>`;
+  }
+  phaseNote.innerHTML = mode==="sequential"
+    ? `Sequential runs each of the ${N} calls end-to-end, so the wall clock is the <em>sum</em> (${fmtMs(t.seq)}). Switch to <strong>Parallel</strong> to fan them out at once.`
+    : `Parallel fans all ${N} calls out at once — wall clock = the <em>slowest</em> call (${fmtMs(t.par)}) — then one aggregator step ${isSection?'merges':'tallies'} the results.`;
+
+  // ---- flow body ----
+  if(stepIdx===0){
+    flow.innerHTML = `<div class="cand row-appear" style="text-align:center;color:#64748b;padding:26px;">
+      <div style="font-size:26px;">⚡</div>
+      <div class="text-sm mt-1">Idle. Hit <strong>${mode==="parallel"?"▶ Step 1: Fire all "+N+" calls":"▶ Step 1: Run the "+N+" calls"}</strong> — ${isSection?"each subtask runs in its own focused prompt":"the same prompt runs "+N+" times"}, ${mode==="parallel"?"all at the same time":"one after another"}.</div>
+    </div>`;
+  } else {
+    let html = "";
+    // step 1 -- the N calls
+    Q.calls.forEach((c,i)=>{
+      const delay = mode==="parallel" ? 0 : i*0.28;   // parallel = together, serial = staggered
+      const color = CALL_COLORS[i%CALL_COLORS.length];
+      let body;
+      if(isSection){
+        body = `<div class="iolabel">focused prompt</div>
+          <div class="prompttag" style="border-color:${color};color:${color};">${escapeHtml(c.prompt)}</div>
+          <div class="iolabel out">its output</div>
+          <div class="iobox out">${escapeHtml(c.out)}</div>`;
+      } else {
+        const hit = c.vote===Q.correct;
+        body = `<div class="iolabel">same prompt, run #${i+1}</div>
+          <div class="prompttag" style="border-color:${color};color:${color};">${escapeHtml(Q.samplePrompt)}</div>
+          <div class="iolabel out">this sample's vote</div>
+          <div class="mt-1"><span class="votechip ${hit?'hit':'miss'}">${hit?'✓':'✗'} ${escapeHtml(c.vote)}</span></div>`;
+      }
+      html += `<div class="cand row-appear" style="animation-delay:${delay}s;">
+        <div class="flex items-center justify-between mb-1 gap-2">
+          <div class="flex items-center gap-2">
+            <div class="stepnum" style="background:${color};">${i+1}</div>
+            <div class="font-bold text-slate-800 text-sm">${escapeHtml(c.label)}</div>
+          </div>
+          <span class="badge call">⏱ ${fmtMs(c.ms)}</span>
+        </div>
+        ${body}
+      </div>`;
+    });
+
+    if(stepIdx<2){
+      html += `<div class="flowconn"><span class="ln"></span>↓ ${mode==="parallel"?"all returned → ":""}aggregate the ${N} outputs (${isSection?'merge':'majority vote'})<span class="ln"></span></div>`;
+    }
+
+    // step 2 -- aggregate
+    if(done){
+      if(isSection){
+        const merged = Q.calls.map(c=>`▸ ${c.label}\n${c.out}`).join("\n\n");
+        html += `<div class="cand win row-appear">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum agg">Σ</div>
+            <div><div class="font-bold text-slate-800 text-sm">🧩 Aggregator — merge the sections</div><div class="text-[11px] text-slate-500">${escapeHtml(Q.mergeNote)}</div></div>
+          </div>
+          <div class="iolabel out">merged result — one document from ${N} parallel pieces</div>
+          <div class="iobox out">${escapeHtml(merged)}</div>
+        </div>`;
+        html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Sectioned + merged.</strong> ${N} independent subtasks ran ${mode==="parallel"?`at once in <strong>${fmtMs(t.par)}</strong> instead of <strong>${fmtMs(t.seq)}</strong> serially`:`— fan them out in parallel to finish in <strong>${fmtMs(t.par)}</strong> instead of this <strong>${fmtMs(t.seq)}</strong>`}. Each piece came from a small, focused prompt, then a merge step stitched them together.</div>`;
+      } else {
+        const v = tally(Q);
+        const bars = v.order.map(opt=>{
+          const cnt = v.counts[opt], pct = Math.round(cnt/v.N*100);
+          const win = opt===v.winner;
+          return `<div class="rt ${win?'win':''}"><div class="nm">${win?'🏆 ':''}${escapeHtml(opt)}</div>`+
+            `<div class="track"><div class="fill" style="width:${pct}%"></div></div>`+
+            `<div class="pctlab">${cnt}/${v.N}</div></div>`;
+        }).join("");
+        html += `<div class="cand win row-appear">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum agg">Σ</div>
+            <div><div class="font-bold text-slate-800 text-sm">🗳️ Aggregator — tally the votes</div><div class="text-[11px] text-slate-500">${escapeHtml(Q.voteNote)}</div></div>
+          </div>
+          <div class="iolabel">vote distribution across ${v.N} samples</div>
+          ${bars}
+          <div class="mt-2 flex items-center gap-2 flex-wrap">
+            <span class="iolabel out" style="margin:0;">majority answer</span>
+            <span class="votechip hit">${escapeHtml(v.winner)}</span>
+            <span class="confpill ${v.conf>=60?'hi':'lo'}">confidence ${v.conf}%</span>
+          </div>
+        </div>`;
+        html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Voted.</strong> Running the same prompt ${v.N}× and taking the majority landed on <strong>${escapeHtml(v.winner)}</strong> at ${v.conf}% — the random noise that could sink a single sample got outvoted. All ${v.N} ran ${mode==="parallel"?`at once, so it cost the same wall clock as one call (<strong>${fmtMs(t.par)}</strong>)`:`— fan them out to pay just one call's wall clock (<strong>${fmtMs(t.par)}</strong>)`}.</div>`;
+      }
+    }
+    flow.innerHTML = html;
+  }
+
+  // run button label
+  runNext.disabled = stepIdx>=2;
+  runNext.style.opacity = stepIdx>=2 ? ".55" : "1";
+  if(stepIdx===0) runNext.textContent = mode==="parallel" ? `▶ Step 1: Fire all ${N} calls at once` : `▶ Step 1: Run the ${N} calls in turn`;
+  else if(stepIdx===1) runNext.textContent = isSection ? "▶ Step 2: Merge the sections" : "▶ Step 2: Tally the votes";
+  else runNext.textContent = "✓ Done";
+
+  // gantt
+  gantt.innerHTML = (stepIdx>=1) ? buildGantt(Q)
+    : `<div class="text-sm text-slate-400 text-center py-6">Run the calls to reveal the wall-clock comparison — sequential (sum of ${N} calls) vs parallel (slowest single call).</div>`;
+
+  // quality chart
+  qualTitle.textContent = isSection ? "Result quality" : "Answer reliability";
+  qualSub.innerHTML = isSection
+    ? `One giant do-everything prompt (thin at each piece) vs ${N} focused sections, merged.`
+    : `A single sample (a coin-flip on hard inputs) vs the majority of ${N} samples.`;
+  const showPar = stepIdx>=2 ? Q.parallelQuality : (stepIdx===1 ? Math.round(Q.parallelQuality*0.5) : 0);
+  const bars = [
+    { lab: isSection ? "one giant<br>prompt" : "one sample", pct:Q.singleQuality, on:false },
+    { lab: isSection ? `${N} sections<br>merged` : `majority of ${N}`, pct:showPar, on:true }
+  ];
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // stats
+  statN.textContent = `${N} ${isSection?'subtasks':'samples'}`;
+  statSeq.textContent = fmtMs(t.seq);
+  statPar.textContent = fmtMs(t.par);
+  statSpeed.textContent = t.speed.toFixed(1) + "× faster";
+  statCost.textContent = `${N}× tokens`;
+  if(isSection){
+    statAgg.innerHTML = `Aggregator = <strong>merge</strong> (stitch the ${N} sections). Win = <strong style="color:#7c3aed;">latency</strong>; cost = ${N}× tokens.`;
+  } else {
+    const v = tally(Q);
+    statAgg.innerHTML = (stepIdx>=2)
+      ? `Aggregator = <strong>majority</strong> → <strong style="color:#7c3aed;">${escapeHtml(v.winner)}</strong> @ ${v.conf}%. Win = <strong style="color:#7c3aed;">reliability</strong>; cost = ${N}× tokens.`
+      : `Aggregator = <strong>majority</strong> vote + confidence. Win = <strong style="color:#7c3aed;">reliability</strong>; cost = ${N}× tokens.`;
+  }
+
+  // verdict
+  if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>${isSection?'Sectioning':'Voting'} · ${mode==="parallel"?'parallel':'sequential'}.</strong> ${isSection?`The task splits into ${N} independent subtasks`:`The same prompt will run ${N} times`}. ${mode==="parallel"?`Fanned out, the whole thing finishes in <strong>${fmtMs(t.par)}</strong> instead of <strong>${fmtMs(t.seq)}</strong> serial`:`Run serially it takes <strong>${fmtMs(t.seq)}</strong> — flip to parallel to cut it to <strong>${fmtMs(t.par)}</strong>`}. Run step 1.</span>`;
+  } else if(stepIdx===1){
+    verdict.innerHTML = mode==="parallel"
+      ? `<span class="text-violet-800"><strong>▸ ${N} calls fired at once.</strong> They returned in the time of the slowest one (<strong>${fmtMs(t.par)}</strong>), not the sum (${fmtMs(t.seq)}). ${isSection?'Now merge the sections':'Now tally the votes'} in step 2.</span>`
+      : `<span class="text-slate-700"><strong>▸ ${N} calls ran in turn.</strong> Serially that's <strong>${fmtMs(t.seq)}</strong> of wall clock — every call blocked the next even though none depend on each other. Aggregate in step 2 (parallel would've done this in ${fmtMs(t.par)}).</span>`;
+  } else {
+    if(isSection){
+      verdict.innerHTML = `<span class="text-violet-800"><strong>▲ Merged.</strong> ${N} focused sections became one document — quality <span class="text-violet-700 font-semibold">${Q.parallelQuality}</span> vs a giant prompt's ${Q.singleQuality}, and in ${mode==="parallel"?`just <strong>${fmtMs(t.par)}</strong>`:`<strong>${fmtMs(t.seq)}</strong> serial (${fmtMs(t.par)} if fanned out)`}. Latency win — for ${N}× the tokens.</span>`;
+    } else {
+      const v = tally(Q);
+      verdict.innerHTML = `<span class="text-violet-800"><strong>▲ Majority = ${escapeHtml(v.winner)} @ ${v.conf}%.</strong> ${v.N - v.wc} of ${v.N} samples disagreed, but the vote cancelled the noise — reliability <span class="text-violet-700 font-semibold">${Q.parallelQuality}</span> vs a single sample's ${Q.singleQuality}. Reliability win — for ${v.N}× the tokens.</span>`;
+    }
+  }
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: one slow serial pass", why:"The natural first move is to do everything in order: run step one, wait, run step two, wait, and so on — or cram it all into a single giant prompt. Both waste time. In the serial loop, each call <em>blocks</em> the next even when none of them actually depend on each other, so your wall clock is the <strong>sum</strong> of every call. The one-giant-prompt shortcut is a single call, but it's thin and rushed at each piece, and a single pass gives you exactly one (possibly flaky) sample of the answer with no way to know how shaky it was.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">input -> [call 1] -> [call 2] -> [call 3] -> [call 4] -> result<br>&nbsp;&nbsp;each waits for the last -> wall clock = SUM<br>none of them actually depend on each other<br>(and one sample = no idea how flaky it was)</div>`, code:`// serial: independent calls still block each other -> SUM of latencies
+for (const t of subtasks) parts.push(await llm(t.prompt + input));
+// 4 × ~1.5s = ~6s, for work that has no ordering at all.` },
+ { title:"2. The idea: fan out, then aggregate", why:"Parallelization is <strong>map/reduce for prompts</strong>. <em>Map</em>: fan the same input out to several prompts that run at the same time. <em>Reduce</em>: combine their outputs with an aggregator. Because the calls run concurrently, the wall clock collapses from the sum of the calls to the <strong>slowest single one</strong>. It splits into two flavors depending on <em>what</em> you fan out: different subtasks (sectioning) or the same prompt many times (voting).", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#8599; [call] &#8600;<br>input --&#8594; [call] --&#8594; [ aggregate ] -> result<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&#8600; [call] &#8599;<br>fan out (map) at once, then combine (reduce)</div>`, code:`// map: fan the input out to N calls at once
+const results = await Promise.all(calls.map(c => llm(c)));
+// reduce: aggregate the N results into one
+return aggregate(results);` },
+ { title:"3. Sectioning — split into subtasks", why:"The first flavor. Break the task into pieces that <strong>don't need each other's output</strong>, and give each its own focused prompt. A launch brief becomes headline + features + FAQ + tweet; a code review becomes security + performance + style + tests. Each subtask prompt is small and sharp (better than one bloated mega-prompt at every piece), and because the pieces are independent they can all run at once — that's what makes the latency win possible.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one task -> [ §headline ] [ §features ]<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;[ §FAQ ]&nbsp;&nbsp;&nbsp;[ §tweet ]<br>independent pieces, each its own focused prompt<br>-> run them all at the same time</div>`, code:`const SUBTASKS = [
+  { key:"headline", prompt:"Punchy headline + tagline for: " },
+  { key:"features", prompt:"The 3 flagship features of: " },
+  { key:"faq",      prompt:"2 FAQ Q&As for: " },
+  { key:"tweet",    prompt:"A 1-line launch tweet for: " },
+]; // each carries ONLY its own job` },
+ { title:"4. Voting — same prompt, N times", why:"The second flavor uses the <em>same</em> fan-out, but every call is the <strong>identical</strong> prompt, run warm so the samples vary a little. A single sample on a hard input can be a coin-flip; run it N times and take the majority and the random errors cancel out — a shaky one-shot becomes a confident, self-consistent answer. This is the same idea as Day 3's self-consistency, generalized: it shines on classification, extraction, and trap-question reasoning where being right matters more than saving tokens.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">same prompt -> [run][run][run][run][run]<br>votes: $0.10 · $0.05 · $0.05 · $0.05 · $0.10<br>majority -> $0.05&nbsp;&nbsp;(3/5 = 60% confidence)<br>2 flaky samples get outvoted</div>`, code:`// identical prompt, N samples -> majority cancels the noise
+const votes = await Promise.all(
+  Array.from({length: 5}, () => llm(prompt))
+);
+return majority(votes.map(parse)); // { answer, confidence }` },
+ { title:"5. The fan-out mechanic (Promise.all)", why:"The whole latency trick is in <em>how</em> you await. If you <span class=\"mono\">await</span> inside a loop, you serialize. Instead, <strong>start every call without awaiting</strong>, collect the promises, and <span class=\"mono\">await Promise.all</span> once. Now they overlap, so the wall clock is the <strong>max</strong> of the calls, not the sum. Same tokens, same work — you just stop waiting in line. (In practice, cap how many fire at once so you don't trip provider rate limits.)", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">await in a loop&nbsp;&nbsp;-> serial&nbsp;&nbsp; (clock = SUM)<br>start all, Promise.all -> parallel (clock = MAX)<br>|■■■|■■|■■■■|&nbsp;&nbsp;vs&nbsp;&nbsp;|■■■|<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|■■|<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|■■■■|</div>`, code:`// ❌ serial: awaits one at a time
+for (const c of calls) out.push(await llm(c));
+// ✅ parallel: start all, await once
+const out = await Promise.all(calls.map(c => llm(c)));` },
+ { title:"6. The aggregator — merge or majority", why:"Fan-out is only half the pattern; the results have to come back together, and <em>how</em> you combine them is the aggregator (the <em>reduce</em>). Sectioning uses a <strong>merge</strong>: concatenate the sections, or run a short final synthesis pass to smooth them into one voice. Voting uses a <strong>tally</strong>: count the answers, take the majority, and read the winning share as a confidence. The aggregator is where parallelization actually pays out — a good merge makes the pieces feel authored, and a majority turns N noisy samples into one trustworthy answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sectioning -> MERGE: stitch pieces into one doc<br>voting&nbsp;&nbsp;&nbsp;&nbsp;-> TALLY: count -> majority + confidence<br>(optional) a final LLM synthesis pass to smooth<br>reduce is where the win is realized</div>`, code:`const merge = parts => parts.join("\\n\\n");   // sectioning
+function majority(votes){                      // voting
+  const c={}; votes.forEach(v=>c[v]=(c[v]||0)+1);
+  const w=Object.keys(c).sort((a,b)=>c[b]-c[a])[0];
+  return { answer:w, confidence:c[w]/votes.length };
+}` },
+ { title:"7. The latency win (sum → max)", why:"The headline benefit of sectioning is wall-clock time. Independent calls that used to run back-to-back — so their times <em>added up</em> — now overlap, so you only wait for the <strong>slowest</strong> one. Four 1.5-second calls drop from ~6s to ~1.5s. The savings grow with the number of independent pieces, which is why fanning out a big report, a multi-language translation, or a many-dimension review feels dramatically snappier without changing the model or the prompts at all.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">serial:&nbsp;&nbsp;1.5 + 1.4 + 1.6 + 0.9 = ~5.4s<br>parallel: max(1.5,1.4,1.6,0.9) = ~1.6s<br>-> ~3.4× less waiting, same tokens<br>more independent pieces -> bigger win</div>`, code:`// same 4 calls, same tokens:
+serialTime   = sum(callTimes);   // ~5.4s
+parallelTime = max(callTimes);   // ~1.6s
+// the fan-out changed nothing but the waiting.` },
+ { title:"8. The reliability win (noise cancels)", why:"The headline benefit of voting is correctness. LLMs are stochastic: on a hard or ambiguous input, any single sample can be wrong, and it won't tell you it's unsure. Draw N samples and take the majority and the independent errors tend to cancel, so the consensus is right far more often than a one-shot — and the vote share (say 4/5) hands you a confidence number for free. It's the cheapest reliability upgrade there is: no new model, no fine-tuning, just more samples of the one you have.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 sample:&nbsp;&nbsp;could be the wrong coin-flip<br>5 samples: ✗ ✓ ✓ ✓ ✗ -> majority ✓ (3/5)<br>independent errors cancel; consensus wins<br>vote share = a free confidence score</div>`, code:`// same prompt, more samples -> higher accuracy
+const { answer, confidence } = majority(
+  await Promise.all(Array.from({length:5}, () => llm(prompt)))
+);
+if (confidence < 0.6) escalate();  // low agreement = low trust` },
+ { title:"9. The cost tradeoff (N× tokens)", why:"Parallelization is not free, and the cost is blunt: N calls means roughly <strong>N× the tokens</strong>, for both flavors. Sectioning trades those tokens for latency; voting trades them for reliability. So spend them where it pays: fan out when the pieces are genuinely independent and the speed matters, or when a correct answer is worth several samples. For cheap, low-stakes, or already-fast tasks, one call is the right call. And watch <strong>rate limits</strong> — a big fan-out can hit them, so cap concurrency.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 call&nbsp;&nbsp; -> 1× tokens, 1× latency (baseline)<br>N-fan-out -> N× tokens, but latency=MAX (section)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;or same latency, higher accuracy (vote)<br>spend the tokens where the win is worth it</div>`, code:`// the bill is flat: N calls ≈ N× tokens.
+// sectioning: N× tokens BUYS latency.
+// voting:     N× tokens BUYS reliability.
+// cheap/fast/low-stakes task? one call is fine.` },
+ { title:"10. Parallel vs chaining vs routing", why:"The three workflow patterns compose but solve different shapes. <strong>Chaining</strong> (Day 35) is for <em>ordered</em> work — step B needs step A's output, so it must be serial. <strong>Routing</strong> (Day 36) picks <em>one</em> path based on the input. <strong>Parallelization</strong> runs <em>many</em> paths at once and combines them, for work that's independent (sectioning) or worth sampling repeatedly (voting). Rule of thumb: chain when there's a dependency, route when the input decides, parallelize when there isn't a dependency. They nest freely — a route can trigger a fan-out, and each fanned-out branch can be its own chain. Next: <em>orchestrator–workers</em>, where a lead model decides the subtasks on the fly instead of fixing them up front.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">chaining:&nbsp;&nbsp;A -> B -> C&nbsp;&nbsp;(ordered / dependent)<br>routing:&nbsp;&nbsp;&nbsp;pick ONE of A | B | C (by input)<br>parallel:&nbsp;&nbsp;A + B + C at once -> aggregate<br>chain if dependent · route if input decides · parallelize if independent</div>`, code:`if (stepsDependOnEachOther)      useChaining();      // A -> B -> C
+else if (inputPicksThePath)      useRouting();       // A | B | C
+else if (workIsIndependent)      useSectioning();    // A + B + C -> merge
+else if (answerWorthResampling)  useVoting();        // same ×N -> majority` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
