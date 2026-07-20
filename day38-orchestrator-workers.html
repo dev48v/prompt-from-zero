@@ -1,0 +1,694 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 38 — Orchestrator–Workers</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out both; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .cand.win { border-color:#7c3aed; background:#f5f3ff; box-shadow:0 4px 16px rgba(124,58,237,.18); }
+  .cand.fb { border-color:#f59e0b; background:#fffbeb; box-shadow:0 4px 16px rgba(245,158,11,.16); }
+  .cand.orch { border-color:#c4b5fd; background:#faf5ff; box-shadow:0 4px 16px rgba(124,58,237,.12); }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.fan { background:#0f172a; color:#fff; border-color:#0f172a; }
+  .phase .pill.fix { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .phase .arr.fan { color:#0f172a; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .segbtn.on.fix { background:#f59e0b; border-color:#f59e0b; box-shadow:0 2px 6px rgba(245,158,11,.35); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iolabel.out { color:#7c3aed; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .iobox.out { background:#f5f3ff; border-color:#ddd6fe; color:#3b0764; }
+  .prompttag { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; color:#6d28d9; background:#faf5ff; border:1px dashed #c4b5fd; border-radius:8px; padding:7px 9px; margin:6px 0; white-space:pre-wrap; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  .stepnum { width:26px; height:26px; border-radius:999px; background:#7c3aed; color:#fff; font-weight:800; font-size:12px; display:flex; align-items:center; justify-content:center; flex:0 0 auto; }
+  .stepnum.agg { background:#0f172a; }
+  /* plan-size comparison rows */
+  .rt { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .rt .nm { width:120px; font-size:11.5px; font-weight:700; color:#64748b; display:flex; align-items:center; gap:5px; }
+  .rt .track { flex:1; height:16px; background:#f1f5f9; border-radius:6px; overflow:hidden; position:relative; }
+  .rt .fill { position:absolute; left:0; top:0; bottom:0; background:#cbd5e1; border-radius:6px; transition:width .55s ease; }
+  .rt.win .fill { background:#7c3aed; }
+  .rt .pctlab { width:40px; text-align:right; font-size:11px; font-variant-numeric:tabular-nums; color:#64748b; font-weight:700; }
+  .rt.win .nm, .rt.win .pctlab { color:#6d28d9; }
+  .confpill { display:inline-block; font-size:11px; font-weight:800; padding:2px 9px; border-radius:999px; }
+  .confpill.hi { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .confpill.lo { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 38</div>
+      <h1 class="text-xl font-bold">🎛️ Orchestrator–Workers — instead of hardcoding the subtasks up front, a <strong>lead "orchestrator" model reads the task and decides the plan at runtime</strong> — how many subtasks and what each one is — <strong>dispatches them to worker models</strong>, then a <strong>synthesizer</strong> stitches the results into one answer. It's the <em>dynamic</em> successor to parallelization's <em>fixed</em> split: the number of workers varies with the task.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't hardcode the subtasks. Let a lead model read the task and decide the plan — how many workers, and what each does — then synthesize.</h2>
+        <p class="text-slate-500 mb-5">Parallelization (Day 37) fans work out to a <strong>fixed</strong> set of subtasks you wrote in advance — headline, features, FAQ, tweet, always those four. But you don't always know the pieces until you see the input: a bug fix wants <em>diagnose → test → patch</em>, a comparison wants one worker <em>per competitor you decide is relevant</em>, a trip wants a track <em>per day</em>. <strong>Orchestrator–Workers</strong> makes the decomposition itself a model call. A lead <strong>orchestrator</strong> reads the task and emits a <strong>plan at runtime</strong> — a variable number of subtasks, each with a role and a goal — then those subtasks are <strong>dispatched to workers</strong> (the same parallel fan-out as Day 37), and finally a <strong>synthesizer</strong> reconciles the pieces into one coherent result. The count is no longer a constant in your code; it's whatever the task actually needs. Below: pick a task and watch the orchestrator produce a <em>different-sized</em> plan for each one — then flip to the <span class="mono">🔒 fixed</span> split to see how a rigid 4-slot template mis-fits the very same task. Everything is scripted/deterministic client-side (no live model), but faithful to how a real orchestrator loop runs.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="flex justify-center gap-2 mb-3">
+          <button id="modeDyn"   class="segbtn on" style="min-width:240px;">🧠 Orchestrated &middot; plan decided at runtime</button>
+          <button id="modeFixed" class="segbtn"    style="min-width:240px;">🔒 Fixed split &middot; same 4 slots every time</button>
+        </div>
+        <div class="text-center text-sm">
+          <span class="text-slate-500">Pick a task:</span>
+          <span id="taskChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div id="modeNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">The task (one input)</div>
+            <div id="inputBox" class="inputbox mb-4"></div>
+
+            <div class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run</button>
+              </div>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">The <span class="text-violet-600 font-semibold">orchestrator</span> plans <span id="statNsm" class="text-violet-600 font-semibold"></span> subtasks for <em>this</em> task, hands each to a <span class="text-violet-600 font-semibold">worker</span> (parallel fan-out), then a <span class="text-slate-600 font-semibold">synthesizer</span> reconciles the pieces. The plan size is <strong>chosen at runtime</strong>, not fixed in your code.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The pipeline</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the orchestrator</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Plan size: dynamic vs fixed, across every task</div>
+            <div class="text-xs text-slate-400 mb-3">The orchestrator's plan count changes with the task (3, 4, 5, 2). A fixed split is always 4 — too many for a small job, too few for a big one.</div>
+            <div id="planviz"></div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1" id="qualTitle">Result quality — fixed template vs orchestrated</div>
+              <div class="text-xs text-slate-400 mb-2" id="qualSub"></div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Run stats</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">subtasks planned</span><span id="statN" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">workers dispatched</span><span id="statWorkers" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">planning call</span><span id="statPlan" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">synthesis call</span><span id="statSynth" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">total LLM calls</span><span id="statCalls" class="stat font-bold text-amber-600"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">adapts to task</span><span id="statAdapt" class="stat font-bold text-violet-700"></span></div>
+              <div id="statAgg" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Orchestrator–Workers = parallelization where the plan is a model call, not a constant.</strong> A lead <em>orchestrator</em> reads the task and decides the decomposition <strong>at runtime</strong> — the number of subtasks and what each is — so it can dispatch three workers to a bug fix, five to a trip plan, or two to a tiny refactor. The workers fan out exactly like Day 37, but the list came from the model, not from your source. A <em>synthesizer</em> then does more than concatenate: it reconciles overlaps and smooths the pieces into one voice. You pay for the flexibility — <strong>two extra calls</strong> (the plan and the synthesis) on top of the N workers, plus the risk the orchestrator over- or under-decomposes — so reach for it when you <em>can't</em> know the subtasks up front. When you can, a fixed fan-out is cheaper.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Orchestrator–Workers = a lead model plans a variable set of subtasks at runtime, dispatches each to a worker (parallel fan-out), then a synthesizer merges them into one coherent result. Dynamic decomposition, where parallelization is fixed; costs an extra plan + synthesis call.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Orchestrator–Workers works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Orchestrator–Workers is three moves: <span class="mono text-violet-700">plan → dispatch → synthesize</span>. The only new idea over Day 37 is that the subtask list comes from a <em>model call</em>, so it's dynamic. Here is the whole thing: the fixed fan-out you're upgrading, the orchestrator, plan validation, the worker dispatch, the synthesizer, and the assembled loop.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The fixed fan-out you're upgrading (Day 37)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First, what almost works: parallelization with a <strong>hardcoded</strong> subtask list. You wrote the four slots before you ever saw the input, and every task gets the same four — great, until the task needs two subtasks, or seven, or entirely different ones. The decomposition is frozen in your source.</p>
+        <div class="relative"><pre>// ❌ Fixed: you hardcode the subtasks BEFORE seeing the task.
+const SUBTASKS = ["headline", "features", "faq", "tweet"]; // always these 4
+const parts = await Promise.all(
+  SUBTASKS.map(s =&gt; llm(promptFor(s) + input))
+);
+return parts.join("\n\n");
+// fine — until the task needs 2 subtasks, or 7, or different ones.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The orchestrator — plan the subtasks at runtime</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The one new idea. Instead of a constant list, ask a lead model to <strong>produce the plan</strong> from the task, as structured JSON. The model decides <em>how many</em> subtasks and <em>which</em> — a role and a goal for each. This is the whole difference: decomposition becomes a call, so it adapts to the input.</p>
+        <div class="relative"><pre>// ✅ Ask a lead model to PLAN the subtasks at runtime, as JSON.
+const plan = await llm(`
+  You are an orchestrator. Break this task into the RIGHT
+  number of independent subtasks — no more, no fewer.
+  Return JSON: { "subtasks": [ { "role": "...", "goal": "..." } ] }
+  TASK: ${task}
+`);
+// the model decides HOW MANY and WHICH — not you, not up front.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Parse &amp; validate the plan — N is now dynamic</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A model-authored plan is <em>data you don't control</em>, so guard it before you act on it. Parse the JSON, reject an empty plan, and <strong>cap the worker count</strong> so a runaway orchestrator can't fan out fifty calls. After this, N is whatever the task genuinely needed.</p>
+        <div class="relative"><pre>// ✅ Parse the plan and guard it — models can return junk.
+const { subtasks } = JSON.parse(plan);
+if (!Array.isArray(subtasks) || subtasks.length === 0)
+  throw new Error("orchestrator returned no plan");
+const capped = subtasks.slice(0, MAX_WORKERS);  // don't fan out 50
+// N = capped.length — dynamic, sized to THIS task.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Dispatch the workers — parallel fan-out (like Day 37)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now it's just parallelization: fan the <em>planned</em> subtasks out to workers with <span class="mono">Promise.all</span>, so they run at once and the wall clock is the slowest one. Each worker is a focused specialist — it gets its role, its goal, and the shared context. The mechanic is identical to Day 37; the only change is that the list came from the model.</p>
+        <div class="relative"><pre>// ✅ Fan the PLANNED subtasks out to workers (parallel).
+const results = await Promise.all(
+  capped.map(st =&gt;
+    llm(`Role: ${st.role}. Goal: ${st.goal}. Context: ${task}`))
+);
+// same fan-out as Day 37 — but the subtask list was decided at runtime.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The synthesizer — reconcile, don't just concatenate</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Fixed sectioning could get away with <span class="mono">join()</span> because you designed the slots to fit together. A dynamic plan can't — the workers didn't know about each other, so their outputs overlap, contradict, or jar. The <strong>synthesizer</strong> is a final model pass that stitches them into one coherent whole: resolve overlaps, fix transitions, keep a single voice.</p>
+        <div class="relative"><pre>// ✅ Synthesize — a FINAL model pass that reconciles the pieces.
+const final = await llm(`
+  Combine these worker outputs into one coherent result.
+  Resolve overlaps, fix transitions, keep one voice.
+  ${results.map((r, i) =&gt; `#${i + 1}: ${r}`).join("\n")}
+`);
+return final; // more than concat — it stitches N pieces into a whole.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Put it together — and know the limits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Three moves: <span class="mono">plan → dispatch → synthesize</span>. Reach for it when you <strong>can't</strong> know the subtasks in advance — coding agents, deep research, multi-file edits. Mind the limits: it costs <strong>N + 2 calls</strong> (the plan and the synthesis are the price of dynamism); the orchestrator can <strong>over- or under-decompose</strong>, so cap N and keep the plan reviewable; and the workers can't share results, so truly dependent steps still belong in a chain. Next you'll close the loop with an <em>evaluator</em> that grades the output and sends it back for another pass.</p>
+        <div class="relative"><pre>// ✅ Orchestrator–Workers = plan -&gt; dispatch -&gt; synthesize.
+async function orchestrate(task) {
+  const plan   = await planSubtasks(task);      // 1 lead call, dynamic N
+  const pieces = await runWorkers(plan, task);  // N worker calls, parallel
+  return await synthesize(pieces, task);        // 1 synthesis call
+}
+// cost = N + 2 calls; N varies per task; cap N vs rate limits.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 38 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Orchestrator–Workers</strong>: a lead model reads the task and <em>plans a variable set of subtasks at runtime</em>, dispatches each to a worker with the same parallel fan-out as Day 37, then a <strong>synthesizer</strong> reconciles the pieces into one coherent result. It's <em>dynamic</em> decomposition where parallelization is <em>fixed</em> — the worker count is chosen for the task (3, 4, 5, 2), not frozen in your code — and it pays for that flexibility with two extra calls (the plan and the synthesis) plus the risk of over- or under-decomposition. <strong>👉 Next up — Evaluator–Optimizer: one model generates a draft, a second evaluates it against a rubric and hands back concrete feedback, and the generator revises — looping until the output passes, so quality is earned rather than hoped for.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Orchestrator–Workers -- dynamic plan vs fixed split =====
+// Fully scripted & deterministic. No live model. Two modes:
+//   dynamic -> a lead orchestrator emits a variable-length plan (N chosen per task)
+//   fixed   -> the same 4 generic slots forced onto every task (Day 37 style)
+// Run steps: 0 idle -> 1 plan -> 2 workers -> 3 synthesize.
+/* ==DATA_START== */
+const PLAN_MS  = 700;   // the orchestrator's own planning call
+const SYNTH_MS = 800;   // the synthesizer's own reconciliation call
+const CALL_COLORS = ["#7c3aed","#8b5cf6","#a78bfa","#6d28d9","#c4b5fd","#9333ea"];
+
+// The rigid one-size-fits-all template used in "fixed" mode -- always 4 slots.
+const FIXED_SLOTS = [
+  { label:"Overview",    role:"generic", prompt:"Write an overview of the task.",  ms:1200,
+    out:"A generic top-level overview. Fine when the task wants one, but every task gets this slot whether it needs it or not." },
+  { label:"Key details", role:"generic", prompt:"List the key details of the task.", ms:1300,
+    out:"Some details, padded to fill the slot even when the task has few to give." },
+  { label:"Examples",    role:"generic", prompt:"Give examples for the task.",       ms:1100,
+    out:"Examples requested by the template, not the task — often irrelevant (a bug fix needs a test, not examples)." },
+  { label:"Summary",     role:"generic", prompt:"Summarize the task.",               ms:900,
+    out:"A closing summary. There are always four slots, no matter the task." }
+];
+
+const TASKS = [
+  {
+    tag:"🐛 Fix a bug",
+    task:`A customer reports checkout fails whenever the cart total exceeds $10,000.`,
+    orchNote:`This is a bug fix, so the shape is diagnose then test then patch. I'll dispatch three workers — a debugger to locate it, a tester to pin it with a failing test, and a coder to fix it. No research or translation slots.`,
+    fixedMiss:`This bug fix naturally has 3 steps (diagnose, test, patch). The fixed template gives an "Examples" slot nobody asked for and has no "write a failing test" worker — it can't match the shape of the work.`,
+    plan:[
+      { label:"Reproduce & locate", role:"debugger", prompt:"Trace the checkout path and find what rejects a $12,500 cart.", ms:1300,
+        out:"Found it: a stale MAX_TOTAL = 1000000 (cents) guard in PaymentService rejects any total over $10k with a 422." },
+      { label:"Write a failing test", role:"tester", prompt:"Add a regression test for a cart total of $12,500.", ms:1100,
+        out:"test('accepts carts over $10k') expects 200, currently gets 422 — red, so the bug is pinned down." },
+      { label:"Implement the fix", role:"coder", prompt:"Raise the guard safely and keep the cents math in 64-bit.", ms:1500,
+        out:"Made MAX_TOTAL configurable (default $100k) and widened the amount to a 64-bit int. The new test passes." }
+    ],
+    synth:`One review-ready PR: root-caused the stale $10k cap, added a regression test that captures it, and raised the limit with 64-bit cents. The orchestrator chose exactly three steps — diagnose, test, patch.`,
+    fixedQuality:55, dynamicQuality:93
+  },
+  {
+    tag:"📊 Compare apps",
+    task:`Write a switching guide comparing the best note-taking apps.`,
+    orchNote:`The task doesn't say which apps or how many. I'll decide the field is worth FOUR profiles — Notion, Obsidian, Apple Notes, Evernote — one worker each, then compare. The count is my call, made from the task.`,
+    fixedMiss:`The template's 4 slots (Overview/Details/Examples/Summary) can't hold "one worker per competitor" — and it fixed the number at 4 by accident, not because the orchestrator judged 4 apps relevant.`,
+    plan:[
+      { label:"Profile Notion", role:"researcher", prompt:"Summarize Notion: strengths, weaknesses, pricing, best-fit user.", ms:1100,
+        out:"All-in-one workspace; databases plus docs; great for teams; can feel heavy; generous free personal tier." },
+      { label:"Profile Obsidian", role:"researcher", prompt:"Summarize Obsidian on the same axes.", ms:1000,
+        out:"Local-first Markdown, backlinks, huge plugin ecosystem; power-user favorite; sync is a paid add-on." },
+      { label:"Profile Apple Notes", role:"researcher", prompt:"Summarize Apple Notes on the same axes.", ms:1200,
+        out:"Free, instant, deeply iOS-integrated; weak for large structured knowledge bases; Apple-only." },
+      { label:"Profile Evernote", role:"researcher", prompt:"Summarize Evernote on the same axes.", ms:900,
+        out:"Mature web clipper and OCR search; pricing rose and momentum stalled; still strong for archives." }
+    ],
+    synth:`A comparison table plus a recommendation: Obsidian for tinkerers, Notion for teams, Apple Notes for quick capture, Evernote for archives. The orchestrator decided four competitors were worth profiling.`,
+    fixedQuality:62, dynamicQuality:95
+  },
+  {
+    tag:"✈️ Plan a trip",
+    task:`Plan a 3-day Tokyo food trip on a mid-range budget.`,
+    orchNote:`A richer task. I'll give a worker to each of the 3 days, plus a budget-and-transit analyst and a reservations assistant — FIVE subtasks. A single sentence expands into five coordinated pieces.`,
+    fixedMiss:`A 3-day trip needs a track per day plus budget and bookings — 5 pieces. The fixed 4-slot template is one short and none of its generic slots ("Examples", "Summary") fit a day-by-day itinerary.`,
+    plan:[
+      { label:"Day 1 itinerary", role:"planner", prompt:"Draft a food-first Day 1 around Tsukiji and Asakusa.", ms:1200,
+        out:"Morning Tsukiji outer market; ramen lunch in Asakusa; izakaya crawl in Ueno for dinner." },
+      { label:"Day 2 itinerary", role:"planner", prompt:"Draft a food-first Day 2 around Toyosu and Shibuya.", ms:1300,
+        out:"Toyosu tuna auction; Harajuku crepes; Shibuya conveyor sushi; a Golden Gai nightcap." },
+      { label:"Day 3 itinerary", role:"planner", prompt:"Draft a food-first Day 3 around Ginza and Tsukishima.", ms:1100,
+        out:"Ginza depachika food hall; Tsukishima monjayaki street; a last-night wagyu splurge." },
+      { label:"Budget & transit", role:"analyst", prompt:"Estimate daily spend and pick the right transit pass.", ms:1000,
+        out:"~¥12k/day on food, a 72-hour subway pass at ¥1,500, one splurge dinner ~¥8k — comfortably mid budget." },
+      { label:"Reservation checklist", role:"assistant", prompt:"List what must be booked ahead of time.", ms:1150,
+        out:"Book the tuna-auction slot, one omakase, and the wagyu dinner 2–4 weeks out; everything else is walk-in." }
+    ],
+    synth:`One cohesive 3-day itinerary with a budget line and a booking checklist, transitions smoothed between days. The orchestrator expanded a single sentence into five coordinated subtasks.`,
+    fixedQuality:58, dynamicQuality:96
+  },
+  {
+    tag:"🧹 Small refactor",
+    task:`Modernize a legacy jQuery to-do widget into a small vanilla-JS component.`,
+    orchNote:`This is small and well understood. I'll dispatch only TWO workers — an auditor to capture what must be preserved, then a coder to rewrite it. No test or research slot; over-decomposing a tiny job just wastes calls.`,
+    fixedMiss:`Right-sizing cuts both ways: this job only needs 2 subtasks. The fixed 4-slot template would invent two empty slots ("Examples", "Summary") and pad the output with filler.`,
+    plan:[
+      { label:"Audit the old code", role:"auditor", prompt:"List every behavior the jQuery version must keep.", ms:1000,
+        out:"Add/complete/delete items, localStorage persistence, and filter tabs — three behaviors, no network." },
+      { label:"Rewrite the component", role:"coder", prompt:"Reimplement it in dependency-free vanilla JS.", ms:1400,
+        out:"One 60-line module: a state array plus render(); event delegation; same localStorage key. jQuery removed." }
+    ],
+    synth:`Migration notes plus the rewritten component. The orchestrator saw a small, well-understood job and dispatched just two workers — no test or research slot needed.`,
+    fixedQuality:60, dynamicQuality:92
+  }
+];
+/* ==DATA_END== */
+
+const modeDyn    = document.getElementById("modeDyn");
+const modeFixed  = document.getElementById("modeFixed");
+const taskChips  = document.getElementById("taskChips");
+const modeNote   = document.getElementById("modeNote");
+const inputBox   = document.getElementById("inputBox");
+const runNext    = document.getElementById("runNext");
+const resetBtn   = document.getElementById("resetBtn");
+const autoBtn    = document.getElementById("autoBtn");
+const phaseBar   = document.getElementById("phaseBar");
+const phaseNote  = document.getElementById("phaseNote");
+const flow       = document.getElementById("flow");
+const flowLabel  = document.getElementById("flowLabel");
+const verdict    = document.getElementById("verdict");
+const planviz    = document.getElementById("planviz");
+const coverChart = document.getElementById("coverChart");
+const qualTitle  = document.getElementById("qualTitle");
+const qualSub    = document.getElementById("qualSub");
+const statN      = document.getElementById("statN");
+const statNsm    = document.getElementById("statNsm");
+const statWorkers= document.getElementById("statWorkers");
+const statPlan   = document.getElementById("statPlan");
+const statSynth  = document.getElementById("statSynth");
+const statCalls  = document.getElementById("statCalls");
+const statAdapt  = document.getElementById("statAdapt");
+const statAgg    = document.getElementById("statAgg");
+
+let mode    = "dynamic";   // "dynamic" | "fixed"
+let curIdx  = 0;           // task index
+let stepIdx = 0;           // 0 idle, 1 plan, 2 workers, 3 synth
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtMs(ms){ return (ms/1000).toFixed(1) + "s"; }
+
+function Qget(){ return TASKS[curIdx]; }
+function planFor(Q){ return mode==="dynamic" ? Q.plan : FIXED_SLOTS; }
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run"; } }
+
+function buildChips(){
+  taskChips.innerHTML = "";
+  TASKS.forEach((p,i)=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (i===curIdx ? " sel" : "");
+    c.textContent = p.tag;
+    c.onclick = () => { curIdx = i; stepIdx = 0; stopAuto(); render(); };
+    taskChips.appendChild(c);
+  });
+}
+
+modeDyn.onclick   = () => { if(mode==="dynamic") return; mode="dynamic"; stepIdx=0; stopAuto(); render(); };
+modeFixed.onclick = () => { if(mode==="fixed")   return; mode="fixed";   stepIdx=0; stopAuto(); render(); };
+runNext.onclick = () => { stopAuto(); if(stepIdx<3){ stepIdx++; render(); } };
+resetBtn.onclick = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=3){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay"; return; }
+    stepIdx++; render();
+  }, 1600);
+};
+
+// ---- plan-size comparison across every task: dynamic count vs fixed 4 ----
+function buildPlanViz(){
+  const scale = 6;
+  return TASKS.map((t,i)=>{
+    const dyn = t.plan.length, fx = FIXED_SLOTS.length;
+    const act = i===curIdx;
+    return `<div style="margin-bottom:10px;${act?'':'opacity:.55;'}">
+      <div style="font-size:11px;font-weight:800;color:${act?'#6d28d9':'#64748b'};margin-bottom:3px;">${escapeHtml(t.tag)}${act?' · this task':''}</div>
+      <div class="rt ${act?'win':''}"><div class="nm">🧠 dynamic</div><div class="track"><div class="fill" style="width:${dyn/scale*100}%;${act?'':'background:#cbd5e1;'}"></div></div><div class="pctlab">${dyn}</div></div>
+      <div class="rt"><div class="nm">🔒 fixed</div><div class="track"><div class="fill" style="width:${fx/scale*100}%;background:#f59e0b;"></div></div><div class="pctlab">${fx}</div></div>
+    </div>`;
+  }).join("");
+}
+
+function render(){
+  const Q = Qget();
+  const plan = planFor(Q);
+  const N = plan.length;
+  const isDyn = mode==="dynamic";
+  const parMs = Math.max.apply(null, plan.map(c=>c.ms));
+  const totalCalls = isDyn ? N + 2 : N;
+  const planned = stepIdx>=1, worked = stepIdx>=2, synthed = stepIdx>=3;
+
+  // mode segmented + chips
+  modeDyn.classList.toggle("on", isDyn);
+  modeFixed.classList.toggle("on", !isDyn);
+  modeFixed.classList.toggle("fix", !isDyn);
+  buildChips();
+  modeNote.innerHTML = isDyn
+    ? `<strong>Orchestrated</strong> — a lead model reads the task and emits a plan of <strong>${N}</strong> subtasks at runtime, then workers fan out and a synthesizer reconciles. The plan size is <em>chosen for this task</em>.`
+    : `<strong>Fixed split</strong> — the same <strong>4</strong> generic slots (Overview / Details / Examples / Summary) are forced onto every task. No planning step, no synthesis — just concatenation.`;
+
+  inputBox.textContent = Q.task;
+  statNsm.textContent = N;
+
+  flowLabel.textContent = isDyn
+    ? "Run the orchestrator — plan, dispatch, synthesize"
+    : "Run the fixed template — load, dispatch, merge";
+
+  // ---- phase bar ----
+  if(isDyn){
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr">→</span>`+
+      `<span class="pill ${planned?'on':'tune'}">${planned?'✓ ':''}🧠 orchestrator plans ${N}</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${worked?'fan':(planned?'tune':'')}">${worked?'✓ ':''}⚡ ${N} workers</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${synthed?'on':(worked?'tune':'')}">${synthed?'✓ ':''}🔗 synthesize</span><span class="arr">→</span>`+
+      `<span class="pill ${synthed?'on':''}">result</span>`;
+    phaseNote.innerHTML = planned
+      ? `The orchestrator sized the plan to the task (<strong>${N}</strong> subtasks), the workers fan out in parallel (wall clock = the slowest, ${fmtMs(parMs)}), then a synthesis pass reconciles them.`
+      : `Step 1 is the new move: a lead model reads the task and <em>decides</em> how many subtasks (${N} here) — not a constant in your code.`;
+  } else {
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr">→</span>`+
+      `<span class="pill ${planned?'fix':'tune'}">${planned?'✓ ':''}🔒 fixed template (4)</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${worked?'fan':(planned?'tune':'')}">${worked?'✓ ':''}⚡ 4 workers</span><span class="arr fan">⇒</span>`+
+      `<span class="pill ${synthed?'on':(worked?'tune':'')}">${synthed?'✓ ':''}🔗 concat</span><span class="arr">→</span>`+
+      `<span class="pill ${synthed?'on':''}">result</span>`;
+    phaseNote.innerHTML = `No planning step — the same 4 slots are applied blindly, run as 4 workers, then <em>concatenated</em> (no synthesis pass to reconcile them).`;
+  }
+
+  // ---- flow body ----
+  if(stepIdx===0){
+    flow.innerHTML = `<div class="cand row-appear" style="text-align:center;color:#64748b;padding:26px;">
+      <div style="font-size:26px;">🎛️</div>
+      <div class="text-sm mt-1">Idle. Hit <strong>${isDyn?'▶ Step 1: Orchestrator plans the subtasks':'▶ Step 1: Load the fixed 4-slot template'}</strong> — ${isDyn?'the lead model reads the task and decides how many subtasks it needs':'the same four generic slots are applied to this task, sight unseen'}.</div>
+    </div>`;
+  } else {
+    let html = "";
+
+    // ---- the PLAN card (orchestrator vs fixed template) ----
+    if(isDyn){
+      html += `<div class="cand orch row-appear">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="stepnum">🧠</div>
+          <div><div class="font-bold text-slate-800 text-sm">Orchestrator — plans the subtasks at runtime</div>
+          <div class="text-[11px] text-slate-500">Read the task and decided <strong>${N}</strong> subtask${N>1?'s':''} — the count is chosen for THIS task.</div></div>
+        </div>
+        <div class="iolabel">orchestrator's reasoning</div>
+        <div class="iobox" style="margin-bottom:8px;">${escapeHtml(Q.orchNote)}</div>
+        <div class="iolabel out">emitted plan — ${N} subtasks</div>
+        ${plan.map((c,i)=>{ const color=CALL_COLORS[i%CALL_COLORS.length]; return `<div class="flex items-start gap-2 mt-1">
+          <div class="stepnum" style="background:${color};width:22px;height:22px;font-size:11px;">${i+1}</div>
+          <div style="flex:1;"><span class="font-bold text-slate-700 text-xs">${escapeHtml(c.label)}</span> <span class="badge muted">${escapeHtml(c.role)}</span>
+          <div class="prompttag" style="margin:3px 0;">${escapeHtml(c.prompt)}</div></div>
+        </div>`; }).join("")}
+      </div>`;
+    } else {
+      html += `<div class="cand fb row-appear">
+        <div class="flex items-center gap-2 mb-2">
+          <div class="stepnum" style="background:#f59e0b;">🔒</div>
+          <div><div class="font-bold text-slate-800 text-sm">Fixed template — no planning step</div>
+          <div class="text-[11px] text-slate-500">The same 4 generic slots, applied to every task sight unseen.</div></div>
+        </div>
+        <div class="iolabel">why this misfits THIS task</div>
+        <div class="iobox" style="background:#fffbeb;border-color:#fde68a;color:#92400e;margin-bottom:8px;">${escapeHtml(Q.fixedMiss)}</div>
+        <div class="iolabel">forced plan — always 4 slots</div>
+        ${plan.map((c,i)=>`<div class="flex items-start gap-2 mt-1">
+          <div class="stepnum" style="background:#f59e0b;width:22px;height:22px;font-size:11px;">${i+1}</div>
+          <div style="flex:1;"><span class="font-bold text-slate-700 text-xs">${escapeHtml(c.label)}</span> <span class="badge muted">${escapeHtml(c.role)}</span>
+          <div class="prompttag" style="margin:3px 0;border-color:#fcd34d;color:#b45309;background:#fffbeb;">${escapeHtml(c.prompt)}</div></div>
+        </div>`).join("")}
+      </div>`;
+    }
+
+    // ---- the WORKERS (stepIdx>=2) ----
+    if(worked){
+      html += `<div class="flowconn"><span class="ln"></span>↓ dispatch ${N} worker${N>1?'s':''} — all at once (parallel fan-out)<span class="ln"></span></div>`;
+      html += plan.map((c,i)=>{ const color=CALL_COLORS[i%CALL_COLORS.length];
+        return `<div class="cand row-appear" style="animation-delay:${i*0.1}s;">
+          <div class="flex items-center justify-between mb-1 gap-2">
+            <div class="flex items-center gap-2">
+              <div class="stepnum" style="background:${isDyn?color:'#f59e0b'};">${i+1}</div>
+              <div class="font-bold text-slate-800 text-sm">${escapeHtml(c.label)} <span class="badge muted">${escapeHtml(c.role)}</span></div>
+            </div>
+            <span class="badge call">⏱ ${fmtMs(c.ms)}</span>
+          </div>
+          <div class="iolabel">focused prompt</div>
+          <div class="prompttag" style="${isDyn?`border-color:${color};color:${color};`:'border-color:#fcd34d;color:#b45309;background:#fffbeb;'}">${escapeHtml(c.prompt)}</div>
+          <div class="iolabel out">its output</div>
+          <div class="iobox out" style="${isDyn?'':'background:#fff7ed;border-color:#fed7aa;color:#9a3412;'}">${escapeHtml(c.out)}</div>
+        </div>`;
+      }).join("");
+    }
+
+    // ---- the SYNTHESIS / merge (stepIdx>=3) ----
+    if(synthed){
+      html += `<div class="flowconn"><span class="ln"></span>↓ ${isDyn?'synthesize — reconcile the '+N+' outputs into one voice':'concatenate the 4 slots (no reconciliation)'}<span class="ln"></span></div>`;
+      if(isDyn){
+        html += `<div class="cand win row-appear">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum agg">🔗</div>
+            <div><div class="font-bold text-slate-800 text-sm">Synthesizer — merge into one coherent result</div><div class="text-[11px] text-slate-500">Resolves overlaps, smooths transitions, keeps one voice — more than concatenation.</div></div>
+          </div>
+          <div class="iolabel out">final result — synthesized from ${N} workers</div>
+          <div class="iobox out">${escapeHtml(Q.synth)}</div>
+        </div>`;
+        html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Orchestrated.</strong> One task became an orchestrator-chosen plan of <strong>${N}</strong> subtasks → <strong>${N}</strong> workers in parallel → a synthesis pass, for <strong>${N+2}</strong> LLM calls total. The plan adapted to the task instead of being fixed in your code.</div>`;
+      } else {
+        const merged = FIXED_SLOTS.map(c=>`▸ ${c.label}\n${c.out}`).join("\n\n");
+        html += `<div class="cand win row-appear" style="border-color:#f59e0b;background:#fffbeb;box-shadow:0 4px 16px rgba(245,158,11,.16);">
+          <div class="flex items-center gap-2 mb-2">
+            <div class="stepnum" style="background:#f59e0b;">🔗</div>
+            <div><div class="font-bold text-slate-800 text-sm">Merge — concatenate the 4 slots</div><div class="text-[11px] text-slate-500">Just stitched together — no synthesis pass to reconcile overlaps or gaps.</div></div>
+          </div>
+          <div class="iolabel">merged result — 4 fixed slots, joined</div>
+          <div class="iobox" style="background:#fff7ed;border-color:#fed7aa;color:#9a3412;">${escapeHtml(merged)}</div>
+        </div>`;
+        html += `<div class="mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900"><strong>🔒 Fixed.</strong> The 4-slot template was forced onto the task — no planning, no synthesis, just concatenation, for <strong>${N}</strong> calls. It can't grow to a big task or shrink to a small one; that adaptivity is exactly what the orchestrator adds (for 2 extra calls).</div>`;
+      }
+    }
+
+    flow.innerHTML = html;
+  }
+
+  // ---- run button label ----
+  runNext.disabled = stepIdx>=3;
+  runNext.style.opacity = stepIdx>=3 ? ".55" : "1";
+  if(stepIdx===0)      runNext.textContent = isDyn ? "▶ Step 1: Orchestrator plans the subtasks" : "▶ Step 1: Load the fixed 4-slot template";
+  else if(stepIdx===1) runNext.textContent = `▶ Step 2: Dispatch the ${N} workers`;
+  else if(stepIdx===2) runNext.textContent = isDyn ? "▶ Step 3: Synthesize the results" : "▶ Step 3: Concatenate the slots";
+  else                 runNext.textContent = "✓ Done";
+
+  // ---- plan comparison viz ----
+  planviz.innerHTML = buildPlanViz();
+
+  // ---- quality chart ----
+  qualTitle.textContent = "Result quality — fixed template vs orchestrated";
+  qualSub.innerHTML = `One rigid 4-slot template (blind to the task) vs an orchestrator-planned, right-sized set of ${isDyn?N:Q.plan.length} subtasks, synthesized.`;
+  const showDyn = stepIdx>=3 ? Q.dynamicQuality : (stepIdx>=1 ? Math.round(Q.dynamicQuality*0.5) : 0);
+  const bars = [
+    { lab:"fixed<br>template", pct:Q.fixedQuality, on:false },
+    { lab:`orchestrated<br>(${Q.plan.length} planned)`, pct:showDyn, on:true }
+  ];
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // ---- stats ----
+  statN.textContent       = isDyn ? `${N} · varies by task` : `4 · fixed`;
+  statWorkers.textContent = `${N}`;
+  statPlan.textContent    = isDyn ? "1 orchestrator call" : "0 — none";
+  statSynth.textContent   = isDyn ? "1 synthesis call" : "0 — concat";
+  statCalls.textContent   = `${totalCalls}`;
+  statAdapt.textContent   = isDyn ? "yes ✓" : "no ✗";
+  statAgg.innerHTML = isDyn
+    ? `Plan decided at runtime; workers fan out; a synthesizer reconciles. Extra cost = <strong>2 calls</strong> (plan + synthesis) over the ${N} workers.`
+    : `No planner, no synthesizer — 4 fixed slots, concatenated. Cheaper (${N} calls), but blind to what the task actually needs.`;
+
+  // ---- verdict ----
+  if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>${isDyn?'Orchestrated':'Fixed split'}.</strong> ${isDyn?`The orchestrator will read this task and decide the plan — <strong>${N}</strong> subtasks for this one`:`The rigid 4-slot template will be forced onto this task, whatever it needs`}. Run step 1.</span>`;
+  } else if(stepIdx===1){
+    verdict.innerHTML = isDyn
+      ? `<span class="text-violet-800"><strong>▸ Orchestrator emitted a plan of ${N} subtasks</strong> — tailored to this task (not a constant). Dispatch the workers in step 2.</span>`
+      : `<span class="text-amber-800"><strong>▸ Fixed template loaded: 4 generic slots</strong> — the same as every task, planned by nobody. Dispatch them in step 2.</span>`;
+  } else if(stepIdx===2){
+    verdict.innerHTML = `<span class="text-slate-700"><strong>▸ ${N} worker${N>1?'s':''} ran in parallel</strong> — wall clock = the slowest call (${fmtMs(parMs)}). ${isDyn?'Synthesize them in step 3.':'Concatenate the slots in step 3.'}</span>`;
+  } else {
+    verdict.innerHTML = isDyn
+      ? `<span class="text-violet-800"><strong>▲ Synthesized.</strong> ${N} tailored subtasks became one coherent result — quality <span class="text-violet-700 font-semibold">${Q.dynamicQuality}</span> vs a fixed template's ${Q.fixedQuality}. Cost: <strong>${N+2}</strong> calls, with the plan sized to the task.</span>`
+      : `<span class="text-amber-800"><strong>▲ Merged.</strong> 4 forced slots concatenated — quality <span class="text-amber-700 font-semibold">${Q.fixedQuality}</span> vs an orchestrator's ${Q.dynamicQuality}. No planning, no reconciliation; a big task would be under-served, a small one padded.</span>`;
+  }
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: a frozen decomposition", why:"Parallelization (Day 37) is powerful, but its subtask list is a <strong>constant in your code</strong> — you wrote the four slots before you ever saw the input. That's fine when the pieces are always the same (translate to 4 fixed languages), but most real work isn't: a bug fix wants diagnose → test → patch, a comparison wants one worker per competitor <em>you</em> judge relevant, a report wants a section per finding you don't know yet. A fixed fan-out can't grow, shrink, or change what the pieces are — it applies the same template to every task, sight unseen.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fixed: SUBTASKS = [a, b, c, d]  // always these 4<br>task needs 2 -&gt; two empty slots<br>task needs 7 -&gt; three pieces missing<br>the plan is frozen before the input arrives</div>`, code:`// the decomposition is hardcoded, not decided:
+const SUBTASKS = ["headline","features","faq","tweet"];
+// every task gets these 4 — even one that needs 2, or 7.` },
+ { title:"2. The idea: plan at runtime", why:"Orchestrator–Workers makes the decomposition itself a <strong>model call</strong>. A lead <em>orchestrator</em> reads the task and emits the plan on the fly — how many subtasks, and what each one is. The workers then fan out exactly like Day 37, and a synthesizer merges. The shape is the same map/reduce, but the map's <em>length and contents are chosen by the model</em>, per input. That single change — a constant list becomes a call — is the whole pattern.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">task -&gt; [ 🧠 orchestrator ] -&gt; plan(N)<br>plan -&gt; [worker][worker]...[worker]  (parallel)<br>outputs -&gt; [ 🔗 synthesize ] -&gt; result<br>N is decided at runtime, not in your code</div>`, code:`// decomposition becomes a call -> dynamic N
+const plan = await orchestrator(task);   // model decides the subtasks
+const out  = await Promise.all(plan.map(runWorker));
+return synthesize(out);` },
+ { title:"3. The orchestrator's job — decompose", why:"The orchestrator is a lead model with one job: turn a fuzzy task into a concrete, <strong>right-sized</strong> list of independent subtasks, each with a role and a goal. It decides the <em>count</em> (2 for a tiny refactor, 5 for a trip plan) and the <em>content</em> (a 'write a failing test' worker for a bug, a 'profile Notion' worker for a comparison). Ask it for structured JSON so you can act on the plan programmatically. This is where the intelligence of the pattern lives — a good plan makes everything downstream easy.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">bug fix   -&gt; [diagnose][test][patch]      (3)<br>compare  -&gt; [Notion][Obsidian][Notes][EN] (4)<br>trip plan -&gt; [d1][d2][d3][budget][booking] (5)<br>same orchestrator, a different plan each time</div>`, code:`const plan = await llm(\`
+  Break this task into the RIGHT number of subtasks.
+  Return JSON: { subtasks: [ { role, goal } ] }
+  TASK: \${task}\`);` },
+ { title:"4. Validate the plan — it's untrusted data", why:"A model-authored plan is <em>data you don't control</em>, so treat it defensively before you spend money on it. Parse the JSON (and be ready for it to be malformed), reject an empty or nonsensical plan, and <strong>cap the worker count</strong> so a confused orchestrator can't fan out fifty calls and blow your rate limit or your budget. Optionally, keep the plan reviewable — logging it makes over- and under-decomposition easy to spot. Only after it passes these guards do you dispatch.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plan(JSON) -&gt; parse -&gt; is it valid?<br>empty? -&gt; error   ·   50 subtasks? -&gt; cap at MAX<br>ok -&gt; N = capped.length  (dynamic, guarded)<br>never trust a plan you didn't validate</div>`, code:`const { subtasks } = JSON.parse(plan);
+if (!subtasks?.length) throw new Error("no plan");
+const capped = subtasks.slice(0, MAX_WORKERS); // guard N` },
+ { title:"5. Dispatch to workers — the fan-out", why:"With a validated plan, the execution is pure Day-37 parallelization: hand each subtask to a <strong>worker</strong> — a focused model call that gets its role, its goal, and the shared context — and fire them all at once with Promise.all. Because the subtasks were planned to be independent, they overlap in time, so the wall clock is the slowest worker, not the sum. Workers are specialists on <em>their</em> piece and nothing else; that focus is what makes each output sharp.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plan -&gt; [w1][w2][w3]...  all fired at once<br>each worker: role + goal + shared context<br>wall clock = slowest worker (not the sum)<br>identical mechanic to parallelization</div>`, code:`const results = await Promise.all(
+  capped.map(st =>
+    llm(\`Role: \${st.role}. Goal: \${st.goal}. Context: \${task}\`))
+);` },
+ { title:"6. The synthesizer — reconcile, don't concat", why:"Fixed sectioning could get away with <span class=\"mono\">join()</span> because you designed the slots to fit. A dynamic plan can't: the workers never saw each other, so their outputs overlap, repeat, or contradict. The <strong>synthesizer</strong> is a final model pass that stitches them into one coherent whole — resolving overlaps, fixing transitions, keeping a single voice. It's the reduce step, and for orchestrator–workers it usually has to be an LLM, not a string concat. A great synthesis is what makes N separate calls feel like one authored answer.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">workers -&gt; [out1][out2][out3]  (may overlap)<br>concat  -&gt; stitched, but seams show<br>synthesize -&gt; one voice, overlaps resolved<br>reduce is an LLM pass, not join()</div>`, code:`const final = await llm(\`
+  Combine into one coherent result. Resolve overlaps,
+  fix transitions, one voice.
+  \${results.map((r,i)=>\`#\${i+1}: \${r}\`).join("\\n")}\`);` },
+ { title:"7. Dynamic vs fixed fan-out", why:"This is the crux. <strong>Parallelization</strong> fixes the subtasks up front — same N, same pieces, every time — which is cheap and predictable but blind to the input. <strong>Orchestrator–Workers</strong> decides them at runtime — variable N, task-specific pieces — which adapts to anything but costs an extra planning call and a synthesis call, and risks a bad plan. Rule of thumb: if you can enumerate the subtasks in advance, fix them; if you genuinely can't know them until you see the input, orchestrate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fixed:   N constant, pieces known -&gt; cheap, blind<br>dynamic: N varies, pieces per-task -&gt; adaptive, +2 calls<br>3, 4, 5, 2 workers for 4 different tasks<br>enumerable up front? fix it. otherwise orchestrate.</div>`, code:`// fixed:   plan is a constant
+const plan = SUBTASKS;              // same every task
+// dynamic: plan is a call
+const plan = await orchestrator(task); // sized to the task` },
+ { title:"8. Cost & control", why:"Dynamism isn't free. On top of the N workers you pay for the <strong>orchestrator call</strong> (the plan) and the <strong>synthesizer call</strong> (the merge) — N + 2 calls, versus N for a fixed fan-out. Worse, the orchestrator can misjudge: <em>over-decompose</em> a simple task into busywork, or <em>under-decompose</em> a complex one and drop a needed piece. So cap the worker count, keep the plan cheap and reviewable, and consider a fixed fan-out when the subtasks really are always the same. Spend the two extra calls only when the plan genuinely has to be discovered.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fixed:   N calls<br>dynamic: 1 (plan) + N (workers) + 1 (synth) = N+2<br>risks: over-decompose (busywork) / under- (gaps)<br>cap N · review the plan · fix it when you can</div>`, code:`// the bill: dynamic = N + 2 calls.
+//   +1 orchestrator (plan) · +1 synthesizer (merge)
+// worth it ONLY when the subtasks can't be known up front.` },
+ { title:"9. When to reach for it", why:"Orchestrator–Workers shines exactly where a fixed pipeline breaks: <strong>open-ended tasks whose subtasks depend on the input</strong>. A coding agent that must edit an unknown set of files; a deep-research agent that decides which angles to chase; a document processor that fans a worker out per section it discovers. In all of these you literally cannot write the subtask list ahead of time — the number and nature of the pieces are part of what the model has to figure out. That's the signal to orchestrate.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">coding agent -&gt; edit N unknown files<br>research -&gt; chase the angles it finds<br>doc pipeline -&gt; a worker per discovered section<br>you can't know the subtasks until you look</div>`, code:`// reach for it when the subtasks depend on the input:
+if (subtasksKnownUpFront) fixedFanOut();   // Day 37
+else                      orchestrate();   // plan at runtime` },
+ { title:"10. vs parallelization, routing, chaining", why:"The workflow patterns compose but solve different shapes. <strong>Chaining</strong> (Day 35): ordered, dependent steps — A → B → C. <strong>Routing</strong> (Day 36): pick <em>one</em> path by the input. <strong>Parallelization</strong> (Day 37): a <em>fixed</em> set of independent subtasks, fanned out and aggregated. <strong>Orchestrator–Workers</strong> (today): a <em>dynamic</em> set, planned at runtime and synthesized. They nest freely — a worker can be its own chain, a route can trigger an orchestrator. Next: <em>evaluator–optimizer</em>, which adds a feedback loop — a second model grades the output and sends it back to be improved until it passes.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">chaining:  A -&gt; B -&gt; C          (dependent)<br>routing:   pick ONE of A|B|C   (by input)<br>parallel:  fixed A+B+C -&gt; merge<br>orchestrate: dynamic plan(N) -&gt; synthesize</div>`, code:`if (stepsDepend)          useChaining();       // A -> B -> C
+else if (inputPicksPath)  useRouting();        // A | B | C
+else if (subtasksFixed)   useParallelization();// A + B + C
+else                      useOrchestrator();   // plan(N) at runtime` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
