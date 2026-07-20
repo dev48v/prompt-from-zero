@@ -45,6 +45,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 36 — Prompt Routing](https://dev48v.infy.uk/prompt/day36-routing.html) — `day36-routing.html`
 - [PromptFromZero · Day 37 — Prompt Parallelization](https://dev48v.infy.uk/prompt/day37-parallelization.html) — `day37-parallelization.html`
 - [PromptFromZero · Day 38 — Orchestrator–Workers](https://dev48v.infy.uk/prompt/day38-orchestrator-workers.html) — `day38-orchestrator-workers.html`
+- [PromptFromZero · Day 39 — Evaluator–Optimizer](https://dev48v.infy.uk/prompt/day39-evaluator-optimizer.html) — `day39-evaluator-optimizer.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

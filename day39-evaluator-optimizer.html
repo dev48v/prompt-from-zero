@@ -1,0 +1,740 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 39 — Evaluator–Optimizer</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out both; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .cand { background:#fff; border:1px solid #e2e8f0; border-radius:12px; padding:11px 13px; transition:all .35s ease; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.eval { background:#0369a1; color:#fff; border-color:#0369a1; }
+  .phase .pill.fix { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+  .phase .pill.pass { background:#16a34a; color:#fff; border-color:#16a34a; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .segbtn.on.single { background:#f59e0b; border-color:#f59e0b; box-shadow:0 2px 6px rgba(245,158,11,.35); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12.5px; line-height:1.55; color:#334155; }
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  /* rubric + round cards */
+  .roundcard { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:13px 15px; transition:all .35s ease; }
+  .roundcard.pass { border-color:#22c55e; background:#f0fdf4; box-shadow:0 4px 16px rgba(34,197,94,.15); }
+  .rolehdr { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; display:flex; align-items:center; gap:6px; }
+  .rolehdr.opt { color:#7c3aed; }
+  .rolehdr.eval { color:#0369a1; }
+  .critline { display:flex; align-items:center; gap:8px; margin:4px 0; }
+  .critline .cn { width:132px; font-size:11px; font-weight:700; color:#475569; }
+  .critline .ct { flex:1; height:14px; background:#f1f5f9; border-radius:5px; overflow:hidden; position:relative; }
+  .critline .cf { position:absolute; left:0; top:0; bottom:0; border-radius:5px; transition:width .5s ease; }
+  .critline .cs { width:46px; text-align:right; font-size:11px; font-variant-numeric:tabular-nums; font-weight:700; color:#475569; }
+  .scorepill { display:inline-block; font-size:12px; font-weight:800; padding:3px 11px; border-radius:999px; font-variant-numeric:tabular-nums; }
+  .scorepill.pass { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .scorepill.fail { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .fbbox { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:9px 11px; font-size:12px; line-height:1.5; color:#92400e; }
+  .fbbox.pass { background:#f0fdf4; border-color:#bbf7d0; color:#15803d; }
+  /* score-climbing chart */
+  .climbwrap { padding:2px 0 0; }
+  .climb { position:relative; height:150px; display:flex; align-items:flex-end; gap:18px; padding:0 14px; }
+  .cbar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .cbar { width:100%; max-width:66px; border-radius:6px 6px 0 0; transition:height .55s ease; min-height:3px; }
+  .climblabs { display:flex; gap:18px; padding:6px 14px 0; }
+  .threshline { position:absolute; left:8px; right:8px; border-top:2px dashed #ef4444; z-index:2; }
+  .threshtag { position:absolute; right:10px; font-size:10px; font-weight:800; color:#ef4444; background:#fff; padding:0 4px; transform:translateY(-50%); z-index:3; }
+  /* contrast chart */
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 39</div>
+      <h1 class="text-xl font-bold">📈 Evaluator–Optimizer — one model (the <strong>optimizer</strong>) drafts, then a <strong>separate evaluator</strong> scores that draft against an <strong>explicit rubric</strong> and hands back concrete feedback; the optimizer revises, and the loop repeats <strong>until the output clears the bar</strong> or hits a max-round cap. Quality is <em>earned</em> through iteration — not hoped for in a single shot, and not the same model vaguely critiquing itself (Day 30).</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Don't ship the first draft and hope. Let a separate evaluator grade it against a rubric, hand back feedback, and loop the optimizer until the output earns a pass.</h2>
+        <p class="text-slate-500 mb-5">A single-shot prompt gives you <em>one</em> draft and no idea whether it's good — you find out in production. <strong>Evaluator–Optimizer</strong> closes the loop with <strong>two distinct roles</strong>: the <span class="text-violet-700 font-semibold">optimizer</span> generates a draft, then a <span class="text-sky-700 font-semibold">separate evaluator</span> scores it against an <strong>explicit rubric</strong> (weighted criteria, a numeric score) and returns <strong>concrete, actionable feedback</strong>. The optimizer folds that feedback into a revision, the evaluator grades again, and the cycle repeats — <strong>until the score clears a pass threshold, or the loop hits a max-round cap</strong> and returns the best draft so far. This is <em>not</em> Day-30 self-refine: there the same model informally critiques its own work; here the evaluator is a <strong>separate role with named criteria and a numeric bar</strong>, so "good enough" is measured, not guessed, and the score is comparable round over round. Below: pick a task, run the loop, and watch each round's draft, per-criterion scores, and feedback — the score <em>climbing</em> toward the bar — then flip to <span class="mono">⚡ single-shot</span> to see what you'd have shipped without the loop. Everything is scripted/deterministic client-side (no live model), but faithful to how a real evaluator–optimizer loop runs.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="flex justify-center gap-2 mb-3">
+          <button id="modeLoop"   class="segbtn on" style="min-width:250px;">🔁 Evaluator–Optimizer &middot; loop until it passes</button>
+          <button id="modeSingle" class="segbtn"    style="min-width:250px;">⚡ Single-shot &middot; one draft, no evaluator</button>
+        </div>
+        <div class="text-center text-sm">
+          <span class="text-slate-500">Pick a task:</span>
+          <span id="taskChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div id="modeNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">The task (one input)</div>
+            <div id="inputBox" class="inputbox mb-3"></div>
+
+            <div class="text-xs uppercase font-bold text-sky-700 tracking-wider mb-2">⚖ Evaluator's rubric</div>
+            <div id="rubricBox" class="mb-2"></div>
+            <div id="threshBadge" class="text-[11px] text-slate-500 mb-4"></div>
+
+            <div class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run</button>
+              </div>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">The <span class="text-violet-600 font-semibold">optimizer</span> drafts; the <span class="text-sky-700 font-semibold">evaluator</span> scores it against the rubric and returns feedback; the optimizer revises. It loops until the score clears the bar (<span id="statNsm" class="text-violet-600 font-semibold"></span>) or hits the round cap — the number of rounds is <strong>decided by the work</strong>, not fixed in your code.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The loop</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the loop</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Score climbing toward the bar, round by round</div>
+            <div class="text-xs text-slate-400 mb-3">Each bar is a round's overall score. The red dashed line is the pass bar — the loop keeps revising until a bar clears it (green), or the round budget runs out (amber).</div>
+            <div id="climbChart"></div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Result quality — single-shot vs looped</div>
+              <div class="text-xs text-slate-400 mb-2" id="qualSub"></div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Run stats</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">rounds run</span><span id="statRounds" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">optimizer calls</span><span id="statOpt" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">evaluator calls</span><span id="statEval" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">total LLM calls</span><span id="statCalls" class="stat font-bold text-amber-600"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">current score</span><span id="statScore" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">converged?</span><span id="statConv" class="stat font-bold text-violet-700"></span></div>
+              <div id="statAgg" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Evaluator–Optimizer = a generate-and-grade loop with two roles and an explicit bar.</strong> The <em>optimizer</em> drafts; a <em>separate evaluator</em> scores the draft against a named, weighted <strong>rubric</strong> and returns concrete feedback; the optimizer revises on that feedback; repeat. The loop stops when the score <strong>clears the pass threshold</strong> or when it <strong>hits the max-round cap</strong> (return the best-so-far — never loop forever). Two things make it different from Day-30 self-refine: the evaluator is a <strong>distinct role</strong>, and its criteria are <strong>explicit and numeric</strong>, so improvement is <em>measured</em>. You pay for it — roughly <strong>two calls per round</strong> (optimize + evaluate) — so reach for it when you can <em>articulate</em> what "good" means and quality matters more than latency.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Evaluator–Optimizer = an optimizer drafts, a separate evaluator scores it against an explicit rubric and returns feedback, and the optimizer revises — looping until the score clears the bar or hits a round cap. Earned quality via a measured feedback loop; costs ~2 calls per round.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Evaluator–Optimizer works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Evaluator–Optimizer is one move added to a plain generator: <span class="mono text-violet-700">optimize → [evaluate → revise]* until pass|cap</span>. The new idea over Day 37/38 is a <em>second role</em> — an evaluator that scores against a rubric and returns feedback — plus a loop with clear stopping criteria. Here is the whole thing: the single-shot you're upgrading, the evaluator, the rubric, the revise step, the loop, and the assembled function.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The single-shot you're upgrading</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First, what almost works: generate one draft and ship it. There's no quality gate — the output might be excellent or garbage, and you have no way to tell before it's in front of a user. Everything below exists to replace that blind hope with a measured loop.</p>
+        <div class="relative"><pre>// ❌ Single-shot: draft once and ship. No quality gate.
+const draft = await llm(`Write a tagline for: ${brief}`);
+return draft;   // good? bad? no idea — you find out in production.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The evaluator — a SEPARATE role that scores vs a rubric</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The core new idea. A <strong>distinct evaluator</strong> call reads the draft and grades it against explicit criteria, returning a structured verdict: a numeric score, a pass flag, and concrete feedback. This is what separates it from Day-30 self-refine — a separate role with named criteria, not the same model informally second-guessing itself.</p>
+        <div class="relative"><pre>// ✅ A distinct evaluator: scores the draft against explicit criteria.
+const verdict = await llm(`
+  You are a strict evaluator. Score the DRAFT against this rubric
+  (0-100 total) and give concrete, actionable feedback.
+  Return JSON: { "score": n, "pass": bool, "feedback": "..." }
+  RUBRIC: ${JSON.stringify(rubric)}
+  DRAFT:  ${draft}
+`);
+const { score, pass, feedback } = JSON.parse(verdict);
+// separate role + explicit rubric — not the same model vibing (Day 30).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The rubric &amp; the bar — make "good" measurable</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The rubric <em>is</em> the spec. List the weighted criteria that define quality for this task, set the <strong>threshold</strong> the score must clear, and set a <strong>max-round cap</strong> so a stubborn task can't loop forever. Explicit criteria make the score comparable round over round — you can watch it climb.</p>
+        <div class="relative"><pre>// ✅ Make "good" explicit — the rubric is the contract.
+const rubric = [
+  { name: "Clarity",          max: 20 },
+  { name: "Concrete benefit", max: 20 },
+  { name: "Emotional hook",   max: 20 },
+  { name: "Punchy (&lt;=8 words)", max: 20 },
+  { name: "Distinctive",      max: 20 },
+];
+const PASS = 88;       // the bar the score must clear
+const MAX_ROUNDS = 5;  // and the budget that stops runaway loops</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The revise step — condition the next draft on feedback</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The optimizer's revision is <strong>conditioned on the evaluator's feedback</strong> — that hand-off is the engine of the whole pattern. Give it the current draft and the specific feedback, and ask it to improve while keeping what already works. Without feedback threading through, you're just re-rolling the dice.</p>
+        <div class="relative"><pre>// ✅ The optimizer revises USING the evaluator's feedback.
+async function revise(draft, feedback) {
+  return await llm(`
+    Improve the DRAFT using the FEEDBACK. Keep what works.
+    FEEDBACK: ${feedback}
+    DRAFT:    ${draft}
+  `);
+}
+// feedback -&gt; revision is the engine; without it, you're re-rolling.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">The loop — evaluate, revise, track the best, stop</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now wire it into a loop with <strong>two stopping criteria</strong>: return the moment a draft <em>passes</em>, and never exceed <span class="mono">MAX_ROUNDS</span>. Track the best draft seen, so that if the budget runs out you return the best-so-far rather than a failure. This is the difference between a controlled loop and an infinite one.</p>
+        <div class="relative"><pre>// ✅ Loop until it passes OR the budget runs out — keep the best.
+let draft = await optimize(brief), best = null;
+for (let round = 1; round &lt;= MAX_ROUNDS; round++) {
+  const { score, pass, feedback } = await evaluate(draft, rubric);
+  if (!best || score &gt; best.score) best = { draft, score };
+  if (pass) return draft;                 // cleared the bar — done
+  draft = await revise(draft, feedback);  // else fold feedback in, retry
+}
+return best.draft;   // budget spent — return best-so-far, not a crash</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Put it together — and know the limits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole pattern: <span class="mono">optimize → [evaluate → revise]* until pass|cap</span>. Reach for it when you can <strong>articulate what "good" means</strong> and quality beats latency — refining copy, hardening code, tuning a query. Mind the limits: it costs <strong>~2 calls per round</strong>; a <strong>weak rubric</strong> means it optimizes the wrong thing; scores often <strong>plateau</strong>, so cap the rounds and watch for diminishing returns; and the evaluator can be <em>wrong</em> — a bad grader is worse than none. Next you'll let the model run its own loop entirely.</p>
+        <div class="relative"><pre>// ✅ Evaluator–Optimizer = optimize -&gt; [evaluate -&gt; revise]* until pass|cap.
+async function evalOptimize(brief) {
+  let draft = await optimize(brief);
+  for (let r = 1; r &lt;= MAX_ROUNDS; r++) {
+    const v = await evaluate(draft, rubric);    // 1 evaluator call
+    if (v.pass) return draft;                    // stop: cleared the bar
+    draft = await revise(draft, v.feedback);     // 1 optimizer call
+  }
+  return draft;   // cost ~ 2 calls/round; the rubric is everything.
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 39 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Evaluator–Optimizer</strong>: an optimizer drafts, a <em>separate</em> evaluator scores the draft against an <strong>explicit rubric</strong> and returns concrete feedback, and the optimizer revises — looping until the score <strong>clears the bar</strong> or hits a <strong>max-round cap</strong> (return the best-so-far). Unlike Day-30 self-refine, the evaluator is a <em>distinct role</em> with <em>numeric criteria</em>, so quality is <em>measured</em>, not guessed — you watch the score climb (43 → 93) and pay ~2 calls per round for it. <strong>👉 Next up — Autonomous Agents: hand the model a goal and a set of tools and let it run its own plan → act → observe loop, choosing each next action from the environment's feedback and stopping only when the task is genuinely done — the workflow patterns graduate into a real agent.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Evaluator–Optimizer -- generate-and-grade loop vs single-shot =====
+// Fully scripted & deterministic. No live model. Two modes:
+//   loop   -> optimizer drafts, a SEPARATE evaluator scores vs a rubric + gives
+//             feedback, optimizer revises; repeat until pass OR max-round cap.
+//   single -> one draft, shipped as-is (no evaluator) -- the contrast.
+// Stepping reveals rounds one at a time so you watch the score climb.
+/* ==DATA_START== */
+const OPT_MS  = 900;   // an optimizer draft / revise call
+const EVAL_MS = 650;   // the evaluator's scoring call
+
+const TASKS = [
+  {
+    tag:"🍅 Tagline",
+    task:`Write a one-sentence tagline for FreshCrate, a weeknight meal-kit startup.`,
+    threshold:88, maxRounds:5, stoppedBy:"pass",
+    rubric:[
+      { name:"Clarity",          max:20 },
+      { name:"Concrete benefit", max:20 },
+      { name:"Emotional hook",   max:20 },
+      { name:"Punchy (≤8 words)", max:20 },
+      { name:"Distinctive",      max:20 }
+    ],
+    rounds:[
+      { draft:`FreshCrate delivers the best, highest-quality meal-kit boxes to satisfy all of your family's cooking needs.`,
+        scores:[17,9,7,4,6],
+        feedback:`Over length and stuffed with empty superlatives ("best", "highest-quality", "all your needs" say nothing). Name ONE concrete benefit, cut to 8 words or fewer, and add a hook with real feeling.` },
+      { draft:`FreshCrate: fresh ingredients delivered so weeknight dinners get a little easier.`,
+        scores:[18,14,11,12,12],
+        feedback:`Tighter and clearer, but "get a little easier" is soft and the benefit is still generic. Sharpen it to a vivid, specific outcome and make the hook actually land -- what does the cook FEEL?` },
+      { draft:`FreshCrate: chef-ready ingredients, dinner solved in twenty minutes.`,
+        scores:[19,18,15,17,15],
+        feedback:`Strong -- concrete ("twenty minutes"), clear and punchy. The emotional hook is still mild; "dinner solved" is close. One more pass to make it sing without dropping the 20-minute proof.` },
+      { draft:`FreshCrate: skip the planning, plate a chef-worthy dinner in twenty.`,
+        scores:[19,19,18,19,18],
+        feedback:`Clears the bar -- clear, one concrete benefit (twenty minutes), a real payoff ("skip the planning"), punchy and distinctive. Ship it.` }
+    ]
+  },
+  {
+    tag:"🧮 SQL query",
+    task:`Return the top 5 customers by total revenue in the current quarter.`,
+    threshold:90, maxRounds:5, stoppedBy:"pass",
+    rubric:[
+      { name:"Correctness",         max:20 },
+      { name:"Quarter filter",      max:20 },
+      { name:"Deterministic order", max:20 },
+      { name:"Readability",         max:20 },
+      { name:"Performance",         max:20 }
+    ],
+    rounds:[
+      { draft:`SELECT * FROM orders ORDER BY amount DESC LIMIT 5;`,
+        scores:[8,0,6,10,6],
+        feedback:`Wrong grain -- this ranks single orders, not customers; there's no aggregation and no quarter filter, and SELECT * drags in columns you don't need. Aggregate revenue per customer, filter to the current quarter, and project only what you use.` },
+      { draft:`SELECT customer_id, SUM(amount) AS revenue\nFROM orders\nWHERE order_date >= '2026-04-01'\nGROUP BY customer_id\nORDER BY revenue DESC\nLIMIT 5;`,
+        scores:[17,12,12,15,14],
+        feedback:`Right shape now. But the date is hardcoded (it breaks next quarter), and ties at rank 5 resolve arbitrarily. Compute the quarter dynamically and add a deterministic tiebreaker.` },
+      { draft:`SELECT customer_id, SUM(amount) AS revenue\nFROM orders\nWHERE order_date >= DATE_TRUNC('quarter', CURRENT_DATE)\nGROUP BY customer_id\nORDER BY revenue DESC, customer_id\nLIMIT 5;`,
+        scores:[20,19,18,18,17],
+        feedback:`Correct and robust -- dynamic quarter via DATE_TRUNC, a sargable range on order_date, a deterministic tiebreak on customer_id, and no SELECT *. Clears the bar.` }
+    ]
+  },
+  {
+    tag:"📧 Cold email",
+    task:`Write the opening line of a cold sales email to a busy CTO.`,
+    threshold:85, maxRounds:5, stoppedBy:"pass",
+    rubric:[
+      { name:"Personalization", max:20 },
+      { name:"Brevity",         max:20 },
+      { name:"Relevance/value", max:20 },
+      { name:"No jargon/hype",  max:20 },
+      { name:"Curiosity + CTA", max:20 }
+    ],
+    rounds:[
+      { draft:`Hi, I hope this email finds you well! I wanted to reach out and tell you about our revolutionary, industry-leading, AI-powered synergy platform.`,
+        scores:[4,6,6,3,5],
+        feedback:`Zero personalization, a filler opener, and a wall of hype ("revolutionary", "synergy"). Cut the throat-clearing, reference something specific about THEM, and lead with a concrete outcome instead of adjectives.` },
+      { draft:`Hi Priya - saw your team just shipped the new mobile app. Quick question about how you're handling the on-call load that comes with it.`,
+        scores:[15,16,14,16,14],
+        feedback:`Big jump - personal, short, no hype. The "quick question" is still vague; hint at a specific, quantified value so a busy CTO wants to read the next line.` },
+      { draft:`Hi Priya - congrats on the mobile launch. Teams your size usually cut on-call pages ~40% after the first month; worth a two-line how?`,
+        scores:[18,17,18,17,18],
+        feedback:`Clears the bar - specific to her (the launch), concise, a quantified hook (~40%), no jargon, and a low-friction CTA ("two-line how"). Send it.` }
+    ]
+  },
+  {
+    tag:"🍁 Haiku (hard rubric)",
+    task:`Write a haiku about autumn in strict 5-7-5 form.`,
+    threshold:90, maxRounds:4, stoppedBy:"maxrounds",
+    rubric:[
+      { name:"Form (5-7-5)",   max:25 },
+      { name:"Seasonal image", max:25 },
+      { name:"Vividness",      max:25 },
+      { name:"No cliché",      max:25 }
+    ],
+    rounds:[
+      { draft:`Leaves are falling down\nthe weather is getting cold\nautumn is here now`,
+        scores:[25,14,8,5],
+        feedback:`Form is correct (5-7-5), but the images are flat and clichéd -- it announces the season instead of showing it. Replace the statements with one concrete, surprising image.` },
+      { draft:`Crimson maple leaves\ndrifting on the cold north wind\nwhispering goodbye`,
+        scores:[25,21,18,12],
+        feedback:`Vivid now and the form holds. "Whispering goodbye" is a personification cliché that telegraphs the mood. End on a concrete image that implies loss instead of naming it.` },
+      { draft:`Crimson maple leaf\nspins once on the north wind, then\nthe bare branch settles`,
+        scores:[25,23,22,18],
+        feedback:`Very close -- concrete, earned mood, correct form. "Settles" is a touch weak; one sharper final beat would clear the bar.` },
+      { draft:`A single red leaf\nlets go of the aching branch\nand the sky widens`,
+        scores:[25,24,23,17],
+        feedback:`Strong image and clean form, but "aching" edges back toward telling. Out of revision budget -- returning this as the best of four rounds (89, just under the 90 bar).` }
+    ]
+  }
+];
+/* ==DATA_END== */
+
+const modeLoop   = document.getElementById("modeLoop");
+const modeSingle = document.getElementById("modeSingle");
+const taskChips  = document.getElementById("taskChips");
+const modeNote   = document.getElementById("modeNote");
+const inputBox   = document.getElementById("inputBox");
+const rubricBox  = document.getElementById("rubricBox");
+const threshBadge= document.getElementById("threshBadge");
+const runNext    = document.getElementById("runNext");
+const resetBtn   = document.getElementById("resetBtn");
+const autoBtn    = document.getElementById("autoBtn");
+const phaseBar   = document.getElementById("phaseBar");
+const phaseNote  = document.getElementById("phaseNote");
+const flow       = document.getElementById("flow");
+const flowLabel  = document.getElementById("flowLabel");
+const verdict    = document.getElementById("verdict");
+const climbChart = document.getElementById("climbChart");
+const coverChart = document.getElementById("coverChart");
+const qualSub    = document.getElementById("qualSub");
+const statNsm    = document.getElementById("statNsm");
+const statRounds = document.getElementById("statRounds");
+const statOpt    = document.getElementById("statOpt");
+const statEval   = document.getElementById("statEval");
+const statCalls  = document.getElementById("statCalls");
+const statScore  = document.getElementById("statScore");
+const statConv   = document.getElementById("statConv");
+const statAgg    = document.getElementById("statAgg");
+
+let mode    = "loop";   // "loop" | "single"
+let curIdx  = 0;        // task index
+let stepIdx = 0;        // 0 idle, then rounds revealed 1..R (loop) or 1 (single)
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtMs(ms){ return (ms/1000).toFixed(1) + "s"; }
+function Qget(){ return TASKS[curIdx]; }
+function overall(r){ return r.scores.reduce((a,b)=>a+b,0); }
+function bestOverall(Q){ return Math.max.apply(null, Q.rounds.map(overall)); }
+function finalOverall(Q){ return Q.stoppedBy==="pass" ? overall(Q.rounds[Q.rounds.length-1]) : bestOverall(Q); }
+function maxStep(){ return mode==="loop" ? Qget().rounds.length : 1; }
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run"; } }
+
+function buildChips(){
+  taskChips.innerHTML = "";
+  TASKS.forEach((p,i)=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (i===curIdx ? " sel" : "");
+    c.textContent = p.tag;
+    c.onclick = () => { curIdx = i; stepIdx = 0; stopAuto(); render(); };
+    taskChips.appendChild(c);
+  });
+}
+
+modeLoop.onclick   = () => { if(mode==="loop")   return; mode="loop";   stepIdx=0; stopAuto(); render(); };
+modeSingle.onclick = () => { if(mode==="single") return; mode="single"; stepIdx=0; stopAuto(); render(); };
+runNext.onclick = () => { stopAuto(); if(stepIdx<maxStep()){ stepIdx++; render(); } };
+resetBtn.onclick = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=maxStep()){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay"; return; }
+    stepIdx++; render();
+  }, 1700);
+};
+
+function critColor(pct){ return pct>=0.85 ? "#22c55e" : pct>=0.6 ? "#7c3aed" : "#f59e0b"; }
+
+function roundCard(Q, r, k){
+  const ov = overall(r);
+  const pass = ov >= Q.threshold;
+  const isLast = k === Q.rounds.length;
+  const capped = isLast && Q.stoppedBy==="maxrounds";
+  const draftLabel = k===1 ? "🖊 Optimizer — first draft" : "🖊 Optimizer — revised draft";
+  const revNote = k>1 ? `<div class="text-[11px] text-slate-400 mb-1">revised using round ${k-1}'s feedback</div>` : "";
+  const crit = r.scores.map((s,i)=>{
+    const c = Q.rubric[i]; const pct = s/c.max;
+    return `<div class="critline"><span class="cn">${escapeHtml(c.name)}</span>`+
+      `<span class="ct"><span class="cf" style="width:${pct*100}%;background:${critColor(pct)};"></span></span>`+
+      `<span class="cs">${s}/${c.max}</span></div>`;
+  }).join("");
+  let fb;
+  if(pass){
+    fb = `<div class="rolehdr eval">⚖ Evaluator — verdict</div><div class="fbbox pass"><strong>✓ PASS · ${ov}/100 ≥ ${Q.threshold} bar.</strong> ${escapeHtml(r.feedback)}</div>`;
+  } else if(capped){
+    fb = `<div class="rolehdr eval">⚖ Evaluator — feedback (final round)</div><div class="fbbox"><strong>⛔ ${ov}/100 &lt; ${Q.threshold}, and this is round ${k} of ${Q.maxRounds} (the cap).</strong> ${escapeHtml(r.feedback)}</div>`;
+  } else {
+    fb = `<div class="rolehdr eval">⚖ Evaluator — feedback for the next revision</div><div class="fbbox">${escapeHtml(r.feedback)}</div>`;
+  }
+  return `<div class="roundcard ${pass?'pass':''} row-appear">
+    <div class="flex items-center justify-between mb-1">
+      <div class="font-bold text-slate-800 text-sm">Round ${k} <span class="badge muted">⏱ ${fmtMs(OPT_MS+EVAL_MS)}</span></div>
+      <span class="scorepill ${pass?'pass':'fail'}">${ov} / 100</span>
+    </div>
+    <div class="rolehdr opt">${draftLabel}</div>
+    ${revNote}
+    <div class="iobox">${escapeHtml(r.draft)}</div>
+    <div class="rolehdr eval">⚖ Evaluator — scored vs rubric</div>
+    ${crit}
+    ${fb}
+  </div>`;
+}
+
+function buildClimb(Q, roundsShown, isLoop){
+  const rounds = isLoop ? Q.rounds.slice(0,roundsShown) : Q.rounds.slice(0, roundsShown>=1?1:0);
+  const bars = rounds.map((r,i)=>{
+    const ov=overall(r); const k=i+1;
+    const pass = ov>=Q.threshold;
+    const capped = isLoop && k===Q.rounds.length && Q.stoppedBy==="maxrounds";
+    const col = pass ? "#22c55e" : capped ? "#f59e0b" : "#a78bfa";
+    return `<div class="cbar-wrap"><div class="cbar" style="height:${ov}%;background:${col};"></div></div>`;
+  }).join("");
+  const labs = rounds.map((r,i)=>`<div style="flex:1;text-align:center;font-size:10px;color:#64748b;">R${i+1} · <strong style="color:#334155;">${overall(r)}</strong></div>`).join("");
+  if(!rounds.length){
+    return `<div class="climb"><div class="threshline" style="bottom:${Q.threshold}%"></div><div class="threshtag" style="bottom:${Q.threshold}%">bar ${Q.threshold}</div><div style="margin:auto;color:#94a3b8;font-size:12px;">No rounds yet — run the loop.</div></div><div class="climblabs"></div>`;
+  }
+  return `<div class="climbwrap"><div class="climb"><div class="threshline" style="bottom:${Q.threshold}%"></div><div class="threshtag" style="bottom:${Q.threshold}%">bar ${Q.threshold}</div>${bars}</div><div class="climblabs">${labs}</div></div>`;
+}
+
+function render(){
+  const Q = Qget();
+  const R = Q.rounds.length;
+  const isLoop = mode==="loop";
+  const roundsShown = isLoop ? stepIdx : (stepIdx>=1 ? 1 : 0);
+  const done = isLoop ? (roundsShown>=R) : (stepIdx>=1);
+  const single = overall(Q.rounds[0]);
+
+  // mode buttons + chips
+  modeLoop.classList.toggle("on", isLoop);
+  modeSingle.classList.toggle("on", !isLoop);
+  modeSingle.classList.toggle("single", !isLoop);
+  buildChips();
+  modeNote.innerHTML = isLoop
+    ? `<strong>Evaluator–Optimizer loop</strong> — the optimizer drafts, a <em>separate</em> evaluator scores it against the rubric and returns feedback, and the optimizer revises. Repeats until the score clears the <strong>${Q.threshold}</strong> bar or hits <strong>${Q.maxRounds}</strong> rounds.`
+    : `<strong>Single-shot</strong> — one draft, shipped as-is. No evaluator, no rubric, no revision — the contrast that shows what the loop buys you.`;
+
+  inputBox.textContent = Q.task;
+  statNsm.textContent = `${Q.threshold}/100`;
+
+  // rubric card
+  rubricBox.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:5px;">`+
+    Q.rubric.map(c=>`<span class="chip" style="cursor:default;">${escapeHtml(c.name)} · ${c.max}</span>`).join("")+`</div>`;
+  threshBadge.innerHTML = `Pass bar: <strong>${Q.threshold}</strong>/100 &nbsp;·&nbsp; max rounds: <strong>${Q.maxRounds}</strong>`;
+
+  flowLabel.textContent = isLoop ? "Run the loop — draft, evaluate, revise, repeat" : "Run single-shot — one draft, no gate";
+
+  // ---- phase bar ----
+  if(isLoop){
+    const passed = Q.stoppedBy==="pass";
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr">→</span>`+
+      `<span class="pill ${roundsShown>0?'on':'tune'}">🖊 optimizer</span><span class="arr">⇄</span>`+
+      `<span class="pill ${roundsShown>0?'eval':'tune'}">⚖ evaluator + rubric</span><span class="arr">↺</span>`+
+      `<span class="pill ${done?(passed?'pass':'fix'):(roundsShown>0?'tune':'')}">${done?(passed?'✓ passed':'⛔ max rounds'):(roundsShown>0?('round '+roundsShown):'loop')}</span><span class="arr">→</span>`+
+      `<span class="pill ${done?'on':''}">result</span>`;
+    phaseNote.innerHTML = roundsShown>0
+      ? `The optimizer and evaluator alternate each round (score ↔ feedback ↔ revise). The loop stops the moment a draft clears the <strong>${Q.threshold}</strong> bar, or when it exhausts <strong>${Q.maxRounds}</strong> rounds and returns the best-so-far.`
+      : `The new move over Day 38: a <em>separate</em> evaluator grades every draft against an explicit rubric, and its feedback drives the next revision — a measured loop, not a single shot.`;
+  } else {
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">input</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'on':'tune'}">🖊 one draft</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'fix':'tune'}">⚡ ship (no evaluator)</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'on':''}">result</span>`;
+    phaseNote.innerHTML = `No evaluator and no loop — the first draft is the final answer. Nothing measures whether it's any good.`;
+  }
+
+  // ---- flow body ----
+  if(stepIdx===0){
+    flow.innerHTML = `<div class="cand row-appear" style="text-align:center;color:#64748b;padding:26px;">
+      <div style="font-size:26px;">📈</div>
+      <div class="text-sm mt-1">Idle. Hit <strong>${isLoop?'▶ Round 1 — draft, then evaluate':'▶ Generate the single draft'}</strong> — ${isLoop?'the optimizer drafts and the separate evaluator scores it against the rubric':'one draft is produced and shipped, with no evaluator to grade it'}.</div>
+    </div>`;
+  } else if(isLoop){
+    let html = "";
+    for(let k=1;k<=roundsShown;k++){
+      if(k>1) html += `<div class="flowconn"><span class="ln"></span>↺ optimizer revises using the feedback<span class="ln"></span></div>`;
+      html += roundCard(Q, Q.rounds[k-1], k);
+    }
+    if(done){
+      if(Q.stoppedBy==="pass"){
+        html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Converged in ${R} rounds.</strong> The score climbed <strong>${single} → ${finalOverall(Q)}</strong>, clearing the ${Q.threshold} bar. Cost: <strong>${R}</strong> optimizer + <strong>${R}</strong> evaluator = <strong>${2*R}</strong> calls — the price of an earned pass. A single shot would have shipped <strong>${single}</strong>.</div>`;
+      } else {
+        html += `<div class="mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900"><strong>⛔ Hit the max-round cap (${Q.maxRounds}).</strong> The best draft scored <strong>${finalOverall(Q)}</strong>, still under the ${Q.threshold} bar — so the loop returns the best-so-far instead of looping forever. Stopping criteria matter as much as the rubric.</div>`;
+      }
+    }
+    flow.innerHTML = html;
+  } else {
+    const r = Q.rounds[0];
+    flow.innerHTML = `<div class="roundcard row-appear">
+      <div class="flex items-center justify-between mb-1">
+        <div class="font-bold text-slate-800 text-sm">Single-shot draft</div>
+        <span class="scorepill fail">${single} / 100</span>
+      </div>
+      <div class="rolehdr opt">🖊 Optimizer — one draft, shipped as-is</div>
+      <div class="iobox">${escapeHtml(r.draft)}</div>
+      <div class="text-[11px] text-slate-400 mt-2">No evaluator, no rubric, no revision — you ship this and hope. (Score shown for comparison only; single-shot never computes it.)</div>
+    </div>
+    <div class="mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900"><strong>⚡ Single-shot.</strong> Shipped the first draft — quality <strong>${single}/100</strong>, well under the ${Q.threshold} bar. With no evaluator in the loop, nobody catches it; you find out in production. The loop would have carried this to <strong>${finalOverall(Q)}</strong>.</div>`;
+  }
+
+  // ---- run button ----
+  const ms = maxStep();
+  runNext.disabled = stepIdx>=ms;
+  runNext.style.opacity = stepIdx>=ms ? ".55" : "1";
+  if(isLoop){
+    if(stepIdx>=R)        runNext.textContent = "✓ Loop finished";
+    else if(stepIdx===0)  runNext.textContent = "▶ Round 1 — draft, then evaluate";
+    else                  runNext.textContent = `▶ Round ${stepIdx+1} — revise, then re-evaluate`;
+  } else {
+    runNext.textContent = stepIdx>=1 ? "✓ Shipped (no evaluator)" : "▶ Generate the single draft";
+  }
+
+  // ---- climb chart ----
+  climbChart.innerHTML = buildClimb(Q, roundsShown, isLoop);
+
+  // ---- contrast chart: single-shot vs looped ----
+  qualSub.innerHTML = `The first draft (single-shot) vs the loop's final, evaluator-checked output for <em>${escapeHtml(Q.tag)}</em>.`;
+  const loopNow = isLoop
+    ? (roundsShown>=1 ? Math.max.apply(null, Q.rounds.slice(0,roundsShown).map(overall)) : 0)
+    : finalOverall(Q);
+  const bars = [
+    { lab:"single-shot<br>(first draft)", pct:(stepIdx>=1||!isLoop)?single:(stepIdx>=1?single:0), on:false },
+    { lab:`eval–optimizer<br>(${R} rounds)`, pct:loopNow, on:true }
+  ];
+  // single-shot mode: show single once started; loop bar is the projected potential (dim handled by 'on')
+  if(!isLoop) bars[0].pct = stepIdx>=1 ? single : 0;
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.pct}</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.pct)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // ---- stats ----
+  statRounds.textContent = isLoop ? `${roundsShown} / ${Q.maxRounds} max` : (stepIdx>=1?"1 · no loop":"0");
+  statOpt.textContent    = isLoop ? `${roundsShown}` : (stepIdx>=1?"1":"0");
+  statEval.textContent   = isLoop ? `${roundsShown}` : "0 — none";
+  statCalls.textContent  = isLoop ? `${2*roundsShown}` : (stepIdx>=1?"1":"0");
+  statScore.textContent  = roundsShown>=1 ? `${loopNow} / 100` : (stepIdx>=1&&!isLoop?`${single} / 100`:"—");
+  if(isLoop){
+    statConv.textContent = !done ? (roundsShown>0?"running…":"—")
+      : (Q.stoppedBy==="pass" ? "yes ✓ passed" : "capped ✗ best-so-far");
+  } else {
+    statConv.textContent = "n/a — no gate";
+  }
+  statAgg.innerHTML = isLoop
+    ? `Optimizer drafts, a separate evaluator scores + gives feedback, optimizer revises. Cost ≈ <strong>2 calls per round</strong>; stops at pass or the round cap.`
+    : `One draft, no evaluator, no revision — cheapest (1 call), but blind to quality. The loop is what turns ${single} into ${finalOverall(Q)}.`;
+
+  // ---- verdict line ----
+  if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>${isLoop?'Evaluator–Optimizer':'Single-shot'}.</strong> ${isLoop?`The optimizer will draft and a separate evaluator will grade it against the ${Q.rubric.length}-criterion rubric — looping until it clears <strong>${Q.threshold}</strong>`:`One draft will be produced and shipped, ungraded`}. Run step 1.</span>`;
+  } else if(isLoop && !done){
+    const r = Q.rounds[roundsShown-1]; const ov = overall(r);
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▸ Round ${roundsShown}: scored ${ov}/100</strong> — ${ov>=Q.threshold?'clears':'below'} the ${Q.threshold} bar. The evaluator's feedback goes back to the optimizer for the next revision.</span>`;
+  } else if(isLoop && done){
+    verdict.innerHTML = Q.stoppedBy==="pass"
+      ? `<span class="text-violet-800"><strong>▲ Passed.</strong> ${R} rounds took the score from ${single} to <span class="text-violet-700 font-semibold">${finalOverall(Q)}</span>, clearing the ${Q.threshold} bar. Cost: <strong>${2*R}</strong> calls — quality earned, not hoped for.</span>`
+      : `<span class="text-amber-800"><strong>▲ Capped.</strong> ${Q.maxRounds} rounds, best score <span class="text-amber-700 font-semibold">${finalOverall(Q)}</span> — still under ${Q.threshold}. The loop returns the best draft rather than spinning forever; a good rubric is only half the job, the stopping rule is the other.</span>`;
+  } else {
+    verdict.innerHTML = `<span class="text-amber-800"><strong>▲ Shipped single-shot.</strong> Quality <span class="text-amber-700 font-semibold">${single}</span> vs the loop's ${finalOverall(Q)}. No evaluator means no gate — the weak draft goes straight out.</span>`;
+  }
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: 'good enough' is a guess", why:"A single-shot prompt gives you <strong>one draft and no verdict</strong>. Maybe it's great, maybe it's mediocre — you can't tell without a person reading it, and by then it may already be in front of a user. For anything where quality matters (marketing copy, a SQL query, a tricky email), 'ship the first thing the model says' is a gamble. What's missing is a <em>measurement</em> and a <em>second try</em> informed by it.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">single-shot: brief -&gt; [ draft ] -&gt; ship<br>quality? unknown. no gate, no retry.<br>you find out it's weak in production<br>hope is not a quality strategy</div>`, code:`// no gate — you ship the first draft blind:
+const draft = await llm(prompt);
+return draft;  // good? bad? nobody checked.` },
+ { title:"2. The idea: two roles + a loop", why:"Evaluator–Optimizer splits the work across <strong>two roles</strong> and closes a loop between them. The <em>optimizer</em> generates; a <em>separate evaluator</em> grades the output against a rubric and hands back feedback; the optimizer revises using that feedback; repeat. Draft → evaluate → revise → evaluate → … until the output is good enough. The output is no longer a one-shot guess — it's the product of a measured, converging loop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">brief -&gt; [ 🖊 optimizer ] -&gt; draft<br>draft -&gt; [ ⚖ evaluator + rubric ] -&gt; score + feedback<br>feedback -&gt; [ 🖊 optimizer revises ] -&gt; better draft<br>loop until it passes the bar</div>`, code:`let draft = await optimize(brief);
+while (true) {
+  const v = await evaluate(draft);   // score + feedback
+  if (v.pass) return draft;
+  draft = await revise(draft, v.feedback);
+}` },
+ { title:"3. The evaluator is a SEPARATE role", why:"The evaluator is a <strong>distinct call with a distinct job</strong>: judge, don't create. Separating the grader from the generator matters — a critic focused only on scoring against fixed criteria is more consistent and less self-flattering than a generator asked to grumble about its own work. It can be a different prompt, a stricter system persona, even a different model. This separation is the single biggest structural difference from Day-30 self-refine.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">optimizer: role = CREATE the best draft<br>evaluator: role = JUDGE it against the rubric<br>two prompts / personas / models<br>a dedicated critic grades more honestly</div>`, code:`// distinct evaluator call — judge, don't generate:
+const verdict = await llm(\`
+  You are a STRICT evaluator. Do not rewrite.
+  Score the draft on the rubric and give feedback.
+  Return JSON { score, pass, feedback }.\`);` },
+ { title:"4. The rubric — make 'good' explicit", why:"The rubric turns a vague goal into <strong>named, weighted criteria</strong> and a numeric bar. It <em>is</em> the spec for quality on this task: clarity, a concrete benefit, no hype, whatever matters. Because it's explicit, the score is <strong>comparable across rounds</strong> — you can literally watch 43 → 67 → 84 → 93 climb — and the feedback can point at <em>which</em> criterion is weak. A fuzzy rubric optimizes the wrong thing; a sharp one is most of the battle.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">rubric = [ {clarity,20}, {benefit,20},<br>{hook,20}, {punchy,20}, {distinct,20} ]<br>score = sum of per-criterion points (/100)<br>PASS = 88  ·  the bar is a number, not a vibe</div>`, code:`const rubric = [
+  { name:"clarity", max:20 }, { name:"benefit", max:20 },
+  { name:"hook", max:20 }, { name:"punchy", max:20 },
+  { name:"distinct", max:20 },
+];
+const PASS = 88;  // explicit, numeric bar` },
+ { title:"5. Feedback → revision — the engine", why:"A score alone can't improve anything; the <strong>feedback</strong> is what drives the next draft. The evaluator returns concrete, actionable notes ('cut the superlatives, name one benefit, add a hook'), and the optimizer <strong>conditions its revision on them</strong>, keeping what worked. This hand-off — targeted feedback in, better draft out — is the actual engine of the pattern. Strip out the feedback and you're just re-rolling the dice, not optimizing.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">evaluator: "too long, no hook, superlatives"<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;|<br>optimizer: revise(draft, feedback) -&gt; tighter draft<br>feedback in -&gt; better draft out (not a re-roll)</div>`, code:`draft = await llm(\`
+  Improve the DRAFT using the FEEDBACK. Keep what works.
+  FEEDBACK: \${feedback}
+  DRAFT:    \${draft}\`);
+// the revision is CONDITIONED on the feedback` },
+ { title:"6. Stopping criteria — pass or cap", why:"A loop needs a way out. There are <strong>two</strong>: stop when the score <em>clears the pass threshold</em> (success), and stop when you <em>hit a max-round cap</em> (budget). The cap is non-negotiable — a stubborn task or a harsh evaluator could otherwise loop forever, burning calls. On a cap, return the <strong>best-so-far</strong>, not a failure. Get the stopping rule wrong and you either ship too early or never ship at all.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">stop #1: score &gt;= PASS -&gt; return draft (win)<br>stop #2: round == MAX -&gt; return best-so-far<br>never: loop with no cap (runs forever)<br>track the best draft seen along the way</div>`, code:`for (let r = 1; r <= MAX_ROUNDS; r++) {
+  const v = await evaluate(draft);
+  if (v.score > best.score) best = { draft, score: v.score };
+  if (v.pass) return draft;              // stop: passed
+  draft = await revise(draft, v.feedback);
+}
+return best.draft;                        // stop: capped` },
+ { title:"7. The score climbs — convergence", why:"Because the rubric is numeric and the feedback is targeted, the score should <strong>climb monotonically</strong> toward the bar — and then <em>plateau</em>. Early rounds fix the big, obvious flaws (huge gains); later rounds polish (diminishing returns). Watching the curve tells you when to quit: if two rounds barely move the number, more revising won't help, and you're paying calls for nothing. Convergence — and its flattening — is the signal to stop.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">R1: 43  ▁▁▁▁<br>R2: 67  ▁▁▁▁▁▁▁<br>R3: 84  ▁▁▁▁▁▁▁▁▁▁ (near the bar)<br>R4: 93  ▁▁▁▁▁▁▁▁▁▁▁ PASS · then it plateaus</div>`, code:`// big gains early, diminishing returns late:
+//   43 -> 67  (+24)   fix the obvious flaws
+//   67 -> 84  (+17)   sharpen
+//   84 -> 93  (+9)    polish -> PASS, then flatten` },
+ { title:"8. vs Self-Refine (Day 30)", why:"They look similar — both loop and improve — but differ in <strong>rigor</strong>. Self-refine has the <em>same</em> model informally critique its own draft, with no fixed yardstick; it stops 'when it seems no better'. Evaluator–Optimizer uses a <strong>separate</strong> evaluator, an <strong>explicit rubric</strong>, and a <strong>numeric pass gate</strong>. The result: a critique that's more consistent and less self-serving, improvement you can <em>measure</em>, and a stopping rule that isn't a hunch. Use self-refine for a quick polish; reach for evaluator–optimizer when 'good' must be defined and defended.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">self-refine: same model, vibe critique, stop on hunch<br>eval–optimizer: separate judge, rubric, numeric gate<br>informal polish  vs  measured, defensible quality<br>same loop shape, very different rigor</div>`, code:`// self-refine (Day 30): one model, informal
+draft = model.critiqueAndRewrite(draft);
+// evaluator-optimizer (today): separate + measured
+const v = await evaluator(draft, rubric);  // score + gate
+if (v.score >= PASS) done;` },
+ { title:"9. Cost & when it's worth it", why:"Each round is roughly <strong>two calls</strong> — one to optimize, one to evaluate — so N rounds cost ~2N calls plus latency. That's real money and time, and it buys nothing if the task was easy or the rubric is weak. Spend it where <strong>quality clearly beats speed</strong> and you can <em>articulate</em> the criteria: polished copy, correct code, a legal clause, an important email. If you can't write the rubric, you can't run the loop well — and a fast single shot may be the better call.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cost = ~2 calls/round  (optimize + evaluate)<br>4 rounds -&gt; ~8 calls + latency<br>worth it: quality &gt; speed AND rubric is writable<br>skip it: easy task, or 'good' can't be defined</div>`, code:`// budget the loop honestly:
+//   N rounds  ~=  2N calls  +  N x latency
+// worth it ONLY when you can define "good"
+// and quality matters more than latency.` },
+ { title:"10. vs the other workflow patterns", why:"This closes the workflow-patterns arc. <strong>Chaining</strong> (35): ordered dependent steps. <strong>Routing</strong> (36): pick one path by input. <strong>Parallelization</strong> (37): a fixed fan-out, merged. <strong>Orchestrator–Workers</strong> (38): a dynamic fan-out, synthesized. <strong>Evaluator–Optimizer</strong> (today): a <em>feedback loop</em> that grades and improves until a bar is met. They compose freely — a worker can run its own eval loop, an evaluator can gate a chain. Next, the model stops following a fixed workflow and <strong>drives its own loop</strong>: an autonomous agent.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">chaining:    A -&gt; B -&gt; C        (dependent)<br>routing:     pick ONE of A|B|C  (by input)<br>parallel:    fixed A+B+C -&gt; merge<br>orchestrate: dynamic plan(N) -&gt; synthesize<br>eval-opt:    draft -&gt; grade -&gt; revise (loop)</div>`, code:`if (stepsDepend)        useChaining();
+else if (inputPicksPath) useRouting();
+else if (subtasksFixed)  useParallelization();
+else if (planIsDynamic)  useOrchestrator();
+else if (needQualityBar) useEvalOptimizer();  // today` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
