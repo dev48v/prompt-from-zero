@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 40 — Chain-of-Density</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out both; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .phase { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .phase .pill { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:4px 11px; border-radius:999px; background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; transition:all .3s; text-align:center; line-height:1.25; }
+  .phase .pill.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 8px rgba(124,58,237,.35); }
+  .phase .pill.tune { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; }
+  .phase .pill.find { background:#0369a1; color:#fff; border-color:#0369a1; }
+  .phase .pill.fuse { background:#f59e0b; color:#fff; border-color:#f59e0b; }
+  .phase .pill.pass { background:#16a34a; color:#fff; border-color:#16a34a; }
+  .phase .arr { color:#c4b5fd; font-weight:800; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .segbtn.on.single { background:#f59e0b; border-color:#f59e0b; box-shadow:0 2px 6px rgba(245,158,11,.35); }
+  .inputbox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px; font-size:12px; line-height:1.55; color:#334155; }
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12.5px; line-height:1.55; color:#1e293b; }
+  .flowconn { display:flex; align-items:center; justify-content:center; gap:8px; color:#7c3aed; font-size:10.5px; font-weight:700; margin:7px 0; text-transform:uppercase; letter-spacing:.02em; }
+  .flowconn .ln { flex:1; height:1px; background:linear-gradient(90deg,transparent,#c4b5fd,transparent); }
+  /* round cards */
+  .roundcard { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:13px 15px; transition:all .35s ease; }
+  .roundcard.sweet { border-color:#22c55e; background:#f0fdf4; box-shadow:0 4px 16px rgba(34,197,94,.15); }
+  .rolehdr { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; margin:10px 0 4px; display:flex; align-items:center; gap:6px; }
+  .rolehdr.opt { color:#7c3aed; }
+  .rolehdr.find { color:#0369a1; }
+  .ent { display:inline-block; font-size:10.5px; padding:2px 7px; border-radius:6px; margin:2px 2px 0 0; background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .ent.new { background:#ede9fe; color:#6d28d9; border-color:#ddd6fe; font-weight:700; }
+  .metricpill { display:inline-block; font-size:12px; font-weight:800; padding:3px 11px; border-radius:999px; font-variant-numeric:tabular-nums; background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .metricpill.sweet { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .fusebox { background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:8px 11px; font-size:11.5px; line-height:1.5; color:#92400e; }
+  /* density chart */
+  .dwrap { padding:2px 0 0; }
+  .dchart { position:relative; height:158px; display:flex; align-items:flex-end; gap:16px; padding:0 12px; }
+  .dcol { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .dpair { display:flex; align-items:flex-end; gap:4px; height:100%; width:100%; justify-content:center; }
+  .dbar { width:22px; border-radius:5px 5px 0 0; transition:height .55s ease; min-height:3px; }
+  .dbar.den { background:#7c3aed; }
+  .dbar.len { background:#cbd5e1; }
+  .dlabs { display:flex; gap:16px; padding:6px 12px 0; }
+  .legend { display:flex; gap:14px; align-items:center; font-size:11px; color:#64748b; margin-top:6px; }
+  .legend .sw { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  /* quality chart */
+  .qchart { position:relative; height:130px; display:flex; align-items:flex-end; gap:16px; padding:0 12px; }
+  .qbar-wrap { flex:1; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .qbar { width:100%; max-width:60px; border-radius:6px 6px 0 0; transition:height .55s ease; min-height:3px; }
+  .qlabs { display:flex; gap:16px; padding:6px 12px 0; }
+  /* contrast chart */
+  .hchart { display:flex; align-items:flex-end; gap:26px; height:120px; padding:6px 10px 0; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:64px; background:#7c3aed; border-radius:6px 6px 0 0; transition:height .5s ease, opacity .2s ease; min-height:2px; }
+  .hbar.dim { opacity:.4; background:#cbd5e1; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 40</div>
+      <h1 class="text-xl font-bold">🧬 Chain-of-Density — start with a <strong>sparse</strong> summary, then rewrite it again and again at the <strong>same fixed length</strong>, packing <strong>1–3 more salient entities</strong> into each pass. Density climbs while length stays flat: the model <em>fuses</em> new facts and <em>compresses</em> filler to make room. Denser reads richer — <strong>up to a point</strong>, after which readability suffers — so the best summary sits at a <strong>sweet spot</strong> in the middle of the chain, not at the end.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">A first summary is usually too sparse. Don't make it longer — make it <em>denser</em>: same length, more facts, one pass at a time.</h2>
+        <p class="text-slate-500 mb-5">A one-shot summary tends to be <strong>entity-poor</strong> — it names a couple of things and pads the rest with filler ("remarkable detail", "an important moment"). You could just ask for "more detail", but then it gets <em>longer</em> and you lose the whole point of a summary. <strong>Chain-of-Density (CoD)</strong> fixes the <strong>length</strong> and iterates on the <em>content</em>: begin with a deliberately sparse summary, then each pass <span class="text-sky-700 font-semibold">identifies 1–3 salient entities missing from it</span> and <span class="text-violet-700 font-semibold">rewrites the summary to include them without growing</span> — by <strong>fusing</strong> new facts into existing sentences and <strong>compressing</strong> the filler that was taking up space. Entity <strong>density climbs steeply while length stays flat</strong>. Denser reads richer — but only up to a point: cram too hard and the prose turns into a comma-spliced list that's hard to read, so the best version is a <strong>sweet spot in the middle</strong>, not the maximally-dense final one. Below: pick a source article, step the chain, and watch each pass's summary, the entities it packed in, a rising density meter at flat length, and a quality curve that peaks then dips — then flip to <span class="mono">⚡ one-shot</span> to see the sparse summary you'd have shipped. Everything is scripted/deterministic client-side (no live model), but faithful to how a real CoD run behaves.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="flex justify-center gap-2 mb-3">
+          <button id="modeLoop"   class="segbtn on" style="min-width:280px;">🔁 Chain-of-Density · iterate, packing entities at fixed length</button>
+          <button id="modeSingle" class="segbtn"    style="min-width:260px;">⚡ One-shot · a single sparse summary</button>
+        </div>
+        <div class="text-center text-sm">
+          <span class="text-slate-500">Pick a source article:</span>
+          <span id="taskChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div id="modeNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-4">
+        <div>
+          <div class="bg-white rounded-2xl border border-slate-200 p-4 sticky top-24">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">The source article</div>
+            <div id="inputBox" class="inputbox mb-3"></div>
+
+            <div class="text-xs uppercase font-bold text-sky-700 tracking-wider mb-1">📏 The fixed constraint</div>
+            <div id="threshBadge" class="text-[11px] text-slate-500 mb-4"></div>
+
+            <div class="flex flex-col gap-2">
+              <button id="runNext" class="w-full bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs"></button>
+              <div class="flex gap-2">
+                <button id="resetBtn" class="flex-1 bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+                <button id="autoBtn"  class="flex-1 bg-violet-500 hover:bg-violet-600 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Auto-run</button>
+              </div>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-3 leading-snug">Each pass keeps the <span class="text-slate-600 font-semibold">length fixed</span> (<span id="statNsm" class="text-violet-600 font-semibold"></span>) and adds <span class="text-sky-700 font-semibold">1–3 missing entities</span>, fusing them in and compressing filler. Density rises; length doesn't. The <span class="text-green-600 font-semibold">sweet spot</span> — richest while still readable — usually lands in the <strong>middle</strong> of the chain, not at the densest end.</p>
+          </div>
+        </div>
+
+        <div class="md:col-span-2 space-y-3">
+          <div>
+            <div class="sect">The chain</div>
+            <div id="phaseBar" class="phase bg-white rounded-xl border border-slate-200 p-3"></div>
+            <div id="phaseNote" class="text-xs text-slate-500 mt-2"></div>
+          </div>
+
+          <div class="sect" id="flowLabel">Run the chain</div>
+          <div id="flow" class="space-y-1"></div>
+
+          <div id="verdict" class="text-sm"></div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Density climbs while length stays flat</div>
+            <div class="text-xs text-slate-400 mb-3">Each pass: the <span style="color:#7c3aed;font-weight:700;">density</span> bar (entities per 100 words) rises steeply, while the <span style="color:#94a3b8;font-weight:700;">length</span> bar barely moves — that flat length is the whole point of the technique.</div>
+            <div id="densChart"></div>
+            <div class="legend"><span><span class="sw" style="background:#7c3aed;"></span>entity density (entities / 100 words)</span><span><span class="sw" style="background:#cbd5e1;"></span>length (words)</span></div>
+          </div>
+
+          <div class="bg-white rounded-2xl border border-slate-200 p-4">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Denser is better — to a point</div>
+            <div class="text-xs text-slate-400 mb-3">Overall quality (informativeness balanced against readability) <strong>rises then dips</strong>: early passes add real substance, but the densest final pass is a comma-spliced pile-up that reads worse. The <span class="text-green-600 font-semibold">green</span> bar is the sweet spot.</div>
+            <div id="qualChart"></div>
+          </div>
+
+          <div class="grid md:grid-cols-3 gap-4 mt-1">
+            <div class="md:col-span-2 bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Entity density — one-shot vs Chain-of-Density</div>
+              <div class="text-xs text-slate-400 mb-2" id="qualSub"></div>
+              <div id="coverChart" class="hchart"></div>
+            </div>
+            <div class="bg-white rounded-2xl border border-slate-200 p-4">
+              <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">Run stats</div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">passes run</span><span id="statRounds" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">entities packed</span><span id="statOpt" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">summary length</span><span id="statEval" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">entity density</span><span id="statCalls" class="stat font-bold text-amber-600"></span></div>
+              <div class="flex items-center justify-between text-sm mb-1"><span class="text-slate-500">readability</span><span id="statScore" class="stat font-bold text-slate-700"></span></div>
+              <div class="flex items-center justify-between text-sm mb-2"><span class="text-slate-500">sweet spot?</span><span id="statConv" class="stat font-bold text-violet-700"></span></div>
+              <div id="statAgg" class="text-xs text-slate-500"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Chain-of-Density = fix the length, then iteratively raise the information density.</strong> Start sparse; each pass <em>identifies 1–3 salient entities missing from the current summary</em> and <em>rewrites at the same length</em>, fusing the new facts in and compressing filler to make room. The signature is <strong>density up, length flat</strong>. But informativeness and readability pull against each other — the maximally-dense last pass is often an unreadable list — so pick the <strong>sweet spot in the middle</strong>, the richest summary a human still reads comfortably. Practically it's cheap: one prompt can emit the whole chain at once (the model returns every step in JSON), and you choose the pass you want.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Chain-of-Density = begin with a sparse summary, then repeatedly rewrite it at a fixed length while packing in more salient entities each pass — density climbs, length stays flat, and the best result is the readable sweet spot in the middle, not the densest end.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Chain-of-Density works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / PROMPT FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Chain-of-Density is one move layered onto plain summarization: <span class="mono text-violet-700">sparse draft → [find missing entities → rewrite at SAME length]* → pick the sweet spot</span>. The new idea is the <em>fixed-length rewrite</em> — you improve by raising density, never by adding words. Here is the whole thing: the sparse start, the length lock, the missing-entity step, the fuse-and-compress rewrite, the loop that tracks density, and the assembled function (including the single-prompt shortcut).</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The sparse start you're upgrading</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Begin on purpose with a <strong>deliberately sparse</strong> summary — the kind a one-shot prompt gives you. It hits the target length but is mostly filler, naming only a couple of entities. That's the floor; everything below raises the density from here <em>without</em> touching the length.</p>
+        <div class="relative"><pre>// Step 0 — a sparse, filler-heavy first summary (the floor).
+let summary = await llm(`
+  Summarize the ARTICLE in about ${TARGET} words.
+  This first version may be non-specific and use fillers.
+  ARTICLE: ${article}
+`);
+// e.g. "A powerful new telescope released its first pictures..." (2 entities)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Lock the length — the whole constraint</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The one rule that makes CoD work: <strong>the length never changes</strong>. Set a target word count once and hold it every pass. This is what forces the model to <em>earn</em> room for new facts by cutting filler, instead of just appending — the reason density rises rather than the summary ballooning.</p>
+        <div class="relative"><pre>// The invariant: TARGET is fixed for the entire chain.
+const TARGET     = 50;   // words — held constant every rewrite
+const STEPS      = 5;    // how many densification passes
+const PER_STEP   = "1-3"; // new entities to add each pass
+// Rule enforced in every prompt: "Keep the length the same."</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Find the missing salient entities</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each pass starts by asking: which important entities are <strong>in the article but not yet in the summary</strong>? Entities are the concrete nouns — people, places, dates, numbers, named things. Pick the <strong>1–3 most salient</strong> that are missing. This targeting is what makes the added content <em>matter</em> instead of being random detail.</p>
+        <div class="relative"><pre>// Identify what's salient in the source but absent from the summary.
+const missing = await llm(`
+  List the 1-3 MOST salient entities in the ARTICLE that are
+  MISSING from the SUMMARY. Entities = people, places, dates,
+  numbers, named things. Return a JSON array of short strings.
+  ARTICLE: ${article}
+  SUMMARY: ${summary}
+`);  // e.g. ["James Webb Space Telescope", "NASA", "July 12, 2022"]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Rewrite = fuse + compress, same length</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The heart of the pass: rewrite the summary so it <strong>includes the new entities</strong> but stays the <strong>same length</strong>. The model does this two ways — <em>fusion</em> (merge a new fact into an existing clause) and <em>compression</em> (drop filler words, uninformative phrases, and connectives). No new sentences; you make space, you don't add space.</p>
+        <div class="relative"><pre>// Rewrite at the SAME length — fuse the new entities, compress filler.
+summary = await llm(`
+  Rewrite the SUMMARY so it now covers these NEW entities,
+  keeping EXACTLY the same length (~${TARGET} words).
+  Make room by FUSING facts into existing sentences and
+  COMPRESSING filler ("remarkable detail", "an important moment").
+  Do NOT drop any entity already present.
+  NEW: ${missing}
+  SUMMARY: ${summary}
+`);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Loop — keep every step, track density</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Repeat find→rewrite for a fixed number of steps, and — crucially — <strong>keep every intermediate summary</strong>. Unlike a pass/fail loop, CoD doesn't converge on one answer; it produces a <em>ladder</em> from sparse to dense. Track density (entities ÷ words) at each rung so you can choose later. Length stays flat the whole way; only density moves.</p>
+        <div class="relative"><pre>// Build the full ladder — sparse to dense — and remember each rung.
+const chain = [{ summary, entities: entitiesIn(summary) }];
+for (let s = 1; s &lt;= STEPS; s++) {
+  const missing = await findMissing(article, summary);
+  summary       = await densify(summary, missing, TARGET); // same length
+  chain.push({
+    summary,
+    entities: chain[s-1].entities.concat(missing),
+    density: (chain[s-1].entities.length + missing.length) / words(summary)
+  });
+}
+// density climbs each step; words(summary) barely changes.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pick the sweet spot — and the 1-prompt shortcut</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The last rung is the densest, but usually <em>not</em> the best — it's a comma-spliced list. Informativeness rises while readability falls, so choose the <strong>sweet spot</strong> where they balance (in the CoD paper, humans preferred the middle passes). And you don't need N round-trips: one prompt can emit the <strong>entire chain</strong> as JSON, and you pick a rung. Next you'll switch gears to delivery: streaming tokens as they're generated.</p>
+        <div class="relative"><pre>// Whole chain in ONE call, then choose the readable-but-rich rung.
+const chain = JSON.parse(await llm(`
+  Produce ${STEPS} increasingly dense summaries of the ARTICLE.
+  Each is ~${TARGET} words (SAME length). Each adds ${PER_STEP} missing
+  salient entities vs the previous, fusing + compressing to fit.
+  Return JSON: [{ step, summary, addedEntities }].
+  ARTICLE: ${article}
+`));
+const pick = chain[Math.round(chain.length * 0.6)]; // middle-ish sweet spot
+return pick.summary;   // richest summary a human still reads easily</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 40 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Chain-of-Density</strong>: start with a sparse summary, then rewrite it at a <strong>fixed length</strong> pass after pass, each time packing in <strong>1–3 more salient entities</strong> by <em>fusing</em> facts and <em>compressing</em> filler. Entity <strong>density climbs while length stays flat</strong> — and because informativeness trades off against readability, the best summary is the <strong>readable sweet spot in the middle</strong> of the chain, not the densest final pass (which you can generate in a single prompt). <strong>👉 Next up — Streaming: stop waiting for the whole response. Stream tokens over SSE and render them the instant they arrive, so the user watches the answer type out in real time — a delivery pattern that makes even a slow model feel fast.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+// ===== LOOK: Chain-of-Density -- fixed-length densification vs one-shot =====
+// Fully scripted & deterministic. No live model. Two modes:
+//   cod    -> sparse summary, then N passes each adding 1-3 missing entities
+//             and rewriting at the SAME length (fuse + compress). Density up.
+//   single -> one sparse summary, shipped as-is -- the contrast.
+// Stepping reveals passes one at a time so you watch density climb (length flat).
+/* ==DATA_START== */
+const ART = [
+  {
+    tag:"🔭 JWST first images",
+    source:`On July 12, 2022, NASA released the first full-color images from the James Webb Space Telescope (JWST), the largest space observatory ever built. Developed with the European Space Agency (ESA) and Canadian Space Agency (CSA), the $10 billion telescope launched December 25, 2021 aboard an Ariane 5 rocket from French Guiana, and now orbits the Sun at the second Lagrange point (L2), 1.5 million km from Earth. The debut set featured galaxy cluster SMACS 0723 — the deepest infrared image of the universe yet — plus the Carina Nebula, Stephan's Quintet, and the Southern Ring Nebula. Webb also captured a spectrum of exoplanet WASP-96b, detecting water vapor. Its 6.5-meter gold-coated mirror lets it see back more than 13 billion years, closer to the Big Bang than the Hubble Space Telescope ever could.`,
+    oneShot:{
+      summary:`NASA has shared the first full-color images captured by its new James Webb Space Telescope. The pictures, released to the public, show a range of galaxies, nebulae, and other objects across the universe in stunning detail, and scientists say they mark a major step forward for space observation and astronomy.`,
+      entities:["NASA","James Webb Space Telescope","full-color images"]
+    },
+    rounds:[
+      { added:["a space telescope","a space agency"],
+        summary:`A powerful new space telescope has released its very first color pictures, and they show distant parts of the cosmos in remarkable detail. Shared by a major space agency, the images reveal galaxies and other objects that had never been seen so clearly before, an important moment for the study of the universe.`,
+        fuse:`Baseline — heavy filler ("remarkable detail", "an important moment"), almost no specifics.`, readability:94, quality:44 },
+      { added:["July 12, 2022","NASA","James Webb Space Telescope"],
+        summary:`On July 12, 2022, NASA released the first full-color images from the James Webb Space Telescope, revealing distant galaxies and cosmic objects in unprecedented detail. The pictures mark a milestone for astronomy and for studying the early universe, showing regions of space that no observatory had ever captured so clearly before.`,
+        fuse:`Dropped the "very first color pictures" padding; fused in the date, the agency, and the instrument's name — same length.`, readability:90, quality:65 },
+      { added:["SMACS 0723","deepest infrared view","13 billion years"],
+        summary:`On July 12, 2022, NASA unveiled the James Webb Space Telescope's first full-color images, led by galaxy cluster SMACS 0723 — the deepest infrared view of the universe yet, peering back more than 13 billion years. The debut marks a milestone for astronomy, revealing early galaxies never before captured so sharply.`,
+        fuse:`Compressed the "unprecedented detail / milestone" clauses to make room for the headline target and its record.`, readability:85, quality:82 },
+      { added:["ESA","CSA","$10 billion","December 25, 2021","L2 orbit","1.5 million km"],
+        summary:`On July 12, 2022, NASA, with ESA and CSA, unveiled the $10-billion James Webb Space Telescope's first images, led by SMACS 0723 — the deepest infrared view yet, seeing back over 13 billion years. Launched December 25, 2021, Webb now orbits the Sun at L2, 1.5 million km from Earth.`,
+        fuse:`Folded in four partner/logistics facts by cutting the astronomy boilerplate — length held near 50 words.`, readability:76, quality:91 },
+      { added:["Carina Nebula","Stephan's Quintet","Southern Ring Nebula","WASP-96b water vapor","6.5-m mirror","Hubble"],
+        summary:`On July 12, 2022, NASA, ESA and CSA unveiled the $10B James Webb Telescope's first images: SMACS 0723 (deepest infrared view, back 13 billion years), the Carina Nebula, Stephan's Quintet, Southern Ring Nebula, and WASP-96b's water vapor. Its 6.5-m mirror, launched December 25, 2021 to L2, outsees Hubble.`,
+        fuse:`Packed five more targets plus the mirror and Hubble by compressing to fragments and dropping connectives — dense, but reads like a list.`, readability:60, quality:80 }
+    ]
+  },
+  {
+    tag:"🏔 First ascent of Everest",
+    source:`On May 29, 1953, Edmund Hillary of New Zealand and Tenzing Norgay, a Sherpa from Nepal, became the first people confirmed to reach the summit of Mount Everest, the highest point on Earth at 8,849 meters. They were part of a British expedition led by Colonel John Hunt, which approached from the Nepalese side via the South Col route. Using bottled oxygen, the pair spent about 15 minutes on the summit, where Hillary photographed Tenzing holding his ice axe. News reached Britain on June 2, the morning of Queen Elizabeth II's coronation. The achievement followed decades of failed attempts, including the 1924 expedition on which George Mallory and Andrew Irvine disappeared.`,
+    oneShot:{
+      summary:`Two climbers, Edmund Hillary and Tenzing Norgay, reached the top of Mount Everest, the highest mountain in the world. Their historic climb was celebrated internationally and is still remembered today as one of the most famous achievements in the long history of mountaineering and human exploration.`,
+      entities:["Edmund Hillary","Tenzing Norgay","Mount Everest"]
+    },
+    rounds:[
+      { added:["Mount Everest","two climbers"],
+        summary:`Two climbers made history when they became the first to stand on top of the world's tallest mountain. Their success, achieved after an exhausting climb, was celebrated around the globe and remembered as one of the great milestones in the long history of mountaineering and human exploration.`,
+        fuse:`Baseline — "exhausting climb", "great milestones" filler, no names or numbers.`, readability:94, quality:43 },
+      { added:["Edmund Hillary","Tenzing Norgay","May 29, 1953"],
+        summary:`On May 29, 1953, Edmund Hillary and Tenzing Norgay became the first people confirmed to reach the summit of Mount Everest, the tallest mountain on Earth. Their success, achieved after an exhausting climb, was celebrated worldwide and remembered as one of the great milestones in the history of human exploration.`,
+        fuse:`Cut vague praise; fused in both climbers and the exact date at the same length.`, readability:90, quality:64 },
+      { added:["8,849 meters","highest point on Earth","British expedition"],
+        summary:`On May 29, 1953, Edmund Hillary and Tenzing Norgay, part of a British expedition, became the first confirmed to reach the summit of Mount Everest — at 8,849 meters, the highest point on Earth. Their climb, after weeks on the mountain, was celebrated worldwide as a milestone in human exploration.`,
+        fuse:`Compressed the "celebrated worldwide" padding to fit the height, the record, and the expedition.`, readability:85, quality:81 },
+      { added:["Colonel John Hunt","South Col route","Nepal","bottled oxygen"],
+        summary:`On May 29, 1953, Edmund Hillary and Tenzing Norgay, on a British expedition led by John Hunt, first reached Mount Everest's 8,849-meter summit — Earth's highest point — via the South Col route from Nepal. Using bottled oxygen, they finished a climb celebrated worldwide as a milestone in exploration.`,
+        fuse:`Dropped connective boilerplate to add the leader, the route, the country, and oxygen.`, readability:77, quality:90 },
+      { added:["New Zealand","Sherpa","June 2 coronation","Queen Elizabeth II","ice axe photo","Mallory and Irvine, 1924"],
+        summary:`On May 29, 1953, New Zealand's Edmund Hillary and Sherpa Tenzing Norgay — on John Hunt's British expedition — first summited 8,849-m Everest via the South Col with oxygen, Hillary photographing Tenzing's ice axe. News hit Britain June 2, Queen Elizabeth II's coronation, decades after Mallory and Irvine vanished in 1924.`,
+        fuse:`Squeezed in the coronation, the summit photo, and the 1924 Mallory–Irvine backstory via fragments — very dense.`, readability:61, quality:78 }
+    ]
+  },
+  {
+    tag:"🏺 Tutankhamun's tomb",
+    source:`On November 4, 1922, the British archaeologist Howard Carter discovered the entrance to the tomb of the pharaoh Tutankhamun in the Valley of the Kings near Luxor, Egypt. Funded by Lord Carnarvon, the dig had searched the valley for years. On November 26, Carter breached the sealed doorway and, asked whether he could see anything, replied "yes, wonderful things." The tomb, largely intact after more than 3,000 years, held over 5,000 artifacts, including a solid-gold funerary mask. Tutankhamun had died around age 19. The find sparked a wave of "Egyptomania," and later fueled tabloid tales of a "curse of the pharaohs" after Carnarvon died in 1923.`,
+    oneShot:{
+      summary:`The archaeologist Howard Carter discovered the ancient Egyptian tomb of the young pharaoh Tutankhamun. Filled with thousands of remarkable treasures that had remained hidden for centuries, the discovery fascinated people all over the world and remains one of the most celebrated finds in the entire history of archaeology.`,
+      entities:["Howard Carter","Tutankhamun","Egypt"]
+    },
+    rounds:[
+      { added:["an ancient tomb","an archaeologist"],
+        summary:`An archaeologist made an extraordinary discovery when he uncovered the long-lost tomb of an ancient ruler, hidden away for thousands of years. The find, packed with priceless treasures, captured the imagination of the entire world and became one of the most famous moments in the history of archaeology.`,
+        fuse:`Baseline — "priceless treasures", "captured the imagination" filler, zero specifics.`, readability:95, quality:42 },
+      { added:["Howard Carter","Tutankhamun","November 4, 1922"],
+        summary:`On November 4, 1922, the archaeologist Howard Carter discovered the long-lost tomb of the pharaoh Tutankhamun, hidden away for thousands of years. The find, packed with priceless treasures, captured the imagination of the entire world and became one of the most famous moments in the history of archaeology.`,
+        fuse:`Cut the "extraordinary discovery" padding; fused in the finder, the pharaoh, and the date.`, readability:91, quality:63 },
+      { added:["Valley of the Kings","Luxor, Egypt","3,000 years"],
+        summary:`On November 4, 1922, the archaeologist Howard Carter discovered the tomb of the pharaoh Tutankhamun in the Valley of the Kings near Luxor, Egypt, sealed for more than 3,000 years. The treasure-packed find captured the world's imagination and became one of the most famous moments in archaeology.`,
+        fuse:`Compressed the closing clause to fit the location and the 3,000-year span.`, readability:86, quality:80 },
+      { added:["Lord Carnarvon","'wonderful things'","November 26","5,000 artifacts"],
+        summary:`On November 4, 1922, British archaeologist Howard Carter — funded by Lord Carnarvon — found pharaoh Tutankhamun's tomb in Egypt's Valley of the Kings near Luxor. On November 26 he breached it, glimpsing "wonderful things": over 5,000 artifacts, sealed for more than 3,000 years, an instantly world-famous discovery.`,
+        fuse:`Dropped filler to add the funder, the famous quote, the second date, and the artifact count.`, readability:78, quality:91 },
+      { added:["solid-gold mask","died at 19","Egyptomania","curse of the pharaohs","Carnarvon died 1923"],
+        summary:`On November 4, 1922, Howard Carter, funded by Lord Carnarvon, found Tutankhamun's Valley of the Kings tomb near Luxor; on November 26 he saw "wonderful things" — 5,000+ artifacts and a solid-gold mask, sealed 3,000 years over a pharaoh dead at 19. It sparked Egyptomania and, after Carnarvon's 1923 death, "curse" tales.`,
+        fuse:`Packed the gold mask, the age, Egyptomania, and the curse by compressing to fragments — maximal density, list-like.`, readability:60, quality:77 }
+    ]
+  }
+];
+/* ==DATA_END== */
+
+const modeLoop   = document.getElementById("modeLoop");
+const modeSingle = document.getElementById("modeSingle");
+const taskChips  = document.getElementById("taskChips");
+const modeNote   = document.getElementById("modeNote");
+const inputBox   = document.getElementById("inputBox");
+const threshBadge= document.getElementById("threshBadge");
+const runNext    = document.getElementById("runNext");
+const resetBtn   = document.getElementById("resetBtn");
+const autoBtn    = document.getElementById("autoBtn");
+const phaseBar   = document.getElementById("phaseBar");
+const phaseNote  = document.getElementById("phaseNote");
+const flow       = document.getElementById("flow");
+const flowLabel  = document.getElementById("flowLabel");
+const verdict    = document.getElementById("verdict");
+const densChart  = document.getElementById("densChart");
+const qualChart  = document.getElementById("qualChart");
+const coverChart = document.getElementById("coverChart");
+const qualSub    = document.getElementById("qualSub");
+const statNsm    = document.getElementById("statNsm");
+const statRounds = document.getElementById("statRounds");
+const statOpt    = document.getElementById("statOpt");
+const statEval   = document.getElementById("statEval");
+const statCalls  = document.getElementById("statCalls");
+const statScore  = document.getElementById("statScore");
+const statConv   = document.getElementById("statConv");
+const statAgg    = document.getElementById("statAgg");
+
+let mode    = "cod";   // "cod" | "single"
+let curIdx  = 0;        // article index
+let stepIdx = 0;        // 0 idle, then passes revealed 1..R (cod) or 1 (single)
+let autoTimer = null;
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function Aget(){ return ART[curIdx]; }
+function words(s){ return s.trim().split(/\s+/).length; }
+function entsUpTo(A,k){ let e=[]; for(let i=0;i<k;i++) e=e.concat(A.rounds[i].added); return e; }
+function densityAt(A,k){ const r=A.rounds[k-1]; return entsUpTo(A,k).length / words(r.summary) * 100; }
+function maxDensity(A){ let m=0; for(let k=1;k<=A.rounds.length;k++) m=Math.max(m,densityAt(A,k)); return m; }
+function maxWords(A){ let m=0; A.rounds.forEach(r=>m=Math.max(m,words(r.summary))); m=Math.max(m,words(A.oneShot.summary)); return m; }
+function sweetIdx(A){ let bi=0,bv=-1; A.rounds.forEach((r,i)=>{ if(r.quality>bv){bv=r.quality;bi=i;} }); return bi; } // 0-based
+function oneShotDensity(A){ return A.oneShot.entities.length / words(A.oneShot.summary) * 100; }
+function maxStep(){ return mode==="cod" ? Aget().rounds.length : 1; }
+
+function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Auto-run"; } }
+
+function buildChips(){
+  taskChips.innerHTML = "";
+  ART.forEach((p,i)=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (i===curIdx ? " sel" : "");
+    c.textContent = p.tag;
+    c.onclick = () => { curIdx = i; stepIdx = 0; stopAuto(); render(); };
+    taskChips.appendChild(c);
+  });
+}
+
+modeLoop.onclick   = () => { if(mode==="cod")    return; mode="cod";    stepIdx=0; stopAuto(); render(); };
+modeSingle.onclick = () => { if(mode==="single") return; mode="single"; stepIdx=0; stopAuto(); render(); };
+runNext.onclick = () => { stopAuto(); if(stepIdx<maxStep()){ stepIdx++; render(); } };
+resetBtn.onclick = () => { stopAuto(); stepIdx=0; render(); };
+autoBtn.onclick = () => {
+  if(autoTimer){ stopAuto(); return; }
+  stepIdx=0; render(); autoBtn.textContent="⏸ Pause";
+  autoTimer = setInterval(()=>{
+    if(stepIdx>=maxStep()){ clearInterval(autoTimer); autoTimer=null; autoBtn.textContent="▶ Replay"; return; }
+    stepIdx++; render();
+  }, 1800);
+};
+
+function roundCard(A, r, k){
+  const cum = entsUpTo(A,k);
+  const dens = densityAt(A,k);
+  const w = words(r.summary);
+  const isSweet = (k-1)===sweetIdx(A);
+  const draftLabel = k===1 ? "🖊 Pass 1 — sparse first summary" : `🖊 Pass ${k} — rewritten at the same length`;
+  const revNote = k>1 ? `<div class="text-[11px] text-slate-400 mb-1">rewritten from pass ${k-1}, holding the length</div>` : "";
+  // entity chips: cumulative, new ones (this pass) highlighted
+  const startNew = cum.length - r.added.length;
+  const chips = cum.map((e,i)=>`<span class="ent ${i>=startNew?'new':''}">${escapeHtml(e)}</span>`).join("");
+  return `<div class="roundcard ${isSweet?'sweet':''} row-appear">
+    <div class="flex items-center justify-between mb-1">
+      <div class="font-bold text-slate-800 text-sm">Pass ${k} ${isSweet?'<span class="badge" style="background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;">★ sweet spot</span>':''} <span class="badge muted">📏 ${w} words</span></div>
+      <span class="metricpill ${isSweet?'sweet':''}">density ${dens.toFixed(1)}</span>
+    </div>
+    <div class="rolehdr opt">${draftLabel}</div>
+    ${revNote}
+    <div class="iobox">${escapeHtml(r.summary)}</div>
+    <div class="rolehdr find">🔍 Entities now covered — <span style="color:#6d28d9;">${r.added.length} new this pass</span> · ${cum.length} total</div>
+    <div>${chips}</div>
+    <div class="rolehdr" style="color:#b45309;">🔗 How the length held</div>
+    <div class="fusebox">${escapeHtml(r.fuse)} <strong>Length ${w} words · density ${dens.toFixed(1)} entities/100w · readability ${r.readability}.</strong></div>
+  </div>`;
+}
+
+function buildDens(A, shown, isCoD){
+  const mD = maxDensity(A), mW = maxWords(A);
+  const rounds = isCoD ? A.rounds.slice(0,shown) : [];
+  if(!rounds.length){
+    return `<div class="dchart"><div style="margin:auto;color:#94a3b8;font-size:12px;">No passes yet — run the chain.</div></div><div class="dlabs"></div>`;
+  }
+  const cols = rounds.map((r,i)=>{
+    const k=i+1; const d=densityAt(A,k); const w=words(r.summary);
+    const dh = Math.max(4, d/mD*100), lh = Math.max(4, w/mW*100);
+    return `<div class="dcol"><div class="dpair">`+
+      `<div class="dbar den" style="height:${dh}%" title="density ${d.toFixed(1)}"></div>`+
+      `<div class="dbar len" style="height:${lh}%" title="${w} words"></div>`+
+      `</div></div>`;
+  }).join("");
+  const labs = rounds.map((r,i)=>{
+    const k=i+1;
+    return `<div style="flex:1;text-align:center;font-size:10px;color:#64748b;">P${k} · <strong style="color:#7c3aed;">${densityAt(A,k).toFixed(1)}</strong> · <span style="color:#94a3b8;">${words(r.summary)}w</span></div>`;
+  }).join("");
+  return `<div class="dwrap"><div class="dchart">${cols}</div><div class="dlabs">${labs}</div></div>`;
+}
+
+function buildQual(A, shown, isCoD){
+  const rounds = isCoD ? A.rounds.slice(0,shown) : [];
+  const sw = sweetIdx(A);
+  if(!rounds.length){
+    return `<div class="qchart"><div style="margin:auto;color:#94a3b8;font-size:12px;">No passes yet — run the chain.</div></div><div class="qlabs"></div>`;
+  }
+  const cols = rounds.map((r,i)=>{
+    const isSweet = i===sw;
+    const past = i>sw;
+    const col = isSweet ? "#22c55e" : past ? "#f59e0b" : "#a78bfa";
+    return `<div class="qbar-wrap"><div class="qbar" style="height:${Math.max(4,r.quality)}%;background:${col};" title="quality ${r.quality}"></div></div>`;
+  }).join("");
+  const labs = rounds.map((r,i)=>`<div style="flex:1;text-align:center;font-size:10px;color:#64748b;">P${i+1} · <strong style="color:#334155;">${r.quality}</strong></div>`).join("");
+  return `<div class="dwrap"><div class="qchart">${cols}</div><div class="qlabs">${labs}</div></div>`;
+}
+
+function render(){
+  const A = Aget();
+  const R = A.rounds.length;
+  const isCoD = mode==="cod";
+  const roundsShown = isCoD ? stepIdx : (stepIdx>=1 ? 1 : 0);
+  const done = isCoD ? (roundsShown>=R) : (stepIdx>=1);
+  const targetW = words(A.rounds[0].summary);
+  const sw = sweetIdx(A);
+
+  // mode buttons + chips
+  modeLoop.classList.toggle("on", isCoD);
+  modeSingle.classList.toggle("on", !isCoD);
+  modeSingle.classList.toggle("single", !isCoD);
+  buildChips();
+  modeNote.innerHTML = isCoD
+    ? `<strong>Chain-of-Density</strong> — a sparse first summary, then ${R} passes that each add 1–3 missing salient entities and rewrite at the <em>same</em> length. Density climbs; length stays flat.`
+    : `<strong>One-shot</strong> — a single summary at the target length, shipped as-is. No densification passes — the sparse contrast that shows what the chain buys you.`;
+
+  inputBox.textContent = A.source;
+  statNsm.textContent = `~${targetW} words`;
+  threshBadge.innerHTML = `Target length: <strong>~${targetW}</strong> words &nbsp;·&nbsp; passes: <strong>${R}</strong> &nbsp;·&nbsp; add <strong>1–3</strong> entities each · length held constant`;
+
+  flowLabel.textContent = isCoD ? "Run the chain — sparse draft, then densify at fixed length" : "Run one-shot — a single sparse summary";
+
+  // ---- phase bar ----
+  if(isCoD){
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">article</span><span class="arr">→</span>`+
+      `<span class="pill ${roundsShown>0?'on':'tune'}">🖊 sparse summary</span><span class="arr">↺</span>`+
+      `<span class="pill ${roundsShown>0?'find':'tune'}">🔍 find missing entities</span><span class="arr">→</span>`+
+      `<span class="pill ${roundsShown>0?'fuse':'tune'}">🔗 fuse @ fixed length</span><span class="arr">↺</span>`+
+      `<span class="pill ${done?'pass':(roundsShown>0?'tune':'')}">${done?'✓ chain built':(roundsShown>0?('pass '+roundsShown):'loop')}</span><span class="arr">→</span>`+
+      `<span class="pill ${done?'on':''}">pick sweet spot</span>`;
+    phaseNote.innerHTML = roundsShown>0
+      ? `Each pass finds 1–3 salient entities missing from the current summary and rewrites at the <strong>same ~${targetW} words</strong>, fusing them in and compressing filler. Density rises; length doesn't. The best summary is the <strong>sweet spot</strong> (pass ${sw+1}), not the densest last one.`
+      : `The move: don't lengthen a sparse summary — <em>densify</em> it. Fix the length, then iteratively pack in more entities, one small pass at a time.`;
+  } else {
+    phaseBar.innerHTML =
+      `<span class="pill ${stepIdx>0?'on':'tune'}">article</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'on':'tune'}">🖊 one summary</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'fix':'tune'}">⚡ ship (sparse)</span><span class="arr">→</span>`+
+      `<span class="pill ${stepIdx>0?'on':''}">result</span>`;
+    phaseNote.innerHTML = `No densification and no loop — one summary at the target length is the final answer. It hits the word count but names only a few entities.`;
+  }
+
+  // ---- flow body ----
+  if(stepIdx===0){
+    flow.innerHTML = `<div class="roundcard row-appear" style="text-align:center;color:#64748b;padding:26px;">
+      <div style="font-size:26px;">🧬</div>
+      <div class="text-sm mt-1">Idle. Hit <strong>${isCoD?'▶ Pass 1 — the sparse first summary':'▶ Generate the one-shot summary'}</strong> — ${isCoD?'then keep going to densify it at a fixed length':'a single summary is produced with no densification'}.</div>
+    </div>`;
+  } else if(isCoD){
+    let html = "";
+    for(let k=1;k<=roundsShown;k++){
+      if(k>1) html += `<div class="flowconn"><span class="ln"></span>↺ find 1–3 missing entities · rewrite at the same length<span class="ln"></span></div>`;
+      html += roundCard(A, A.rounds[k-1], k);
+    }
+    if(done){
+      const fd = densityAt(A,R), sd = densityAt(A,1);
+      html += `<div class="mt-2 bg-violet-50 border border-violet-200 rounded-2xl p-3 text-sm text-violet-900"><strong>✅ Chain complete — ${R} passes.</strong> Entity density climbed <strong>${sd.toFixed(1)} → ${fd.toFixed(1)}</strong> entities/100w while length held near <strong>${targetW} words</strong>. Densest ≠ best: the <strong>sweet spot is pass ${sw+1}</strong> (quality ${A.rounds[sw].quality}), the richest summary that still reads cleanly. The last pass is denser but list-like.</div>`;
+    }
+    flow.innerHTML = html;
+  } else {
+    const os = A.oneShot; const w = words(os.summary); const d = oneShotDensity(A);
+    const chips = os.entities.map(e=>`<span class="ent">${escapeHtml(e)}</span>`).join("");
+    flow.innerHTML = `<div class="roundcard row-appear">
+      <div class="flex items-center justify-between mb-1">
+        <div class="font-bold text-slate-800 text-sm">One-shot summary <span class="badge muted">📏 ${w} words</span></div>
+        <span class="metricpill">density ${d.toFixed(1)}</span>
+      </div>
+      <div class="rolehdr opt">🖊 One summary, shipped as-is</div>
+      <div class="iobox">${escapeHtml(os.summary)}</div>
+      <div class="rolehdr find">🔍 Entities covered — ${os.entities.length} total</div>
+      <div>${chips}</div>
+      <div class="text-[11px] text-slate-400 mt-2">Right length, but sparse: it names only ${os.entities.length} entities and fills the rest with generic phrasing. No pass ever raises the density.</div>
+    </div>
+    <div class="mt-2 bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-900"><strong>⚡ One-shot.</strong> Density <strong>${d.toFixed(1)}</strong> entities/100w at ${w} words. Chain-of-Density would carry this to <strong>${densityAt(A,R).toFixed(1)}</strong> at the <em>same</em> length — and its sweet spot (pass ${sw+1}) is the richest still-readable version.</div>`;
+  }
+
+  // ---- run button ----
+  const ms = maxStep();
+  runNext.disabled = stepIdx>=ms;
+  runNext.style.opacity = stepIdx>=ms ? ".55" : "1";
+  if(isCoD){
+    if(stepIdx>=R)        runNext.textContent = "✓ Chain finished";
+    else if(stepIdx===0)  runNext.textContent = "▶ Pass 1 — the sparse first summary";
+    else                  runNext.textContent = `▶ Pass ${stepIdx+1} — add entities, hold the length`;
+  } else {
+    runNext.textContent = stepIdx>=1 ? "✓ Shipped (one-shot)" : "▶ Generate the one-shot summary";
+  }
+
+  // ---- charts ----
+  densChart.innerHTML = buildDens(A, roundsShown, isCoD);
+  qualChart.innerHTML = buildQual(A, roundsShown, isCoD);
+
+  // contrast: one-shot density vs CoD final density
+  qualSub.innerHTML = `Same target length, very different information: the one-shot summary vs the chain's densest pass for <em>${escapeHtml(A.tag)}</em>.`;
+  const osD = oneShotDensity(A);
+  const codD = isCoD
+    ? (roundsShown>=1 ? densityAt(A,roundsShown) : 0)
+    : densityAt(A,R);
+  const bars = [
+    { lab:"one-shot<br>(sparse)", val:(stepIdx>=1||!isCoD)?osD:0, on:false },
+    { lab:`chain-of-density<br>(pass ${isCoD?(roundsShown||R):R})`, val:codD, on:true }
+  ];
+  const mx = Math.max(osD, densityAt(A,R), 1);
+  coverChart.innerHTML = bars.map(b=>
+    `<div class="hbar-wrap"><div class="text-xs font-bold ${b.on?'text-violet-700':'text-slate-400'} mb-1">${b.val.toFixed(1)}</div>`+
+    `<div class="hbar ${b.on?'':'dim'}" style="height:${Math.max(4,b.val/mx*100)}%"></div>`+
+    `<div class="hlab ${b.on?'font-bold':''}">${b.lab}</div></div>`).join("");
+
+  // ---- stats ----
+  const curDens = roundsShown>=1 ? (isCoD?densityAt(A,roundsShown):osD) : (stepIdx>=1&&!isCoD?osD:0);
+  const curWords = roundsShown>=1 ? (isCoD?words(A.rounds[roundsShown-1].summary):words(A.oneShot.summary)) : (stepIdx>=1&&!isCoD?words(A.oneShot.summary):0);
+  const curEnts = isCoD ? entsUpTo(A,roundsShown).length : (stepIdx>=1?A.oneShot.entities.length:0);
+  const curRead = isCoD ? (roundsShown>=1?A.rounds[roundsShown-1].readability:"—") : "n/a";
+  statRounds.textContent = isCoD ? `${roundsShown} / ${R}` : (stepIdx>=1?"1 · no loop":"0");
+  statOpt.textContent    = `${curEnts}`;
+  statEval.textContent   = curWords>0 ? `${curWords} words${isCoD&&roundsShown>0?' (flat)':''}` : "—";
+  statCalls.textContent  = curDens>0 ? `${curDens.toFixed(1)} /100w` : "—";
+  statScore.textContent  = (isCoD && roundsShown>=1) ? `${curRead} / 100` : (!isCoD&&stepIdx>=1?"n/a":"—");
+  if(isCoD){
+    statConv.textContent = !done ? (roundsShown>sw+0 ? (roundsShown===sw+1?"at sweet spot ★":"past it") : (roundsShown>0?"climbing…":"—"))
+      : `pass ${sw+1} ★ (q ${A.rounds[sw].quality})`;
+  } else {
+    statConv.textContent = "n/a — one-shot";
+  }
+  statAgg.innerHTML = isCoD
+    ? `Each pass adds 1–3 entities and rewrites at the <strong>same length</strong>. Density ↑, length flat; quality peaks at the <strong>sweet spot</strong>, then dips as prose turns list-like.`
+    : `One sparse summary — right length, few entities. The chain is what raises ${osD.toFixed(1)} to ${densityAt(A,R).toFixed(1)} entities/100w without adding words.`;
+
+  // ---- verdict line ----
+  if(stepIdx===0){
+    verdict.innerHTML = `<span class="text-slate-600"><strong>${isCoD?'Chain-of-Density':'One-shot'}.</strong> ${isCoD?`A sparse summary will be densified over ${R} passes at a fixed ~${targetW} words — watch density climb`:`One summary will be produced at ~${targetW} words, sparse and ungraded`}. Run pass 1.</span>`;
+  } else if(isCoD && !done){
+    const d = densityAt(A,roundsShown); const w = words(A.rounds[roundsShown-1].summary);
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▸ Pass ${roundsShown}: density ${d.toFixed(1)} /100w at ${w} words</strong> — ${roundsShown===sw+1?'this is the sweet spot ★':(roundsShown>sw+1?'past the sweet spot — denser but harder to read':'still climbing')}. The next pass finds more missing entities and rewrites at the same length.</span>`;
+  } else if(isCoD && done){
+    verdict.innerHTML = `<span class="text-violet-800"><strong>▲ Chain built.</strong> Density went ${densityAt(A,1).toFixed(1)} → <span class="text-violet-700 font-semibold">${densityAt(A,R).toFixed(1)}</span> /100w at a flat ~${targetW} words. Best pick: <span class="text-green-700 font-semibold">pass ${sw+1}</span> (the sweet spot) — the densest last pass reads like a list.</span>`;
+  } else {
+    verdict.innerHTML = `<span class="text-amber-800"><strong>▲ Shipped one-shot.</strong> Density <span class="text-amber-700 font-semibold">${osD.toFixed(1)}</span> vs the chain's ${densityAt(A,R).toFixed(1)} /100w at the same length. No densification means a summary that fits the word count but says far less.</span>`;
+  }
+}
+
+render();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: a first summary is too sparse", why:"Ask for a summary and you usually get one that hits the length but is <strong>entity-poor</strong> — it names a couple of things and pads the rest with filler ('remarkable detail', 'an important moment'). It reads smoothly and says little. The obvious fix, 'add more detail,' just makes it <em>longer</em> — which defeats the purpose of a summary. What you actually want is <strong>more information in the same number of words</strong>.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one-shot: article -&gt; [ summary ~50w ]<br>names 2-3 entities, rest is filler<br>"add detail" -&gt; longer, not denser<br>goal: more facts, SAME length</div>`, code:`// sparse one-shot: right length, low information density
+const summary = await llm(\`Summarize in ~50 words: \${article}\`);
+// hits 50 words, names ~2 entities, lots of filler.` },
+ { title:"2. The idea: fix length, raise density", why:"Chain-of-Density flips the knob you turn. Instead of adjusting <em>length</em>, you <strong>freeze the length</strong> and iterate on <strong>content</strong>. Start with a sparse summary, then each pass adds 1–3 salient entities and <strong>rewrites at the same word count</strong>. Over the chain the summary gets steadily more informative while never getting longer — a ladder from sparse to dense that you can climb and stop wherever it reads best.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pass 1: sparse   ~50w · density 4<br>pass 2: +3 ents  ~50w · density 10<br>pass 3: +3 ents  ~50w · density 16<br>pass 4: +?? ...  ~50w · density 28<br>length flat, density climbing</div>`, code:`let summary = await sparseSummary(article, TARGET);
+for (let s = 1; s <= STEPS; s++) {
+  const missing = await findMissing(article, summary);
+  summary = await densify(summary, missing, TARGET); // SAME length
+}` },
+ { title:"3. The fixed-length constraint is the trick", why:"Holding the length constant is what makes CoD work. If the summary could grow, the model would just <em>append</em> the new facts and nothing interesting would happen. Because the length is locked, adding an entity <strong>forces a trade</strong>: something else — usually filler — has to give. That pressure is exactly what converts a loose, padded summary into a tight, information-rich one. The constraint does the work.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">no length limit -&gt; append forever (balloons)<br>length LOCKED -&gt; add a fact = cut a fact<br>the summary can only get DENSER<br>constraint = the engine of the pattern</div>`, code:`// the invariant repeated in every rewrite prompt:
+"Rewrite so it now includes the NEW entities,
+ keeping EXACTLY the same length (~\${TARGET} words)."
+// length can't move -> density must rise.` },
+ { title:"4. Identify the missing salient entities", why:"Each pass begins by asking a targeting question: which <strong>entities are in the source but not yet in the summary</strong>? Entities are the concrete nouns — people, places, dates, numbers, named things — that carry information. Picking the <strong>1–3 most salient</strong> missing ones (not just any detail) is what keeps the added content meaningful. This is the 'what to add next' decision, made explicit and grounded in the article.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">article entities: {NASA, JWST, Jul 12, SMACS 0723,<br>&nbsp;&nbsp;Carina, WASP-96b, L2, $10B, Hubble, ...}<br>summary has: {telescope, agency}<br>missing & salient -&gt; add the top 1-3</div>`, code:`const missing = await llm(\`
+  List the 1-3 MOST salient entities in the ARTICLE
+  that are MISSING from the SUMMARY (people, places,
+  dates, numbers). Return a JSON array.
+  ARTICLE: \${article}
+  SUMMARY: \${summary}\`);` },
+ { title:"5. Fusion & compression — add without growing", why:"Given the new entities, the rewrite makes room two ways. <strong>Fusion</strong>: merge a new fact into an existing sentence instead of starting a new one ('the telescope' + 'launched Dec 25, 2021' → one clause). <strong>Compression</strong>: delete filler, hedges, and connectives that carry no information ('in remarkable detail', 'it is important to note'). Together they buy the words needed for the new entities while the total stays fixed. This rewrite is the actual engine of each pass.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">FUSE:  "Webb. It launched Dec 25." -&gt;<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;"Webb, launched Dec 25,"<br>COMPRESS: "images in remarkable detail" -&gt; "images"<br>freed words -&gt; spend on new entities</div>`, code:`summary = await llm(\`
+  Rewrite to include NEW entities at the SAME length.
+  FUSE facts into existing sentences; COMPRESS filler.
+  Keep every entity already present.
+  NEW: \${missing}
+  SUMMARY: \${summary}\`);` },
+ { title:"6. Density climbs, length stays flat", why:"The signature of a CoD run: plot entity density (entities ÷ words) and it <strong>rises steeply</strong>; plot length and it's a <strong>flat line</strong>. That's the visible proof the technique is doing what it claims — trading filler for facts, not padding. Early passes make big jumps (there's lots of filler to cut); later passes squeeze out smaller gains as the summary tightens. Same words, far more information.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">density: 4 -&gt; 10 -&gt; 16 -&gt; 28 -&gt; 42  ▲▲▲<br>length:  50 · 51 · 50 · 49 · 48   ────<br>one line climbs, the other is flat<br>that gap is the whole technique</div>`, code:`// track both every pass:
+density = entities.length / words(summary);  // climbs
+length  = words(summary);                    // ~constant
+// the rising density at flat length IS the result.` },
+ { title:"7. Denser is better — up to a point", why:"More density is more information, and readers do prefer richer summaries — but only until the prose breaks down. Cram too many entities into fixed words and the sentences collapse into a <strong>comma-spliced list</strong>: technically dense, painful to read. So there are two forces pulling against each other — <strong>informativeness rises</strong> monotonically, but <strong>readability falls</strong> as you over-pack. Overall quality is the product, and it <em>peaks then declines</em>.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">informativeness: ▁▂▄▆█  (keeps rising)<br>readability:&nbsp;&nbsp;&nbsp;&nbsp; █▆▅▃▁  (keeps falling)<br>quality = both:&nbsp; ▂▄██▆  (a hump)<br>too dense = unreadable list</div>`, code:`// quality is NOT monotonic in density:
+quality(step) = informativeness(step) * readability(step);
+// informativeness up, readability down -> quality peaks mid-chain.` },
+ { title:"8. The sweet spot is in the middle", why:"Because quality is a hump, the best summary is <strong>not the last (densest) one</strong> — it's a pass somewhere in the <strong>middle-to-late</strong> of the chain, the richest version a human still reads comfortably. (In the original CoD paper, annotators preferred the middle steps of a 5-step chain over the maximally-dense final one.) So CoD's real output isn't a single summary — it's a <strong>ladder</strong>, and choosing the right rung is part of the method.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">P1 sparse · P2 · [P3/P4 sweet spot] · P5 too dense<br>pick the richest STILL-READABLE rung<br>not P1 (empty), not P5 (a list)<br>output = a ladder, you choose the rung</div>`, code:`// the chain is a ladder; pick the balanced rung:
+const best = chain.reduce((a,b)=>
+  quality(b) > quality(a) ? b : a);
+return best.summary;   // usually a middle pass, not the last` },
+ { title:"9. vs plain summarization & self-refine", why:"Plain summarization gives you <strong>one</strong> take at a length and stops. Self-refine (Day 30) loops a model critiquing its own draft on <em>open-ended</em> quality, with no fixed target. Chain-of-Density is narrower and sharper: a <strong>single, concrete objective</strong> (raise entity density) under a <strong>hard constraint</strong> (fixed length), producing a <em>graded series</em> rather than one 'final' answer. It's the specialist tool when the deliverable is a dense, information-rich summary.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plain:       one summary, done<br>self-refine: loop on vague "make it better"<br>CoD:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;loop on ONE metric (density)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; under a FIXED-length constraint</div>`, code:`// self-refine: open-ended, single output
+draft = model.critiqueAndRewrite(draft);
+// chain-of-density: one metric + hard constraint, a series
+chain = densify_until(STEPS, target=FIXED_LENGTH);` },
+ { title:"10. Cost, prompt shortcut & when to use", why:"CoD shines when the deliverable is a <strong>compact, information-dense summary</strong> — abstracts, digests, TL;DRs, briefing notes. Cost is modest: the naive version is ~1 call per pass, but the CoD paper's trick is a <strong>single prompt</strong> that emits the entire chain as JSON, so you pay once and pick a rung. Skip it when a loose summary is fine, when the source is already sparse, or when maximal readability beats maximal information. Next we leave prompting patterns for a <em>delivery</em> pattern: streaming.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use for: abstracts, TL;DRs, briefing notes<br>cost: ~1 call/pass, OR 1 prompt for the whole chain<br>skip when: loose summary is fine / source is thin<br>output: a ladder — choose your rung</div>`, code:`// whole chain in ONE call, then choose a rung:
+const chain = JSON.parse(await llm(\`
+  Produce \${STEPS} increasingly dense ~\${TARGET}-word
+  summaries; each adds 1-3 missing entities, SAME length.
+  Return [{ step, summary, addedEntities }].
+  ARTICLE: \${article}\`));
+return chain[/* sweet spot */ 3].summary;` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
