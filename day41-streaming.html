@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 41 — Streaming</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .row-appear { animation: fadeIn .35s ease-out both; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .chip { display:inline-block; font-size:11px; padding:3px 8px; border-radius:6px; background:#f1f5f9; color:#475569; border:1px solid #e2e8f0; transition:all .2s; cursor:pointer; }
+  .chip.sel { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.4); }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .badge.call { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.muted{ background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+  .badge.strm { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .badge.buf  { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+  .iolabel { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; margin-bottom:3px; }
+  .iobox { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; font-size:12.5px; line-height:1.55; color:#1e293b; }
+  /* race panels */
+  .panel { background:#fff; border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; transition:all .3s ease; }
+  .panel.strm { border-color:#ddd6fe; }
+  .panel.buf  { border-color:#fed7aa; }
+  .phead { display:flex; align-items:center; justify-content:space-between; padding:9px 13px; border-bottom:1px solid #f1f5f9; }
+  .phead.strm { background:#f5f3ff; }
+  .phead.buf  { background:#fff7ed; }
+  .ptitle { font-size:12px; font-weight:800; display:flex; align-items:center; gap:7px; }
+  .pbody { padding:13px; min-height:150px; font-size:13px; line-height:1.6; color:#1e293b; }
+  .pbody.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:12px; }
+  .pfoot { display:flex; gap:8px; padding:9px 13px; border-top:1px solid #f1f5f9; background:#fafafa; flex-wrap:wrap; }
+  .metric { font-size:11px; color:#64748b; font-variant-numeric:tabular-nums; }
+  .metric b { color:#0f172a; font-weight:800; }
+  .dot { width:9px; height:9px; border-radius:999px; background:#cbd5e1; display:inline-block; transition:all .3s; }
+  .dot.live { background:#7c3aed; box-shadow:0 0 0 0 rgba(124,58,237,.5); animation:pulse 1.1s infinite; }
+  .dot.livebuf { background:#f59e0b; box-shadow:0 0 0 0 rgba(245,158,11,.5); animation:pulse 1.1s infinite; }
+  .dot.done { background:#16a34a; }
+  .dot.cancel { background:#ef4444; }
+  @keyframes pulse { 0%{ box-shadow:0 0 0 0 rgba(124,58,237,.45); } 70%{ box-shadow:0 0 0 7px rgba(124,58,237,0); } 100%{ box-shadow:0 0 0 0 rgba(124,58,237,0); } }
+  .cur { display:inline-block; width:7px; height:15px; background:#7c3aed; margin-left:1px; vertical-align:-2px; animation:blink .9s steps(1) infinite; }
+  @keyframes blink { 50%{ opacity:0; } }
+  .spin { color:#c2410c; font-size:12.5px; }
+  .waiting { color:#94a3b8; font-style:italic; }
+  /* perceived meter */
+  .mrow { display:flex; align-items:center; gap:10px; margin:8px 0; }
+  .mlab { width:150px; font-size:11px; font-weight:700; color:#475569; text-align:right; }
+  .mtrack { flex:1; height:22px; background:#f1f5f9; border-radius:6px; overflow:hidden; position:relative; }
+  .mbar { height:100%; border-radius:6px; transition:width .6s ease; display:flex; align-items:center; justify-content:flex-end; padding-right:7px; color:#fff; font-size:10px; font-weight:800; font-variant-numeric:tabular-nums; }
+  .mbar.strm { background:#7c3aed; }
+  .mbar.buf  { background:#f59e0b; }
+  /* ttft chart */
+  .hchart { display:flex; align-items:flex-end; gap:30px; height:130px; padding:6px 10px 0; justify-content:center; }
+  .hgroup { display:flex; align-items:flex-end; gap:10px; height:100%; }
+  .hbar-wrap { display:flex; flex-direction:column; align-items:center; justify-content:flex-end; height:100%; }
+  .hbar { width:46px; border-radius:6px 6px 0 0; transition:height .55s ease; min-height:3px; }
+  .hbar.strm { background:#7c3aed; }
+  .hbar.buf  { background:#f59e0b; }
+  .hlab { font-size:10px; text-align:center; margin-top:5px; color:#475569; line-height:1.3; }
+  .glab { font-size:10.5px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; color:#94a3b8; text-align:center; margin-top:6px; }
+  .legend { display:flex; gap:14px; align-items:center; justify-content:center; font-size:11px; color:#64748b; margin-top:8px; }
+  .legend .sw { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:4px; vertical-align:-1px; }
+  /* parse demo */
+  .parsecol { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:9px 11px; min-height:150px; font-size:11.5px; line-height:1.55; font-family: ui-monospace, "SF Mono", Menlo, monospace; overflow:auto; white-space:pre-wrap; word-break:break-word; }
+  .parsecol.render { font-family: -apple-system, "Inter", sans-serif; font-size:12.5px; white-space:normal; }
+  .err { color:#b91c1c; }
+  .ok  { color:#15803d; }
+  .fieldrow { display:flex; gap:8px; padding:3px 0; border-bottom:1px dashed #e2e8f0; }
+  .fkey { color:#7c3aed; font-weight:700; min-width:78px; }
+  .fval { color:#1e293b; }
+  .ghost { color:#94a3b8; font-style:italic; }
+  .stray { background:#fee2e2; color:#b91c1c; border-radius:3px; padding:0 2px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 41</div>
+      <h1 class="text-xl font-bold">🌊 Streaming — stop waiting for the whole answer. Stream tokens over <strong>SSE</strong> and render them the instant they arrive, so the user watches the reply <strong>type out</strong> in real time. At the <em>same total time</em>, streaming feels <strong>~5–10× faster</strong> because what people actually feel is <strong>time-to-first-token</strong>, not time-to-complete — plus you can <strong>cancel mid-stream</strong> and keep the partial output.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Run the same response two ways — streamed vs buffered — and watch which one <em>feels</em> fast.</h2>
+        <p class="text-slate-500 mb-5">A language model produces its answer <strong>token by token</strong>. You can either <span class="text-amber-700 font-semibold">buffer</span> — wait for the entire response, then show it all at once — or <span class="text-violet-700 font-semibold">stream</span> — push each token to the client the moment it's generated and render it immediately. Both finish at the <strong>exact same total time</strong>. But the streamed version starts showing words after a few hundred milliseconds (its <strong>time-to-first-token</strong>, TTFT), while the buffered version shows a spinner for the whole duration and then dumps a wall of text. Since the human brain measures the wait as <em>"how long until something happened"</em>, streaming can feel <strong>5–10× faster</strong> at identical throughput. Below: pick a scenario, hit <span class="mono">▶ Run the race</span>, and watch the two panels side by side with live TTFT and total-time readouts, a perceived-speed meter, and a <span class="mono">✕ Cancel</span> button that shows the other big win — a cancelled stream keeps its partial output, a cancelled buffered request gives you nothing. Then scroll to the second demo to see how you safely render a <strong>partial, still-arriving JSON</strong> response. Everything is simulated deterministically client-side with <span class="mono">setTimeout</span> — no live model — but faithful to how real SSE streaming behaves.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="text-center text-sm mb-3">
+          <span class="text-slate-500">Pick a scenario:</span>
+          <span id="raceChips" class="inline-flex flex-wrap gap-1.5 mx-2 align-middle"></span>
+        </div>
+        <div class="flex justify-center gap-2 flex-wrap">
+          <button id="btnRun"    class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-semibold text-xs" style="min-width:170px;">▶ Run the race</button>
+          <button id="btnCancel" class="bg-white border border-red-300 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-lg font-semibold text-xs" disabled style="opacity:.5;">✕ Cancel mid-stream</button>
+          <button id="btnReset"  class="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-4 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+        </div>
+        <div id="raceNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-4">
+        <div class="panel strm">
+          <div class="phead strm">
+            <div class="ptitle"><span id="strmDot" class="dot"></span>🌊 Streamed <span class="badge strm">token-by-token</span></div>
+            <div class="metric">elapsed <b id="strmElapsed">0.00s</b></div>
+          </div>
+          <div id="strmBody" class="pbody"><span class="waiting">Idle — press Run the race.</span></div>
+          <div class="pfoot">
+            <div class="metric">TTFT <b id="strmTtft">—</b></div>
+            <div class="metric">·</div>
+            <div class="metric">total <b id="strmTotal">—</b></div>
+          </div>
+        </div>
+        <div class="panel buf">
+          <div class="phead buf">
+            <div class="ptitle"><span id="bufDot" class="dot"></span>🧱 Buffered <span class="badge buf">wait, then show</span></div>
+            <div class="metric">elapsed <b id="bufElapsed">0.00s</b></div>
+          </div>
+          <div id="bufBody" class="pbody"><span class="waiting">Idle — press Run the race.</span></div>
+          <div class="pfoot">
+            <div class="metric">TTFT <b id="bufTtft">—</b></div>
+            <div class="metric">·</div>
+            <div class="metric">total <b id="bufTotal">—</b></div>
+          </div>
+        </div>
+      </div>
+
+      <div id="raceVerdict" class="text-sm mt-3"></div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Perceived wait — what the user actually feels</div>
+        <div class="text-xs text-slate-400 mb-3">The bar is the time until the user first sees <em>something</em>. Streamed = the first token (TTFT). Buffered = the whole response. Both requests <strong>complete at the same moment</strong> — only the felt wait differs.</div>
+        <div id="meter"></div>
+        <div id="meterMult" class="text-center mt-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">TTFT vs total time</div>
+        <div class="text-xs text-slate-400 mb-3">Two latencies, not one. <strong>Time to first token</strong> is where streaming wins big; <strong>time to complete</strong> is identical for both. Optimizing the number the user feels (TTFT) is nearly free — you already generate the tokens in the same order.</div>
+        <div id="ttftChart" class="hchart"></div>
+        <div class="legend"><span><span class="sw" style="background:#7c3aed;"></span>streamed</span><span><span class="sw" style="background:#f59e0b;"></span>buffered</span></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-4">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">Second demo — parsing a streaming response incrementally</div>
+          <div class="flex gap-2">
+            <button id="mJson" class="segbtn on">🧾 JSON</button>
+            <button id="mMd"   class="segbtn">📝 Markdown</button>
+          </div>
+        </div>
+        <div class="text-xs text-slate-400 mb-3">A streamed structured response is <strong>incomplete for most of its life</strong> — the buffer is invalid JSON until the very last byte. Watch the raw buffer fill in chunks, and compare a <span class="text-red-600 font-semibold">naive</span> parse (throws until done) against a <span class="text-green-600 font-semibold">safe</span> partial render (shows only what has fully arrived).</div>
+        <div class="flex gap-2 mb-3">
+          <button id="btnStream" class="bg-violet-600 hover:bg-violet-700 text-white px-3 py-1.5 rounded-lg font-semibold text-xs">▶ Stream the chunks</button>
+          <button id="btnPreset" class="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-3 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+        </div>
+        <div class="grid md:grid-cols-3 gap-3">
+          <div>
+            <div class="iolabel">Raw buffer (arriving)</div>
+            <div id="rawBox" class="parsecol"></div>
+          </div>
+          <div>
+            <div class="iolabel" id="naiveLbl">Naive: JSON.parse(buffer)</div>
+            <div id="naiveBox" class="parsecol"></div>
+          </div>
+          <div>
+            <div class="iolabel" id="safeLbl">Safe: render what's complete</div>
+            <div id="safeBox" class="parsecol render"></div>
+          </div>
+        </div>
+        <div id="parseNote" class="text-xs text-slate-400 mt-2"></div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Streaming = ship tokens as they're generated, not after.</strong> The transport is <strong>SSE / chunked HTTP</strong>: one long response, many small frames. Total generation time doesn't change — but <strong>TTFT</strong> collapses from "the whole answer" to "a few hundred ms", and because people feel the first-content wait, the app reads as far faster. You render <em>incrementally</em> (append each token) and, for structured output, render <em>only the fields that have fully arrived</em> — never <span class="mono">JSON.parse</span> a half-arrived buffer. Streaming also makes work <strong>cancellable</strong>: abort mid-stream and the partial output is still on screen and useful. Skip streaming when you need one validated object, for batch jobs, tool-only turns, or responses so short buffering is already instant.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Streaming = render tokens the instant they arrive over SSE. Same total time, far lower time-to-first-token, so it feels 5–10× faster; parse partial output safely, and cancel mid-stream without losing what you've got.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How streaming works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Streaming is one delivery pattern layered onto a normal request: <span class="mono text-violet-700">server flushes tokens over SSE → client reads the stream frame-by-frame → render each token → cancel with AbortController</span>. The whole thing is small. Here it is end to end: the server side that emits Server-Sent Events, the wire format (and how providers differ), the client reader loop, incremental frame parsing, safe incremental rendering, and cancellation — plus when <em>not</em> to stream.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Server: emit tokens as SSE, and flush</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Set the <span class="mono">text/event-stream</span> content type and write one small frame per token as the model produces it. The key detail is <strong>flushing</strong> — without it a proxy or framework buffer will hold the whole body and silently un-stream your stream. End with a sentinel so the client knows generation finished.</p>
+        <div class="relative"><pre>// SERVER — emit tokens the moment they are generated (Server-Sent Events).
+res.writeHead(200, {
+  "Content-Type": "text/event-stream",  // the SSE content type
+  "Cache-Control": "no-cache",
+  "Connection": "keep-alive",
+});
+for await (const token of model.generate(prompt)) {
+  res.write("data: " + JSON.stringify({ token }) + "\n\n"); // one SSE frame
+  res.flush?.();   // flush! or a proxy may buffer the whole response
+}
+res.write("data: [DONE]\n\n");   // sentinel: generation finished
+res.end();</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The wire format — and how providers frame it</h3></div>
+        <p class="text-sm text-slate-600 mb-3">SSE is just a long HTTP response made of <span class="mono">data:</span> lines, each terminated by a blank line. Providers layer their own event shape on top, but the idea is identical: <strong>many small chunks instead of one big body</strong>. Know your provider's framing so your parser matches it.</p>
+        <div class="relative"><pre>// THE WIRE FORMAT — Server-Sent Events over one long HTTP response.
+// Each event is a "data:" line, terminated by a blank line:
+//
+//   data: {"token":"Stream"}
+//   data: {"token":"ing"}
+//   data: [DONE]
+//
+// Providers frame it differently, same underlying idea:
+//   OpenAI / Vercel AI SDK  ->  data: {...} lines, ending with  data: [DONE]
+//   Anthropic (Claude)      ->  typed events: message_start,
+//                               content_block_delta (text_delta),
+//                               message_delta, message_stop  (no [DONE])
+// Match your reader to the provider's event shape.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Client: open the stream, read chunks</h3></div>
+        <p class="text-sm text-slate-600 mb-3">On the client, <span class="mono">fetch()</span> the endpoint and read <span class="mono">res.body</span> as a <strong>ReadableStream</strong>. Each <span class="mono">reader.read()</span> yields whatever bytes have arrived — <em>not</em> aligned to token or line boundaries — so you decode into a running buffer and pull complete frames out of it. Pass an <span class="mono">AbortController</span> signal now; you'll use it to cancel in step 6.</p>
+        <div class="relative"><pre>// CLIENT — open the stream and read chunks as they arrive.
+const res = await fetch("/api/chat", {
+  method: "POST",
+  body: JSON.stringify({ prompt }),
+  signal: controller.signal,          // for cancellation (step 6)
+});
+const reader  = res.body.getReader(); // a ReadableStream reader
+const decoder = new TextDecoder();
+let buffer = "";
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;                    // stream closed by server
+  buffer += decoder.decode(value, { stream: true });
+  // ...pull complete SSE frames out of `buffer` (step 4)
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Parse SSE frames incrementally</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Chunks split mid-line, so you can't parse a chunk directly. Instead, scan the buffer for the frame delimiter (a blank line, <span class="mono">"\n\n"</span>), process each <em>complete</em> frame, and <strong>leave the unfinished remainder in the buffer</strong> for the next read. This is the one bug everyone hits first: parsing a half-arrived line.</p>
+        <div class="relative"><pre>// PARSE SSE FRAMES INCREMENTALLY — chunks split mid-line, so buffer them.
+let idx;
+while ((idx = buffer.indexOf("\n\n")) !== -1) {
+  const frame = buffer.slice(0, idx);
+  buffer      = buffer.slice(idx + 2);   // keep the unfinished remainder
+  const line  = frame.replace(/^data: /, "");
+  if (line === "[DONE]") return finish();
+  const { token } = JSON.parse(line);    // one line == one COMPLETE JSON
+  onToken(token);                        // append to the UI (step 5)
+}
+// a partial trailing frame stays in `buffer` until the next read()</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Render incrementally — safely for structured data</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For prose, rendering is trivial: append each token. For <strong>structured</strong> output (JSON), the accumulated buffer is <em>invalid JSON</em> for most of the stream — don't <span class="mono">JSON.parse</span> it every tick or it throws until the final byte. Render only the fields that have <strong>fully arrived</strong> (or use a tolerant streaming parser), so the half-arrived field simply waits its turn instead of crashing the UI.</p>
+        <div class="relative"><pre>// RENDER INCREMENTALLY — append tokens; keep partial output safe.
+function onToken(t) {
+  answerEl.textContent += t;      // prose: user watches it type out
+}
+
+// Streaming STRUCTURED data? The buffer is invalid JSON mid-stream.
+// Do NOT JSON.parse the partial each tick — it throws until the last byte.
+// Render only the fields that have fully arrived:
+function renderPartial(buf) {
+  for (const [k, v] of completedFields(buf)) {  // e.g. "key":"value" pairs
+    setField(k, v);               // a half-arrived field waits its turn
+  }
+}
+// (or feed the buffer to a tolerant / streaming JSON parser)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Cancel mid-stream — and when NOT to stream</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Because you hold the connection open, you can <strong>abort</strong> it. <span class="mono">controller.abort()</span> tears down the fetch; the server sees the client drop and stops generating (so you stop paying for tokens). Whatever streamed already stays on screen and is still useful — the opposite of a buffered request, where aborting leaves you with nothing. Streaming isn't always right, though. Next up you'll switch topics to <strong>system prompts</strong>: the persona-and-rules turn that shapes everything the model says.</p>
+        <div class="relative"><pre>// CANCEL MID-STREAM — stop the model, stop paying for tokens.
+const controller = new AbortController();
+sendBtn.onclick = () => startStream(controller);  // passes signal to fetch
+stopBtn.onclick = () => controller.abort();        // tears down the stream
+// abort() closes the connection; the server sees the drop and halts.
+// Whatever already streamed stays on screen (usable) — unlike a buffered
+// request, where aborting leaves you with nothing.
+
+// WHEN NOT TO STREAM:
+//  - you need ONE validated object (parse the whole thing, then act)
+//  - non-interactive / batch jobs (no human waiting on TTFT)
+//  - tool-call-only turns the user never reads
+//  - tiny responses where buffering is already instant</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 41 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Streaming</strong>: emit tokens over <strong>SSE / chunked HTTP</strong> and render them the instant they arrive. Total time is unchanged, but <strong>time-to-first-token</strong> collapses, so a slow model feels fast — perceived latency, not throughput, is what the user judges. You read the stream frame-by-frame, buffer partial lines, render <strong>incrementally</strong>, parse partial structured output <strong>safely</strong> (never <span class="mono">JSON.parse</span> a half-arrived buffer), and make the whole thing <strong>cancellable</strong> with an <span class="mono">AbortController</span> — keeping the partial output when you abort. <strong>👉 Next up — System prompts: the standing persona-and-rules turn (no user message) that sets the model's role, tone, and hard constraints before the conversation even begins.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ===== LOOK: streamed vs buffered race =====
+// Fully scripted & deterministic. No live model. Two panels run the SAME
+// response at the SAME total time: streamed drips tokens after a short TTFT;
+// buffered shows nothing until the whole thing is done. TTFT is the felt wait.
+const SCEN = [
+  { tag:"💬 Chat reply", ttft:260, per:55,
+    text:"Sure — here's the gist. Streaming sends each token the moment the model produces it, so words appear as they are written instead of arriving all at once after a long pause. The total time is the same, but it feels far faster." },
+  { tag:"📝 Long answer", ttft:320, per:40,
+    text:"Streaming matters most for long outputs. When a model writes hundreds of tokens, buffering means the user stares at a spinner the entire time, then a wall of text lands at once. Streamed, the first sentence shows up in a few hundred milliseconds and the rest types out steadily, so the wait never feels dead or frozen. Nothing about the generation itself got faster — the model emits the same tokens in the same order at the same rate — only the perceived latency changed, and it changed a lot, because the human clock starts ticking on the empty screen and stops the instant the first word appears." },
+  { tag:"🐢 Slow model", ttft:1500, per:60,
+    text:"A slow or heavily loaded model has a long time-to-first-token. Streaming still helps: once that first token lands, progress becomes visible and continuous, so even a sluggish model reads as working rather than frozen. But notice the multiplier is smaller here — when TTFT is already most of the total, streaming has less felt latency to hide." }
+];
+
+let scenIdx = 0;
+let raceTimers = [];
+let clockTimer = null;
+let race = null;
+
+const raceChips  = document.getElementById("raceChips");
+const raceNote   = document.getElementById("raceNote");
+const btnRun     = document.getElementById("btnRun");
+const btnCancel  = document.getElementById("btnCancel");
+const btnReset   = document.getElementById("btnReset");
+const strmDot    = document.getElementById("strmDot");
+const bufDot     = document.getElementById("bufDot");
+const strmBody   = document.getElementById("strmBody");
+const bufBody    = document.getElementById("bufBody");
+const strmElapsed= document.getElementById("strmElapsed");
+const bufElapsed = document.getElementById("bufElapsed");
+const strmTtft   = document.getElementById("strmTtft");
+const bufTtft    = document.getElementById("bufTtft");
+const strmTotal  = document.getElementById("strmTotal");
+const bufTotal   = document.getElementById("bufTotal");
+const meter      = document.getElementById("meter");
+const meterMult  = document.getElementById("meterMult");
+const ttftChart  = document.getElementById("ttftChart");
+const raceVerdict= document.getElementById("raceVerdict");
+
+function tokenize(s){ return s.match(/\S+\s*/g) || []; }
+function scTotal(sc){ return sc.ttft + tokenize(sc.text).length * sc.per; }
+function fmtS(ms){ return (ms/1000).toFixed(2)+"s"; }
+function fmtMs(ms){ return Math.round(ms)+" ms"; }
+
+function buildChips(){
+  raceChips.innerHTML = "";
+  SCEN.forEach((p,i)=>{
+    const c = document.createElement("span");
+    c.className = "chip" + (i===scenIdx ? " sel" : "");
+    c.textContent = p.tag;
+    c.onclick = () => { scenIdx = i; resetRace(); };
+    raceChips.appendChild(c);
+  });
+}
+
+function clearRaceTimers(){
+  raceTimers.forEach(t=>clearTimeout(t)); raceTimers = [];
+  if(clockTimer){ clearInterval(clockTimer); clockTimer = null; }
+}
+
+function resetRace(){
+  clearRaceTimers();
+  race = null;
+  const sc = SCEN[scenIdx];
+  const total = scTotal(sc), n = tokenize(sc.text).length;
+  strmDot.className = "dot"; bufDot.className = "dot";
+  strmBody.innerHTML = '<span class="waiting">Idle — press Run the race.</span>';
+  bufBody.innerHTML  = '<span class="waiting">Idle — press Run the race.</span>';
+  strmElapsed.textContent = "0.00s"; bufElapsed.textContent = "0.00s";
+  strmTtft.textContent = fmtMs(sc.ttft); strmTotal.textContent = "—";
+  bufTtft.textContent  = fmtMs(total);   bufTotal.textContent  = "—";
+  raceNote.innerHTML = `Scenario: <b>${escapeHtml(sc.tag)}</b> · ${n} tokens · model TTFT ~${sc.ttft} ms · total ~${fmtS(total)}. Both panels finish at the same moment — watch <em>when each starts showing content</em>.`;
+  raceVerdict.innerHTML = `<span class="text-slate-600"><strong>Ready.</strong> Streamed will begin painting words at ~${sc.ttft} ms; buffered stays blank until ~${fmtS(total)}, then dumps everything. Same total time — press <strong>▶ Run the race</strong>.</span>`;
+  btnRun.disabled = false; btnRun.style.opacity = "1"; btnRun.textContent = "▶ Run the race";
+  btnCancel.disabled = true; btnCancel.style.opacity = ".5";
+  buildChips(); updateMeter(); updateChart();
+}
+
+function startRace(){
+  clearRaceTimers();
+  const sc = SCEN[scenIdx];
+  const toks = tokenize(sc.text);
+  const total = sc.ttft + toks.length*sc.per;
+  race = { start: performance.now(), toks, ttft: sc.ttft, per: sc.per, total,
+           shown: 0, firstAt: null, bufShown: false, cancelled: false, done: false };
+  strmDot.className = "dot live"; bufDot.className = "dot livebuf";
+  strmBody.innerHTML = '<span class="cur"></span>';
+  bufBody.innerHTML  = '<span class="spin">▓ generating… (buffering — nothing shown yet)</span>';
+  strmTotal.textContent = "—"; bufTotal.textContent = "—";
+  strmTtft.textContent = "…"; bufTtft.textContent = "waiting…";
+  btnRun.disabled = true; btnRun.style.opacity = ".5"; btnRun.textContent = "▶ Running…";
+  btnCancel.disabled = false; btnCancel.style.opacity = "1";
+  raceVerdict.innerHTML = `<span class="text-violet-800"><strong>▸ Streaming…</strong> the streamed panel starts painting almost immediately; the buffered panel is still holding everything back.</span>`;
+
+  toks.forEach((t,i)=>{
+    raceTimers.push(setTimeout(()=>{
+      race.shown = i+1;
+      if(i===0) race.firstAt = performance.now() - race.start;
+      renderStream();
+      if(i===0){ strmTtft.textContent = fmtMs(race.firstAt); }
+    }, sc.ttft + i*sc.per));
+  });
+  raceTimers.push(setTimeout(()=>{
+    race.bufShown = true; renderBuf();
+    bufTtft.textContent = fmtMs(total);
+  }, total));
+  raceTimers.push(setTimeout(()=>{ finishRace(); }, total + 40));
+
+  clockTimer = setInterval(tickClock, 40);
+}
+
+function renderStream(){
+  if(!race) return;
+  const joined = race.toks.slice(0, race.shown).join("");
+  const cursor = race.done || race.cancelled ? "" : '<span class="cur"></span>';
+  strmBody.innerHTML = escapeHtml(joined) + cursor;
+}
+function renderBuf(){
+  if(!race) return;
+  bufBody.innerHTML = escapeHtml(race.toks.join(""));
+}
+function tickClock(){
+  if(!race) return;
+  const el = performance.now() - race.start;
+  if(!race.done && !race.cancelled){
+    strmElapsed.textContent = fmtS(Math.min(el, race.total));
+    bufElapsed.textContent  = fmtS(Math.min(el, race.total));
+  }
+}
+function finishRace(){
+  if(!race) return;
+  clearRaceTimers();
+  race.done = true;
+  strmDot.className = "dot done"; bufDot.className = "dot done";
+  renderStream(); renderBuf();
+  strmElapsed.textContent = fmtS(race.total); bufElapsed.textContent = fmtS(race.total);
+  strmTotal.textContent = fmtMs(race.total); bufTotal.textContent = fmtMs(race.total);
+  strmTtft.textContent = fmtMs(race.firstAt); bufTtft.textContent = fmtMs(race.total);
+  btnRun.disabled = false; btnRun.style.opacity = "1"; btnRun.textContent = "▶ Replay";
+  btnCancel.disabled = true; btnCancel.style.opacity = ".5";
+  const mult = Math.max(1, Math.round(race.total / race.firstAt));
+  raceVerdict.innerHTML = `<span class="text-violet-800"><strong>▲ Both finished at ${fmtS(race.total)}.</strong> Identical total time — but streamed showed its first word at <b>${fmtMs(race.firstAt)}</b> while buffered showed nothing until <b>${fmtMs(race.total)}</b>. That is why streaming feels about <b>${mult}× faster</b> here, for free.</span>`;
+}
+function cancelRace(){
+  if(!race || race.done || race.cancelled) return;
+  clearRaceTimers();
+  race.cancelled = true;
+  strmDot.className = "dot cancel"; bufDot.className = "dot cancel";
+  const shownAny = race.shown > 0;
+  strmBody.innerHTML = (shownAny ? escapeHtml(race.toks.slice(0, race.shown).join("")) : "")
+    + '<div class="text-[11px] mt-2" style="color:#16a34a;font-weight:700;">✕ cancelled — partial output kept &amp; usable ('+race.shown+' of '+race.toks.length+' tokens)</div>';
+  if(!race.bufShown){
+    bufBody.innerHTML = '<span class="err" style="font-style:normal;font-weight:700;">✕ cancelled — nothing was ever shown, so you got nothing.</span>';
+  }
+  strmTtft.textContent = race.firstAt ? fmtMs(race.firstAt) : "n/a";
+  strmTotal.textContent = "aborted"; bufTotal.textContent = race.bufShown ? "done" : "aborted";
+  btnRun.disabled = false; btnRun.style.opacity = "1"; btnRun.textContent = "▶ Run the race";
+  btnCancel.disabled = true; btnCancel.style.opacity = ".5";
+  raceVerdict.innerHTML = `<span class="text-red-700"><strong>✕ Cancelled mid-stream.</strong> The streamed panel kept every token it had already painted — still readable, still useful. The buffered panel had shown <em>nothing</em>, so cancelling wasted the entire wait. Cancellable partial output is a real streaming win, not just a UX nicety.</span>`;
+}
+
+function updateMeter(){
+  const sc = SCEN[scenIdx];
+  const total = scTotal(sc);
+  const strmPct = Math.max(6, sc.ttft/total*100);
+  meter.innerHTML =
+    `<div class="mrow"><div class="mlab">🌊 streamed (felt wait)</div><div class="mtrack"><div class="mbar strm" style="width:${strmPct}%">${sc.ttft} ms</div></div></div>`+
+    `<div class="mrow"><div class="mlab">🧱 buffered (felt wait)</div><div class="mtrack"><div class="mbar buf" style="width:100%">${Math.round(total)} ms</div></div></div>`;
+  const mult = Math.max(1, Math.round(total / sc.ttft));
+  meterMult.innerHTML = `<span class="text-sm text-slate-600">Streaming feels <span class="text-violet-700 font-bold text-lg">~${mult}× faster</span> at the <em>same</em> ${fmtS(total)} total time — because the felt wait shrinks from ${Math.round(total)} ms to ${sc.ttft} ms.</span>`;
+}
+
+function updateChart(){
+  const sc = SCEN[scenIdx];
+  const total = scTotal(sc);
+  const bar = (cls,valPct,label) => `<div class="hbar-wrap"><div class="text-xs font-bold ${cls==='strm'?'text-violet-700':'text-amber-600'} mb-1">${label}</div><div class="hbar ${cls}" style="height:${Math.max(4,valPct)}%"></div></div>`;
+  ttftChart.innerHTML =
+    `<div style="display:flex;flex-direction:column;align-items:center;">`+
+      `<div class="hgroup">${bar('strm', sc.ttft/total*100, fmtMs(sc.ttft))}${bar('buf', 100, fmtMs(total))}</div>`+
+      `<div class="glab">time to FIRST token</div>`+
+    `</div>`+
+    `<div style="display:flex;flex-direction:column;align-items:center;">`+
+      `<div class="hgroup">${bar('strm', 100, fmtMs(total))}${bar('buf', 100, fmtMs(total))}</div>`+
+      `<div class="glab">time to COMPLETE</div>`+
+    `</div>`;
+}
+
+btnRun.onclick    = () => { if(race && !race.done && !race.cancelled) return; startRace(); };
+btnCancel.onclick = () => cancelRace();
+btnReset.onclick  = () => resetRace();
+
+// ===== LOOK: incremental parse demo =====
+const JSON_SAMPLE = '{"city":"Paris","country":"France","population":2140526,"landmarks":["Eiffel Tower","Louvre","Notre-Dame"],"summary":"Capital of France, on the Seine."}';
+const MD_SAMPLE   = "## Trip to Paris\n\nParis is the **capital of France**. Highlights:\n\n- Eiffel Tower\n- The Louvre\n\nA short *getaway* on the Seine.";
+
+let parseMode = "json";
+let parseTimers = [];
+let parseBuf = "";
+
+const rawBox   = document.getElementById("rawBox");
+const naiveBox = document.getElementById("naiveBox");
+const safeBox  = document.getElementById("safeBox");
+const naiveLbl = document.getElementById("naiveLbl");
+const safeLbl  = document.getElementById("safeLbl");
+const parseNote= document.getElementById("parseNote");
+const mJson = document.getElementById("mJson");
+const mMd   = document.getElementById("mMd");
+const btnStream = document.getElementById("btnStream");
+const btnPreset = document.getElementById("btnPreset");
+
+function clearParseTimers(){ parseTimers.forEach(t=>clearTimeout(t)); parseTimers = []; }
+
+function extractFields(buf){
+  const seen = {}; const out = [];
+  const push = (k,v) => { if(!(k in seen)){ seen[k]=1; out.push([k,v]); } };
+  let m, re;
+  re = /"(\w+)"\s*:\s*"([^"\\]*)"/g;                    // complete string values
+  while((m=re.exec(buf))) push(m[1], JSON.stringify(m[2]===undefined?"":m[2]));
+  re = /"(\w+)"\s*:\s*(-?\d+(?:\.\d+)?)(?=[,}\]\s])/g;  // complete numbers (need delimiter)
+  while((m=re.exec(buf))) push(m[1], m[2]);
+  re = /"(\w+)"\s*:\s*(\[[^\]]*\])/g;                   // complete arrays
+  while((m=re.exec(buf))) push(m[1], m[2]);
+  return out;
+}
+function tryParse(buf){ try { JSON.parse(buf); return {ok:true}; } catch(e){ return {ok:false, err:e.message}; } }
+
+function mdRender(s){
+  let h = escapeHtml(s);
+  h = h.replace(/^##\s+(.+)$/gm, '<div style="font-weight:800;font-size:14px;margin-bottom:3px;">$1</div>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/(^|[^*])\*([^*]+)\*/g, '$1<em>$2</em>');
+  h = h.replace(/^-\s+(.+)$/gm, '<div>• $1</div>');
+  h = h.replace(/\n/g, '<br>');
+  return h;
+}
+function mdNaive(s){
+  // render raw buffer as-is: a dangling ** or * shows as a stray marker
+  let h = mdRender(s);
+  h = h.replace(/\*\*/g, '<span class="stray">**</span>');
+  h = h.replace(/(^|[^>])\*(?![a-z]*&gt;)/g, '$1<span class="stray">*</span>');
+  return h;
+}
+function mdSafe(s){
+  let t = s;
+  if(((t.match(/\*\*/g)||[]).length) % 2 === 1) t += "**";  // close dangling bold
+  const singles = (t.replace(/\*\*/g,"").match(/\*/g)||[]).length;
+  if(singles % 2 === 1) t += "*";                           // close dangling italic
+  return mdRender(t);
+}
+
+function renderParse(){
+  const buf = parseBuf;
+  rawBox.textContent = buf || "(empty — press ▶ Stream the chunks)";
+  if(parseMode === "json"){
+    naiveLbl.textContent = "Naive: JSON.parse(buffer)";
+    safeLbl.textContent  = "Safe: render completed fields";
+    if(!buf){
+      naiveBox.innerHTML = '<span class="ghost">idle</span>';
+      safeBox.innerHTML  = '<span class="ghost">idle</span>';
+      return;
+    }
+    const r = tryParse(buf);
+    if(r.ok){
+      naiveBox.innerHTML = '<span class="ok">✓ valid JSON — parsed on the FINAL byte:</span>\n' + escapeHtml(JSON.stringify(JSON.parse(buf), null, 2));
+    } else {
+      naiveBox.innerHTML = '<span class="err">✗ SyntaxError: '+escapeHtml(r.err)+'</span>\n<span class="ghost">…throws every tick until the last byte arrives.</span>';
+    }
+    const fields = extractFields(buf);
+    if(!fields.length){
+      safeBox.innerHTML = '<span class="ghost">…waiting for the first complete field</span>';
+    } else {
+      safeBox.innerHTML = fields.map(([k,v])=>`<div class="fieldrow"><span class="fkey">${escapeHtml(k)}</span><span class="fval">${escapeHtml(v)}</span></div>`).join("")
+        + (r.ok ? '<div class="text-[11px] mt-1 ok">✓ all fields in</div>' : '<div class="text-[11px] mt-1 ghost">▓ one more field still arriving…</div>');
+    }
+  } else {
+    naiveLbl.textContent = "Naive: render raw buffer";
+    safeLbl.textContent  = "Safe: close dangling markers";
+    if(!buf){
+      naiveBox.innerHTML = '<span class="ghost">idle</span>';
+      safeBox.innerHTML  = '<span class="ghost">idle</span>';
+      return;
+    }
+    naiveBox.innerHTML = mdNaive(buf);
+    safeBox.innerHTML  = mdSafe(buf);
+  }
+}
+
+function resetParse(){
+  clearParseTimers();
+  parseBuf = "";
+  renderParse();
+  parseNote.innerHTML = parseMode === "json"
+    ? 'The <b>naive</b> column calls <span class="mono">JSON.parse</span> on the whole buffer every tick — it throws for the entire stream and only succeeds on the last chunk. The <b>safe</b> column extracts complete <span class="mono">"key":value</span> pairs, so fields light up as they finish and the half-arrived one just waits.'
+    : 'Markdown degrades more gracefully than JSON, but an <b>unclosed</b> <span class="mono">**bold**</span> or <span class="mono">*italic*</span> marker mid-stream renders as a stray asterisk (naive). The <b>safe</b> column closes any dangling marker before rendering, so partial markdown always looks clean.';
+}
+
+function streamParse(){
+  clearParseTimers();
+  parseBuf = "";
+  const full = parseMode === "json" ? JSON_SAMPLE : MD_SAMPLE;
+  const size = 11;
+  const chunks = [];
+  for(let i=0;i<full.length;i+=size) chunks.push(full.slice(i,i+size));
+  chunks.forEach((c,i)=>{
+    parseTimers.push(setTimeout(()=>{
+      parseBuf += c;
+      renderParse();
+    }, 200*(i+1)));
+  });
+  btnStream.disabled = true; btnStream.style.opacity = ".5";
+  parseTimers.push(setTimeout(()=>{ btnStream.disabled=false; btnStream.style.opacity="1"; }, 200*(chunks.length+1)));
+}
+
+mJson.onclick = () => { if(parseMode==="json") return; parseMode="json"; mJson.classList.add("on"); mMd.classList.remove("on"); resetParse(); };
+mMd.onclick   = () => { if(parseMode==="md") return; parseMode="md"; mMd.classList.add("on"); mJson.classList.remove("on"); resetParse(); };
+btnStream.onclick = () => streamParse();
+btnPreset.onclick = () => resetParse();
+
+resetRace();
+resetParse();
+
+// ===== UNDERSTAND step engine =====
+const STEPS = [
+ { title:"1. The problem: waiting for the whole answer", why:"A model writes its answer one token at a time. The simplest thing to do is <strong>buffer</strong> — wait for the full response, then send it. But generation can take seconds (longer for a big answer or a loaded model), and during all of it the user sees a spinner and nothing else. It reads as <em>frozen</em>. The generation isn't slow to <em>start</em> — the first token is ready almost immediately — you're just hiding it until the end.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">buffered:  [ ......... spinner ......... ] then WALL OF TEXT<br>user sees nothing for the whole generation<br>first token was ready at ~300ms — hidden until ~3000ms</div>`, code:`// Buffered: one response, shown only when fully done.
+const answer = await model.generate(prompt); // seconds of nothing
+render(answer);                               // then it all appears at once` },
+ { title:"2. The idea: emit tokens as they're generated", why:"Streaming flips the delivery: instead of holding the answer, <strong>push each token to the client the moment the model produces it</strong>. The user starts reading the first sentence while the model is still writing the last. Throughput is unchanged — the same tokens arrive in the same order at the same rate — but they arrive <em>visibly</em> and <em>continuously</em> instead of in one final dump.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">streamed:  S..t..r..e..a..m..i..n..g.. →<br>token 1 painted at ~300ms, rest type out live<br>same total time, but the screen is never empty</div>`, code:`// Streamed: flush each token as it is produced.
+for await (const token of model.generate(prompt)) {
+  send(token);   // client renders it immediately
+}` },
+ { title:"3. The transport: SSE / chunked HTTP", why:"The plumbing is <strong>Server-Sent Events</strong> (or plain chunked HTTP): one long-lived HTTP response whose body is a series of small <span class='mono'>data:</span> frames, each ended by a blank line, instead of one big JSON body. The server writes-and-flushes a frame per token; the browser's <span class='mono'>fetch</span> reader hands you the bytes as they land. No websockets, no polling — it's ordinary HTTP kept open.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Content-Type: text/event-stream<br><br>data: {"token":"Stream"}<br>data: {"token":"ing"}<br>data: [DONE]</div>`, code:`res.writeHead(200, { "Content-Type": "text/event-stream" });
+for await (const tok of gen) {
+  res.write("data: " + JSON.stringify({ tok }) + "\\n\\n");
+  res.flush?.();   // must flush, or a proxy buffers it all
+}` },
+ { title:"4. TTFT vs total time — two latencies", why:"Streaming is only interesting because there are <strong>two</strong> latencies, not one. <strong>Time-to-first-token (TTFT)</strong> is how long until the first content appears; <strong>time-to-complete</strong> is how long until the last. Buffering makes them equal (you see nothing until the end). Streaming decouples them: TTFT drops to a few hundred ms while total stays the same. TTFT is the lever, and it's nearly free to pull.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">buffered:  TTFT = total   = 3000ms<br>streamed:  TTFT = 300ms,  total = 3000ms<br>same total — 10x lower TTFT</div>`, code:`// buffered:  first content == last content
+// streamed:  first content much earlier, last content same
+ttft_streamed  = 300;   // ms — first token
+ttft_buffered  = 3000;  // ms — whole answer
+total_both     = 3000;  // ms — identical` },
+ { title:"5. Perceived latency — why it feels 5–10x faster", why:"Humans don't measure throughput; they measure <em>how long until something happened</em>. A screen that starts filling at 300 ms feels responsive even if it keeps writing for 3 seconds; a blank screen for 3 seconds feels broken. So the felt speed tracks <strong>TTFT</strong>, not total time — and a 300 ms TTFT against a 3 s total reads as roughly <strong>10× faster</strong>, for zero change in the actual work done. (When TTFT is already most of the total — a very slow model — the multiplier shrinks.)", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">felt speed ≈ total / TTFT<br>buffered:  3000 / 3000 = 1x<br>streamed:  3000 / 300  ≈ 10x faster (same work!)</div>`, code:`// perceived speedup is a ratio of the two latencies
+feelsFaster = totalTime / timeToFirstToken;
+// 3000 / 300 ≈ 10x  — throughput never changed` },
+ { title:"6. The reader loop — consume the stream", why:"On the client you <span class='mono'>fetch</span> the endpoint and read <span class='mono'>res.body</span> as a <strong>ReadableStream</strong>. Each <span class='mono'>read()</span> gives you whatever bytes arrived — <em>not</em> aligned to tokens or lines. So you decode into a running buffer and loop until the stream closes. This loop is the heart of every streaming client.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fetch → res.body.getReader()<br>loop: read() → decode → buffer += chunk<br>until { done: true }</div>`, code:`const reader = res.body.getReader();
+const dec = new TextDecoder();
+let buffer = "";
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+  buffer += dec.decode(value, { stream: true });
+}` },
+ { title:"7. Incremental rendering — append safely", why:"For prose, rendering is trivial: append each token to the DOM and the answer types itself out. The subtle part is that chunks can split <strong>mid-line</strong>, so you must pull only <em>complete</em> SSE frames out of the buffer and leave the unfinished tail for the next read. Parsing a half-arrived frame is the classic first bug — the fix is a buffer, not a bigger regex.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">chunk A: 'data: {"tok":"Str'<br>chunk B: 'eam"}\\n\\ndata: {"tok"...'<br>→ buffer, split on blank line, keep the tail</div>`, code:`let i;
+while ((i = buffer.indexOf("\\n\\n")) !== -1) {
+  const frame = buffer.slice(0, i);
+  buffer = buffer.slice(i + 2);      // keep remainder
+  onToken(JSON.parse(frame.slice(6)).tok);
+}` },
+ { title:"8. Parsing partial structured output", why:"Streaming <strong>JSON</strong> is where people get burned. The accumulated buffer is <em>invalid</em> JSON for almost the entire stream, so calling <span class='mono'>JSON.parse</span> each tick throws until the final byte. Two safe options: render only the fields that have <strong>fully arrived</strong> (the half-arrived one just waits), or feed the buffer to a <strong>tolerant / streaming JSON parser</strong> that yields complete paths as they close. Markdown degrades more gracefully, but watch for unclosed <span class='mono'>**bold**</span> or code fences.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">buffer: {"city":"Paris","pop<br>JSON.parse → ✗ throws (incomplete)<br>safe → show {city:"Paris"}, wait on "pop..."</div>`, code:`// don't parse the partial each tick — render what's complete
+function renderPartial(buf) {
+  for (const [k, v] of completedFields(buf)) setField(k, v);
+}
+// or: use a streaming/tolerant JSON parser that emits closed paths` },
+ { title:"9. Cancellation — abort mid-stream", why:"Because the connection stays open, you can <strong>abort</strong> it. An <span class='mono'>AbortController</span> signal passed to <span class='mono'>fetch</span> lets you tear the stream down; the server sees the client drop and stops generating, so you stop paying for tokens on an answer nobody wants. And the partial output already on screen stays there and is usable — a buffered request that you cancel leaves you with <strong>nothing</strong>. Cancellability is a real, underrated streaming win.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">controller.abort()<br>→ stream closes → server halts generation<br>streamed: keep partial ✓   buffered: lose everything ✗</div>`, code:`const c = new AbortController();
+fetch(url, { signal: c.signal });
+stopBtn.onclick = () => c.abort();  // server stops; partial text stays` },
+ { title:"10. When NOT to stream", why:"Streaming is a UX tool for a <em>human reading in real time</em>. Skip it when that's not the case: when you need <strong>one validated object</strong> (parse the whole thing, then act — a half-streamed function call is useless), for <strong>batch / non-interactive</strong> jobs where no one is waiting on TTFT, for <strong>tool-call-only</strong> turns the user never reads, and for <strong>tiny responses</strong> where buffering is already instant. Streaming adds parsing and cancellation plumbing — spend it only where the felt latency matters. Next: system prompts.", concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">stream when: chat, long answers, live UIs<br>buffer when: one validated object · batch job<br>· tool-only turn · tiny/instant response</div>`, code:`// buffer when the consumer is code, not a person
+const data = JSON.parse(await model.generate(schemaPrompt));
+validate(data);      // needs the WHOLE object — streaming buys nothing
+act(data);` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
