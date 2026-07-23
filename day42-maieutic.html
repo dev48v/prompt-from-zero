@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 42 — Maieutic Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .stat { font-variant-numeric:tabular-nums; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sect { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-top:10px; margin-bottom:4px; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+  .segbtn { font-size:12px; font-weight:700; padding:6px 10px; border-radius:8px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .segbtn.on { background:#7c3aed; color:#fff; border-color:#7c3aed; box-shadow:0 2px 6px rgba(124,58,237,.3); }
+
+  /* ===== maieutic tree ===== */
+  .tree { padding:4px 2px; }
+  .node { margin:7px 0; }
+  .ncard { border:1px solid #e2e8f0; border-radius:12px; padding:10px 12px; background:#fff; transition:all .35s ease; position:relative; }
+  .ncard:hover { border-color:#c4b5fd; }
+  .node.q > .ncard { border-color:#ddd6fe; background:#f5f3ff; }
+  .node.win > .ncard { border-color:#86efac; background:#f0fdf4; box-shadow:0 2px 10px rgba(22,163,74,.15); }
+  .node.pruned > .ncard { border-color:#fecaca; background:#fef2f2; opacity:.72; }
+  .node.pruned .nprop { text-decoration:line-through; color:#b91c1c; }
+  .nhead { display:flex; align-items:flex-start; gap:8px; }
+  .tgl { cursor:pointer; user-select:none; font-size:13px; color:#7c3aed; font-weight:800; margin-top:1px; width:14px; flex:none; }
+  .tgl-none { color:#cbd5e1; width:14px; flex:none; text-align:center; margin-top:1px; }
+  .nbody { flex:1; }
+  .nprop { font-size:13.5px; font-weight:700; color:#1e293b; line-height:1.4; }
+  .node.q .nprop { font-size:15px; }
+  .njust { font-size:12px; color:#64748b; line-height:1.5; margin-top:3px; }
+  .njust .lead { color:#7c3aed; font-weight:700; }
+  .nbadges { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; align-items:center; }
+  .tf { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:2px 8px; border-radius:999px; }
+  .tf.argT { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .tf.argF { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+  .tf.believeT { background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe; }
+  .tf.q { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .integ { font-size:10px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .integ.yes { background:#ecfeff; color:#0e7490; border:1px solid #a5f3fc; }
+  .integ.no  { background:#fff7ed; color:#c2410c; border:1px solid #fed7aa; }
+  .conf { font-size:10px; color:#94a3b8; font-variant-numeric:tabular-nums; }
+  .prunetag { display:inline-block; font-size:10.5px; font-weight:800; color:#b91c1c; margin-top:6px; }
+  .children { margin-left:16px; padding-left:14px; border-left:2px dashed #e2e8f0; margin-top:2px; }
+  .node.pruned > .children { border-left-color:#fecaca; }
+  .node.win > .children { border-left-color:#bbf7d0; }
+  .hidden-kids { display:none; }
+
+  .qverdict { font-size:12px; font-weight:800; padding:3px 10px; border-radius:999px; }
+  .qverdict.pending { background:#f1f5f9; color:#64748b; }
+  .qverdict.f { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+
+  .answer { margin-top:14px; border-radius:14px; padding:14px 16px; border:1px solid #e2e8f0; background:#f8fafc; }
+  .answer.solved { border-color:#86efac; background:#f0fdf4; }
+
+  .flash-red { animation: flashRed .8s ease; }
+  @keyframes flashRed { 0%{ background:#fff; } 40%{ background:#fee2e2; } 100%{ background:#fef2f2; } }
+  .flash-green { animation: flashGreen .8s ease; }
+  @keyframes flashGreen { 0%{ background:#fff; } 40%{ background:#dcfce7; } 100%{ background:#f0fdf4; } }
+
+  .contra-line { display:flex; align-items:flex-start; gap:8px; font-size:12px; padding:7px 9px; border-radius:8px; background:#fef2f2; border:1px solid #fecaca; color:#7f1d1d; margin-top:6px; }
+  .contra-line .x { color:#dc2626; font-weight:800; }
+
+  /* compare panel */
+  .cmpgrid { display:grid; gap:12px; }
+  @media(min-width:768px){ .cmpgrid { grid-template-columns:repeat(3,1fr); } }
+  .cmpcard { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .cmphead { padding:8px 12px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:6px; border-bottom:1px solid #f1f5f9; }
+  .cmpbody { padding:11px 12px; font-size:11.5px; line-height:1.5; color:#475569; }
+  .cmpchain { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11px; background:#f8fafc; border-radius:8px; padding:8px 9px; margin:6px 0; white-space:pre-wrap; word-break:break-word; }
+  .cmpout { font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; display:inline-block; margin-top:4px; }
+  .cmpout.wrong { background:#fee2e2; color:#b91c1c; }
+  .cmpout.right { background:#dcfce7; color:#15803d; }
+  .cmphead.cot { background:#fff7ed; color:#c2410c; }
+  .cmphead.sc  { background:#eff6ff; color:#1d4ed8; }
+  .cmphead.mai { background:#f5f3ff; color:#6d28d9; }
+  .vote { display:inline-block; width:14px; height:14px; border-radius:3px; margin-right:2px; vertical-align:-2px; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 42</div>
+      <h1 class="text-xl font-bold">🌲 Maieutic Prompting — instead of trusting <strong>one</strong> reasoning chain, make the model <strong>explain</strong> a claim, then recursively justify every premise into a <strong>tree</strong> of explanations. Probe each node for logical <strong>integrity</strong>, detect the <strong>contradictions</strong> between them, and <strong>prune</strong> the inconsistent subtree — the consistent survivors give an answer that holds <em>even when the model is wrong at the leaves</em>.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Grow a maieutic tree for a tricky question — then watch logic, not a vote, prune away the wrong answer.</h2>
+        <p class="text-slate-500 mb-5">Ask a model a deceptively simple question — <span class="mono">"Is a whale a fish?"</span> — and a single reasoning chain can wander into the intuitive-but-wrong answer ("it lives in water and swims, so it's a fish"). <strong>Maieutic prompting</strong> doesn't ask for one answer; it asks the model to <strong>explain the claim both ways</strong> and then recursively justify every premise, growing a <strong>tree of explanations</strong>. Some premises are <span class="text-cyan-700 font-semibold">logically integral</span> — the model defends them consistently no matter how you ask ("a whale is a mammal", "mammals are not fish"). Others are <span class="text-orange-700 font-semibold">shaky</span> — asserted here but easily flipped ("anything that lives in water is a fish"). Below: press <span class="mono">▶ Grow the tree</span> to build it, then <span class="mono">🔍 Detect contradictions &amp; prune</span>. The tree is a <strong>real data structure</strong> in JavaScript and the contradiction check is a <strong>real graph traversal</strong> — it finds where a shaky premise collides with the integral facts, marks that subtree <span class="text-red-600 font-semibold">red</span>, prunes it, and reads the answer off the <span class="text-green-600 font-semibold">consistent survivors</span>. Then scroll to the panel that shows <em>why this beats a single chain</em> — and why it even beats a majority vote.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-3 mb-3">
+        <div class="text-center text-sm mb-3">
+          <span class="text-slate-500">Proposition under test:</span>
+          <span class="mono font-bold text-violet-700 mx-1">"A whale is a fish."</span>
+          <span id="qStatus" class="qverdict pending">unresolved</span>
+        </div>
+        <div class="flex justify-center gap-2 flex-wrap">
+          <button id="btnGrow"  class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-semibold text-xs" style="min-width:170px;">▶ Grow the tree</button>
+          <button id="btnPrune" class="bg-white border border-red-300 text-red-600 hover:bg-red-50 px-4 py-1.5 rounded-lg font-semibold text-xs" disabled style="opacity:.5;">🔍 Detect contradictions &amp; prune</button>
+          <button id="btnResetTree" class="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-4 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+        </div>
+        <div id="treeNote" class="text-xs text-slate-400 text-center mt-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4">
+        <div id="treeRoot" class="tree"></div>
+        <div id="contraBox"></div>
+        <div id="answerBox" class="answer"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-4">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Why this beats a single chain — same question, three methods</div>
+        <div class="text-xs text-slate-400 mb-3">All three get the <em>same</em> question. Chain-of-thought commits to one line of reasoning with no check. Self-consistency samples several chains and <strong>votes</strong> — but a vote measures agreement, not truth, so a shared intuition makes the majority confidently wrong. Maieutic prompting is the only one that resolves the answer by <strong>logical consistency</strong>, so the false premise is out-voted by the facts it contradicts.</div>
+        <div class="cmpgrid">
+          <div class="cmpcard">
+            <div class="cmphead cot">🪜 Chain-of-Thought <span class="badge" style="background:#ffedd5;color:#9a3412;">1 chain</span></div>
+            <div class="cmpbody">
+              One linear chain, no self-check.
+              <div class="cmpchain">whale → lives in the ocean
+→ swims like a fish
+→ <span style="color:#c2410c;font-weight:700;">so it must be a fish</span></div>
+              A single wrong step sails straight through — nothing in the method notices.
+              <div class="cmpout wrong">✗ "a whale is a fish" — WRONG</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead sc">🗳️ Self-Consistency <span class="badge" style="background:#dbeafe;color:#1e40af;">vote of 5</span></div>
+            <div class="cmpbody">
+              Sample 5 chains, take the majority.
+              <div class="cmpchain" id="voteChains"></div>
+              The shared "looks like a fish" intuition biases most samples the same way — the vote is <em>consistent</em>, just not <em>correct</em>.
+              <div class="cmpout wrong">✗ majority 3–2 says "fish" — WRONG</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead mai">🌲 Maieutic <span class="badge" style="background:#ede9fe;color:#6d28d9;">tree + logic</span></div>
+            <div class="cmpbody">
+              Explain both ways, build the tree, find the contradiction.
+              <div class="cmpchain">"all water-dwellers are fish"
+   <span style="color:#dc2626;font-weight:700;">✗ contradicts</span>
+"whale is a mammal" +
+"mammals are not fish"
+→ prune the false premise</div>
+              The integral facts out-weigh the shaky premise, so logic — not popularity — decides.
+              <div class="cmpout right">✓ "not a fish, it's a mammal" — CORRECT</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Maieutic prompting = reason as a tree you can audit, not a chain you must trust.</strong> Ask the model to <strong>explain</strong> a proposition both ways, recurse into every premise to grow a <strong>tree of explanations</strong>, keep the <strong>logically integral</strong> nodes (defended consistently no matter how you ask) as near-hard constraints, and resolve the whole thing as a weighted-satisfiability problem: wherever a shaky premise <strong>contradicts</strong> the integral facts, <strong>prune</strong> that subtree. The surviving consistent set is the answer — and it comes with its own rationale. Unlike chain-of-thought (one unchecked line) or self-consistency (a vote that can be confidently wrong), maieutic decides by <strong>logical consistency</strong>, so it stays right even when the model is unreliable at the leaves. It costs many more calls, so spend it on hard true/false, commonsense, and logical questions where correctness and an auditable reason matter.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Maieutic prompting = explain both ways → recurse into a tree → test each node's logical integrity → detect &amp; prune contradictions → read the answer off the consistent survivors. Robust where a single chain — or a majority vote — is brittle.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How maieutic prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A maieutic pipeline is a loop of ordinary prompt calls wrapped around a tiny bit of graph logic: <span class="mono text-violet-700">explain both ways → recurse into premises → test each node's integrity → build a consistency graph → solve MAX-SAT → prune → read the answer</span>. Here it is end to end — the prompts, the tree, the both-directions integrity probe, the relation graph, the weighted solve that prunes contradictions, and when it's worth the extra calls.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Ask for an explanation — both ways</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Don't ask "is Q true?". Ask the model to <strong>explain</strong> Q as true, and separately to explain Q as false. An explanation exposes the <em>premises</em> the answer rests on — and getting both sides is what later lets you test whether a claim survives being argued against.</p>
+        <div class="relative"><pre>// STEP 1 — explain the proposition BOTH ways (abductive prompting).
+const Q = "A whale is a fish.";
+
+const proTrue  = await llm(`${Q}\nThis is TRUE because`);   // argue for
+const proFalse = await llm(`${Q}\nThis is FALSE because`);  // argue against
+
+// each explanation names the premises its conclusion depends on:
+//   proTrue  -> "it lives in water and swims, and water animals are fish"
+//   proFalse -> "it is a mammal, and mammals are not fish"</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Recurse into the premises — grow the tree</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Treat each premise as a <strong>new proposition</strong> and explain <em>it</em> both ways too. Repeat to a fixed depth (or until a premise is self-evident). The result is a <strong>tree</strong>: the root is the question, and every node is a sub-explanation that bottoms out in simple, checkable claims.</p>
+        <div class="relative"><pre>// STEP 2 — recurse: every premise becomes a child proposition.
+async function grow(prop, depth) {
+  const node = { prop, children: [] };
+  if (depth === 0) return node;                 // stop at max depth
+  for (const side of ["TRUE", "FALSE"]) {
+    const expl = await llm(`${prop}\nThis is ${side} because`);
+    for (const premise of extractPremises(expl)) {
+      node.children.push(await grow(premise, depth - 1)); // <-- recurse
+    }
+  }
+  return node;                                   // a real explanation TREE
+}
+const tree = await grow(Q, 2);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Test each node's logical integrity</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the key filter. For each proposition, ask the model to defend it as <strong>true</strong> AND to defend it as <strong>false</strong>. If it firmly holds one side and contradicts itself trying to argue the other, the node is <strong>logically integral</strong> — a trustworthy anchor. If it will happily argue both, it's shaky and gets a low weight.</p>
+        <div class="relative"><pre>// STEP 3 — a node is "integral" if the model can only defend ONE side.
+async function isIntegral(prop) {
+  const affirm = await llm(`${prop}\nWhy is this TRUE?`);
+  const deny   = await llm(`${prop}\nWhy is this FALSE?`);
+  // integral = the model firmly commits one way and cannot honestly
+  // argue the other (it contradicts itself or refuses).
+  return firmlyHolds(affirm) !== firmlyHolds(deny); // true = trustworthy
+}
+// "a whale is a mammal"          -> integral (only defends TRUE)
+// "all water-dwellers are fish"  -> NOT integral (flips under pressure)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Build the consistency graph (relations)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Ask the model (or a natural-language-inference check) whether pairs of propositions are <strong>consistent</strong> or <strong>contradictory</strong>. Those become edges. Now you have a graph: nodes weighted by integrity, edges marking which claims can and cannot both be true.</p>
+        <div class="relative"><pre>// STEP 4 — relations between propositions become graph edges.
+function relation(a, b) {
+  // "consistent" (can both hold) or "contradict" (cannot both be true)
+  return llmNLI(a, b); // e.g. entailment / contradiction / neutral
+}
+// edge found:
+//   "all water-dwellers are fish"  ⨯  "mammals are not fish"  -> CONTRADICT
+const edges = [
+  { a: "all water-dwellers are fish", b: "mammals are not fish", type: "contradict" }
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Solve MAX-SAT and prune the inconsistent subtree</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Turn it into <strong>weighted satisfiability</strong>: each node is a variable, integral nodes are near-hard constraints (high weight), shaky ones are soft. Find the truth assignment that satisfies the most weighted constraints. The false premise loses — it's out-weighed by the integral chain it contradicts — so you <strong>prune it and the explanation built on top of it</strong>.</p>
+        <div class="relative"><pre>// STEP 5 — weighted-SAT: keep the max-consistent set, prune the rest.
+function resolve(nodes, edges) {
+  const weight = n => n.integral ? 100 : 5;      // integrity = constraint weight
+  // for each contradiction edge, the side backed by MORE integral
+  // weight wins; the loser (and its dependent subtree) is pruned.
+  for (const e of edges.filter(e => e.type === "contradict")) {
+    const loser = weight(e.a) < weight(e.b) ? e.a : e.b;
+    prune(loser);        // mark loser + descendants inconsistent (red)
+    pruneAncestorsThatDependedOn(loser);         // the branch collapses
+  }
+  return nodes.filter(n => n.state === "active"); // consistent survivors
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Read the answer — and know when to spend the calls</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The surviving consistent set all points one way — that's your answer, and the survivors <em>are</em> its rationale (an auditable trail, not a black box). Maieutic shines on hard true/false, commonsense, and logical questions where a single chain is brittle. It costs many model calls (explain both ways × recurse × integrity probes), so save it for when correctness and an explanation matter. Next up you'll switch topics to <strong>system prompts</strong>: the standing persona-and-rules turn that shapes everything the model says.</p>
+        <div class="relative"><pre>// STEP 6 — the survivors give the answer AND the reason.
+const survivors = resolve(nodes, edges);
+const answer = majoritySide(survivors);   // all consistent -> "NOT a fish"
+console.log(answer, survivors.map(n => n.prop)); // built-in audit trail
+
+// WHEN TO USE MAIEUTIC:
+//  - hard true/false, commonsense, logical questions (one chain is brittle)
+//  - when you need an AUDITABLE reason, not just an answer
+//  - when the model is unreliable at the leaves but its logic is checkable
+// WHEN NOT TO:  simple lookups, open-ended generation, or latency/cost-
+//               sensitive paths — it multiplies calls (explain × recurse × probe)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 42 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Maieutic Prompting</strong>: reason as a <strong>tree</strong> you can audit, not a chain you must trust. Ask the model to <strong>explain</strong> a proposition both ways, recurse into every premise to grow a tree, keep the <strong>logically integral</strong> nodes as near-hard constraints, build a <strong>consistency graph</strong>, and resolve it as <strong>MAX-SAT</strong> — pruning any subtree whose premise <strong>contradicts</strong> the integral facts. The consistent survivors give the answer <em>plus</em> its rationale, staying correct where chain-of-thought (one unchecked line) and self-consistency (a majority vote that can be confidently wrong) both fail. It trades many extra calls for logical robustness, so spend it on hard, checkable questions. <strong>👉 Next up — System prompts: the standing persona-and-rules turn (no user message) that sets the model's role, tone, and hard constraints before the conversation even begins.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK: the maieutic tree — a REAL data structure + REAL
+// contradiction detection / pruning. Node content is fixed
+// (no live model), but growing, the graph traversal that finds
+// the contradiction, and the prune that follows are all live JS.
+// ============================================================
+
+// Each node: id, prop text, justification, and either a `stance`
+// (explanation nodes argue the ROOT true/false) or a `belief`
+// (premise nodes assert their own claim). `integral` = does the
+// model defend it consistently both ways? `conf` = weight. `side`
+// = which root answer this evidence supports ("fish"/"notfish").
+const TREE = {
+  id:"Q", q:true,
+  prop:"A whale is a fish.",
+  just:"The proposition to judge. Maieutic prompting explains it BOTH ways, recurses into every premise, then keeps only the logically consistent part.",
+  open:true,
+  children:[
+    {
+      id:"E1", stance:"T", side:"fish", integral:false, conf:0.35, open:false,
+      prop:"Argues TRUE: a whale is a fish — it lives in the ocean and swims like one.",
+      just:"It is aquatic and torpedo-shaped, so on appearance it looks like a big fish.",
+      children:[
+        { id:"E1a", belief:"T", side:null, integral:true, conf:0.98, open:false,
+          prop:"Whales live in water and swim.",
+          just:"True — whales spend their entire lives in the ocean.", children:[] },
+        { id:"E1b", belief:"T", side:"fish", integral:false, conf:0.25, open:false, faulty:true,
+          prop:"Anything that lives in water and swims is a fish.",
+          just:"Asserted here — but the model over-generalises; pushed the other way it readily admits this is false.", children:[] }
+      ]
+    },
+    {
+      id:"E2", stance:"F", side:"notfish", integral:true, conf:0.90, open:false,
+      prop:"Argues FALSE: a whale is NOT a fish — it is a mammal.",
+      just:"Whales are warm-blooded, breathe air, and nurse their young — the defining traits of mammals, not fish.",
+      children:[
+        { id:"E2a", belief:"T", side:"notfish", integral:true, conf:0.95, open:false,
+          prop:"A whale is a mammal.",
+          just:"Integral — it is warm-blooded, breathes air with lungs, and feeds its calves milk.", children:[] },
+        { id:"E2b", belief:"T", side:"notfish", integral:true, conf:0.97, open:false,
+          prop:"Mammals are not fish.",
+          just:"Integral — mammals and fish are separate biological classes.", children:[] },
+        { id:"E2c", belief:"T", side:"notfish", integral:true, conf:0.92, open:false,
+          prop:"A whale breathes air through a blowhole; fish breathe water through gills.",
+          just:"Integral — whales must surface to breathe; fish extract oxygen from water.", children:[] }
+      ]
+    }
+  ]
+};
+
+// Logical contradiction relations (the maieutic consistency graph edges).
+const RELATIONS = [
+  { a:"E1b", b:"E2b",
+    why:"“anything that lives in water is a fish” cannot hold while “mammals are not fish” and “a whale is a mammal” are both true." }
+];
+
+let grown = false;
+let pruned = false;
+
+// ---- tree helpers (operate on the real structure) ----
+function flatten(node, arr, parent){
+  arr = arr || []; node.parent = parent || null; node.state = node.state || "active";
+  arr.push(node); (node.children||[]).forEach(c => flatten(c, arr, node)); return arr;
+}
+function byId(id){ return flatten(TREE).find(n => n.id === id); }
+function markSubtree(node, state){ node.state = state; (node.children||[]).forEach(c => markSubtree(c, state)); }
+// integrity-weighted mass of a subtree: integral nodes count fully, shaky ones ~15%.
+function subtreeIntegrity(node){
+  let w = node.integral ? node.conf : node.conf * 0.15;
+  (node.children||[]).forEach(c => w += subtreeIntegrity(c));
+  return w;
+}
+
+// ---- the REAL resolution: MAX-SAT-lite over the tree ----
+function resolve(){
+  const all = flatten(TREE);
+  all.forEach(n => n.state = "active");
+  const contradictions = [];
+
+  RELATIONS.forEach(r => {
+    const a = byId(r.a), b = byId(r.b);
+    const wa = subtreeIntegrity(a), wb = subtreeIntegrity(b);
+    const loser  = wa < wb ? a : b;
+    const winner = wa < wb ? b : a;
+    contradictions.push({ a, b, loser, winner, wa, wb, why: r.why });
+
+    // prune the losing node...
+    markSubtree(loser, "pruned");
+    // ...and climb: any NON-integral ancestor whose reasoning rested on the
+    // pruned premise now has no integral support left, so its branch collapses.
+    let p = loser.parent;
+    while (p && !p.q) {
+      if (!p.integral) { markSubtree(p, "pruned"); p = p.parent; }
+      else break;
+    }
+  });
+
+  // tint the surviving winning explanation branch green
+  const e2 = byId("E2");
+  if (e2.state === "active") markSubtree(e2, "win");
+
+  // aggregate surviving evidence by side -> the answer
+  let fish = 0, notfish = 0;
+  all.forEach(n => { if (n.state === "active" || n.state === "win") {
+    if (n.side === "fish")    fish    += n.conf;
+    if (n.side === "notfish") notfish += n.conf;
+  }});
+  const answer = notfish > fish ? "notfish" : "fish";
+  return { contradictions, fish, notfish, answer };
+}
+
+// ---- rendering ----
+const treeRootEl = document.getElementById("treeRoot");
+const contraBox  = document.getElementById("contraBox");
+const answerBox  = document.getElementById("answerBox");
+const qStatus    = document.getElementById("qStatus");
+const treeNote   = document.getElementById("treeNote");
+const btnGrow    = document.getElementById("btnGrow");
+const btnPrune   = document.getElementById("btnPrune");
+const btnResetTree = document.getElementById("btnResetTree");
+
+function nodeHtml(n){
+  const kids = n.children || [];
+  const hasKids = kids.length > 0;
+  const caret = hasKids ? `<span class="tgl" data-tgl="${n.id}">${n.open ? "▾" : "▸"}</span>`
+                        : `<span class="tgl-none">•</span>`;
+  let badges = "";
+  if (n.q){
+    badges = `<span class="tf q">root proposition</span>`;
+  } else if (n.stance){
+    badges = n.stance === "T"
+      ? `<span class="tf argT">explanation · argues TRUE</span>`
+      : `<span class="tf argF">explanation · argues FALSE</span>`;
+  } else if (n.belief){
+    badges = `<span class="tf believeT">premise · model says TRUE</span>`;
+  }
+  if (n.integral === true)  badges += `<span class="integ yes">🔒 logically integral</span>`;
+  if (n.integral === false) badges += `<span class="integ no">～ not integral (shaky)</span>`;
+  if (typeof n.conf === "number" && !n.q) badges += `<span class="conf">weight ${n.conf.toFixed(2)}</span>`;
+
+  const prune = n.state === "pruned"
+    ? `<div class="prunetag">✕ pruned — logically inconsistent, removed from the answer</div>` : "";
+
+  const childHtml = hasKids
+    ? `<div class="children ${n.open ? "" : "hidden-kids"}">${kids.map(nodeHtml).join("")}</div>` : "";
+
+  return `<div class="node ${n.q ? "q" : ""} ${n.state === "pruned" ? "pruned" : ""} ${n.state === "win" ? "win" : ""}" data-id="${n.id}">
+    <div class="ncard">
+      <div class="nhead">
+        ${caret}
+        <div class="nbody">
+          <div class="nprop">${escapeHtml(n.prop)}</div>
+          <div class="njust">${escapeHtml(n.just)}</div>
+          <div class="nbadges">${badges}</div>
+          ${prune}
+        </div>
+      </div>
+    </div>
+    ${childHtml}
+  </div>`;
+}
+
+function renderTree(){
+  treeRootEl.innerHTML = nodeHtml(TREE);
+  // wire toggles
+  treeRootEl.querySelectorAll("[data-tgl]").forEach(el => {
+    el.onclick = () => { const n = byId(el.dataset.tgl); n.open = !n.open; renderTree(); };
+  });
+}
+
+function setQStatus(){
+  if (pruned){ qStatus.className = "qverdict f"; qStatus.textContent = "resolved: FALSE — not a fish"; }
+  else { qStatus.className = "qverdict pending"; qStatus.textContent = grown ? "tree grown — now detect contradictions" : "unresolved"; }
+}
+
+function openAll(node, val){ node.open = val && (node.children||[]).length > 0; (node.children||[]).forEach(c => openAll(c, val)); }
+
+function doGrow(){
+  grown = true; pruned = false;
+  openAll(TREE, true); TREE.open = true;
+  flatten(TREE).forEach(n => n.state = "active");
+  renderTree();
+  contraBox.innerHTML = "";
+  answerBox.className = "answer";
+  answerBox.innerHTML = `<span class="text-slate-600 text-sm"><strong>Tree grown.</strong> Two explanations of the root, each recursed into its premises. Notice the <span class="text-orange-700 font-semibold">shaky</span> premise on the TRUE branch (<span class="mono">"anything in water is a fish"</span>) and the <span class="text-cyan-700 font-semibold">integral</span> facts on the FALSE branch. Now press <strong>🔍 Detect contradictions &amp; prune</strong>.</span>`;
+  treeNote.innerHTML = `The tree is a live JS object (root + 2 explanations + 5 premises). Click any node's caret to collapse/expand it.`;
+  btnPrune.disabled = false; btnPrune.style.opacity = "1";
+  btnGrow.textContent = "▶ Re-grow";
+  setQStatus();
+}
+
+function doPrune(){
+  if (!grown) doGrow();
+  const res = resolve();
+  pruned = true;
+  openAll(TREE, true);
+  renderTree();
+
+  // contradiction report
+  const c = res.contradictions[0];
+  contraBox.innerHTML =
+    `<div class="contra-line flash-red">
+       <span class="x">✕ contradiction found</span>
+       <span>${escapeHtml(c.why)} &nbsp;→&nbsp; integral facts carry weight <b>${c.winner.id === "E2b" ? subtreeIntegrity(byId("E2")).toFixed(2) : c.wa.toFixed(2)}</b> vs the shaky premise's <b>${(byId("E1b").conf*0.15).toFixed(2)}</b>, so the shaky side is pruned and the branch it supported collapses.</span>
+     </div>`;
+
+  answerBox.className = "answer solved flash-green";
+  answerBox.innerHTML =
+    `<div class="text-xs uppercase font-bold text-green-700 tracking-wider mb-1">Answer from the consistent survivors</div>
+     <div class="text-lg font-bold text-slate-800">A whale is <span class="text-green-700">NOT a fish</span> — it is a mammal. 🐋</div>
+     <div class="text-sm text-slate-600 mt-1">The TRUE branch rested on the false premise <span class="mono">"anything in water is a fish"</span>, which contradicts the integral facts <span class="mono">"a whale is a mammal"</span> + <span class="mono">"mammals are not fish"</span>. That whole subtree is pruned (red). The surviving consistent set — evidence weight <b>${res.notfish.toFixed(2)}</b> for <em>not-a-fish</em> vs <b>${res.fish.toFixed(2)}</b> for <em>fish</em> — all points one way, and it doubles as the rationale.</div>`;
+
+  btnPrune.disabled = true; btnPrune.style.opacity = ".5";
+  treeNote.innerHTML = `Contradiction detection + prune just ran over the real tree. Red = pruned as inconsistent; green = the surviving consistent subtree.`;
+  setQStatus();
+}
+
+function resetTree(){
+  grown = false; pruned = false;
+  TREE.open = true; byId("E1").open = false; byId("E2").open = false;
+  flatten(TREE).forEach(n => n.state = "active");
+  renderTree();
+  contraBox.innerHTML = "";
+  answerBox.className = "answer";
+  answerBox.innerHTML = `<span class="text-slate-500 text-sm">Idle — press <strong>▶ Grow the tree</strong> to expand the two explanations and their premises, then detect contradictions.</span>`;
+  treeNote.innerHTML = `The root proposition has two explanations (argues TRUE / argues FALSE). Grow the tree to reveal the premises under each.`;
+  btnPrune.disabled = true; btnPrune.style.opacity = ".5";
+  btnGrow.textContent = "▶ Grow the tree";
+  setQStatus();
+}
+
+btnGrow.onclick = doGrow;
+btnPrune.onclick = doPrune;
+btnResetTree.onclick = resetTree;
+resetTree();
+
+// self-consistency vote chips (illustrative)
+document.getElementById("voteChains").innerHTML =
+  `chain 1 → fish  <span class="vote" style="background:#fecaca;"></span>
+chain 2 → fish  <span class="vote" style="background:#fecaca;"></span>
+chain 3 → NOT fish <span class="vote" style="background:#bbf7d0;"></span>
+chain 4 → fish  <span class="vote" style="background:#fecaca;"></span>
+chain 5 → NOT fish <span class="vote" style="background:#bbf7d0;"></span>`;
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. The problem: one chain has no error-check", why:"Chain-of-thought writes a <strong>single</strong> line of reasoning and commits to wherever it lands. That's a huge improvement over answering blind, but it has no built-in check: if any step is wrong — say the intuitive leap “a whale lives in water and swims, so it's a fish” — the wrong conclusion sails straight through. Nothing in the method notices the mistake, because the method is just “think out loud, then answer.” The chain is only as strong as its weakest link, and it never re-examines its own links.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT:  whale → swims in the ocean → <span style="color:#c2410c">so it's a fish ✗</span><br>one chain, one shot, no self-check<br>a single bad step = a confidently wrong answer</div>`,
+   code:`// Chain-of-thought: one chain, taken on faith.
+const answer = await llm(Q + "\\nLet's think step by step.");
+// if any step is wrong, the wrong answer just... comes out.
+// nothing in the method re-examines the reasoning.` },
+ { title:"2. Self-consistency helps — but only against noise", why:"Self-consistency (Day 3) samples <strong>many</strong> chains and takes the <strong>majority vote</strong>. That cancels out <em>random</em> slips beautifully. But it can't fix a <em>systematic</em> error: if the model shares one wrong intuition across most samples, the majority is confidently, consistently wrong. A vote measures <strong>agreement, not truth</strong>. On “is a whale a fish?” the “looks like a fish” bias pushes most chains the same way — so the vote lands on the wrong answer with high confidence.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">5 chains → 🟥🟥🟩🟥🟩<br>majority = “fish” (3–2) ✗<br>consistent ≠ correct — a shared bias out-votes the truth</div>`,
+   code:`// Self-consistency: sample N, take the mode.
+const votes = await Promise.all(
+  Array.from({length: 5}, () => llm(Q + "\\nThink step by step."))
+);
+return majority(votes);   // fixes RANDOM error, not a SHARED wrong intuition` },
+ { title:"3. The maieutic idea: explain, don't just answer", why:"Maieutic prompting (from the Greek for the <em>Socratic “midwife” method</em>) flips the request. Instead of “what's the answer?” it asks the model to <strong>explain</strong> the proposition: “Q is true <em>because…</em>” and “Q is false <em>because…</em>”. An explanation is far more useful than an answer, because it <strong>surfaces the premises</strong> the conclusion depends on. Once the premises are out in the open, you can interrogate <em>them</em> instead of taking the conclusion on trust.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q = “a whale is a fish”<br>explain TRUE  → “…lives in water, water animals are fish”<br>explain FALSE → “…it's a mammal, mammals aren't fish”<br>now the PREMISES are visible</div>`,
+   code:`// Explain the proposition BOTH ways (abductive prompting).
+const proTrue  = await llm(Q + "\\nThis is TRUE because");
+const proFalse = await llm(Q + "\\nThis is FALSE because");
+// each explanation names the premises its conclusion rests on.` },
+ { title:"4. Recurse: build a tree of explanations", why:"Now the recursive move: treat each <strong>premise</strong> as a new proposition and ask the model to explain <em>it</em> both ways too — then its premises, and so on, to a fixed depth. What you get is a <strong>tree</strong>: the root is the original question, each node is a sub-explanation, and the leaves are simple claims that are easy to judge. This is the structural difference from every linear method — reasoning becomes a branching object you can inspect, not a single thread you must accept.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q<br>├─ TRUE: lives in water → “all water animals are fish”<br>└─ FALSE: is a mammal → “mammals are not fish”<br>a TREE of explanations, not one chain</div>`,
+   code:`async function grow(prop, depth) {
+  const node = { prop, children: [] };
+  if (!depth) return node;
+  for (const side of ["TRUE", "FALSE"]) {
+    const expl = await llm(prop + "\\nThis is " + side + " because");
+    for (const p of extractPremises(expl))
+      node.children.push(await grow(p, depth - 1)); // recurse
+  }
+  return node;
+}` },
+ { title:"5. Logical integrity: query each node both ways", why:"This is the heart of the method. For every proposition in the tree, ask the model to defend it as <strong>true</strong> and, separately, as <strong>false</strong>. If it firmly holds one side and <em>can't honestly</em> argue the other (it hedges, refuses, or contradicts itself), the node is <strong>logically integral</strong> — a trustworthy anchor you can treat almost like a hard fact. If the model will happily argue <em>both</em> sides with equal ease, the node is <strong>shaky</strong> and gets a low weight. Integrity is how maieutic separates the reliable facts (“a whale is a mammal”) from the model's careless over-generalisations (“water animals are fish”).",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">“a whale is a mammal” → defends TRUE only  → 🔒 INTEGRAL<br>“all water animals are fish” → flips either way → ～ SHAKY<br>integrity = can it be argued only ONE way?</div>`,
+   code:`async function isIntegral(prop) {
+  const affirm = await llm(prop + "\\nWhy is this TRUE?");
+  const deny   = await llm(prop + "\\nWhy is this FALSE?");
+  // integral if the model commits to exactly one side.
+  return firmlyHolds(affirm) !== firmlyHolds(deny);
+}` },
+ { title:"6. Relations: consistency vs contradiction", why:"Individual nodes aren't enough — you need to know how they <strong>relate</strong>. Ask the model (or a natural-language-inference check) whether two propositions are <strong>consistent</strong> (both can hold) or <strong>contradictory</strong> (they cannot both be true). Each contradiction becomes an <strong>edge</strong> in a graph. Now the tree of explanations is also a graph of logical constraints: nodes weighted by integrity, edges marking incompatibilities. This is the raw material the solver works on.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">“all water animals are fish”<br>&nbsp;&nbsp;&nbsp;⨯ CONTRADICTS ⨯<br>“mammals are not fish” + “a whale is a mammal”</div>`,
+   code:`function relation(a, b) {
+  return llmNLI(a, b);   // "entail" | "contradict" | "neutral"
+}
+const edges = [
+  { a: "all water animals are fish",
+    b: "mammals are not fish", type: "contradict" }
+];` },
+ { title:"7. Find the contradictions in the graph", why:"With the graph built, contradiction detection is a straightforward <strong>traversal</strong>: walk the edges and flag every pair whose claims are logically incompatible. In the whale tree there's a sharp one — the shaky premise “anything that lives in water is a fish” directly contradicts the integral pair “a whale is a mammal” + “mammals are not fish.” Both can't be true. That collision is exactly the signal a single chain (or a vote) never produces, and it's what the next step resolves.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">walk edges → find incompatible pairs<br>🟥 “water animals are fish”  ✗  🔒 “mammals aren't fish”<br>a contradiction the vote could never see</div>`,
+   code:`function findContradictions(nodes, edges) {
+  return edges
+    .filter(e => e.type === "contradict")
+    .map(e => ({ ...e, wA: integrity(e.a), wB: integrity(e.b) }));
+}` },
+ { title:"8. Resolve by weighted satisfiability (MAX-SAT)", why:"A contradiction means the tree can't <em>all</em> be true — so you find the largest set that <em>can</em>. Frame it as <strong>weighted satisfiability</strong>: each node is a variable, integral nodes are near-hard constraints (high weight), shaky ones are soft (low weight). A MAX-SAT solver finds the truth assignment that satisfies the <strong>most weighted constraints</strong>. Because the integral chain vastly out-weighs the single shaky premise, the solver keeps the facts and rejects the over-generalisation — <em>logic</em>, weighted by how firmly the model holds each claim, decides the outcome.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">integral facts:  weight ≈ 100 (near-hard)<br>shaky premise:   weight ≈ 5  (soft)<br>MAX-SAT keeps the heavier, consistent set</div>`,
+   code:`function resolve(nodes, edges) {
+  const w = n => n.integral ? 100 : 5;   // integrity = weight
+  for (const e of contradictions(edges)) {
+    const loser = w(e.a) < w(e.b) ? e.a : e.b;
+    prune(loser);                        // drop the lighter side
+  }
+  return nodes.filter(n => n.alive);
+}` },
+ { title:"9. Prune the inconsistent subtree", why:"Losing a premise isn't local — the explanation <em>built on top of it</em> collapses too. When “anything in water is a fish” is pruned, the whole “argues TRUE” branch that depended on it goes red, because its conclusion no longer has a leg to stand on. (Even a true, integral fact caught in that branch, like “whales live in water,” no longer implies “fish” once the false bridge is removed.) What remains is the <strong>logically consistent subtree</strong> — every surviving node compatible with every other.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prune “water animals are fish”<br>→ its whole TRUE branch collapses (🟥)<br>→ the FALSE branch survives, all-consistent (🟩)</div>`,
+   code:`function prune(loser) {
+  markSubtree(loser, "pruned");          // node + its descendants
+  let p = loser.parent;                  // climb: a non-integral parent
+  while (p && !p.integral) {              // that leaned on the loser
+    markSubtree(p, "pruned"); p = p.parent;  // collapses with it
+  }
+}` },
+ { title:"10. Read the answer — and when to spend the calls", why:"The surviving consistent set all points one way — <strong>that's the answer</strong>, and the survivors <em>are</em> its rationale, so you get an auditable reason for free instead of a black-box verdict. Maieutic stays correct even when the model is wrong at the leaves, because it decides by <strong>logical consistency</strong>, not by trusting any single output. The catch is cost: explaining both ways, recursing, and probing integrity multiplies the number of model calls. So reserve it for hard true/false, commonsense, and logical questions where a single chain is brittle and a defensible reason matters — not for simple lookups or open-ended generation. Next: system prompts.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">survivors → all say “NOT a fish” → answer ✓<br>+ the survivors ARE the explanation (auditable)<br>use for: hard logic · commonsense · true/false</div>`,
+   code:`const survivors = resolve(nodes, edges);
+const answer = majoritySide(survivors);        // "NOT a fish"
+console.log(answer, survivors.map(n => n.prop)); // built-in audit trail
+// cost: explain×recurse×probe = many calls — spend it wisely.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3000); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
