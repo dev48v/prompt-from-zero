@@ -1,0 +1,609 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 43 — Constitutional / Critique-and-Revise Prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== constitution panel ===== */
+  .principle { display:flex; align-items:flex-start; gap:10px; padding:9px 11px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; transition:all .18s; cursor:pointer; }
+  .principle:hover { border-color:#c4b5fd; }
+  .principle.off { opacity:.55; background:#f8fafc; }
+  .principle.off .pname { text-decoration:line-through; color:#94a3b8; }
+  .pico { font-size:18px; line-height:1.2; margin-top:1px; flex:none; }
+  .pbody { flex:1; }
+  .pname { font-size:13px; font-weight:700; color:#1e293b; }
+  .prule { font-size:11.5px; color:#64748b; line-height:1.45; margin-top:2px; }
+  .psw { flex:none; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:3px 9px; border-radius:999px; align-self:center; }
+  .psw.in  { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .psw.out { background:#f1f5f9; color:#94a3b8; border:1px solid #e2e8f0; }
+
+  /* principle chips (colour per principle) */
+  .pchip { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:2px 7px; border-radius:999px; white-space:nowrap; }
+  .pc-harmless   { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+  .pc-medical    { background:#e0f2fe; color:#0369a1; border:1px solid #bae6fd; }
+  .pc-sources    { background:#ede9fe; color:#6d28d9; border:1px solid #ddd6fe; }
+  .pc-respectful { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .pc-concise    { background:#ccfbf1; color:#0f766e; border:1px solid #99f6e4; }
+
+  /* draft + revision text */
+  .answer-box { border:1px solid #e2e8f0; border-radius:14px; padding:13px 15px; font-size:13.5px; line-height:1.7; color:#334155; background:#fff; }
+  .viol { background:#fee2e2; border-bottom:2px solid #ef4444; border-radius:3px; padding:0 2px; color:#7f1d1d; font-weight:600; }
+
+  .finding { display:flex; gap:9px; align-items:flex-start; font-size:12px; padding:8px 10px; border-radius:10px; background:#fef2f2; border:1px solid #fecaca; color:#7f1d1d; margin-top:7px; }
+  .finding .fx { color:#dc2626; font-weight:800; flex:none; }
+  .finding.pass { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+  .finding.pass .fx { color:#16a34a; }
+
+  .rev-seg { display:block; padding:6px 10px; border-radius:8px; margin:5px 0; }
+  .rev-seg.clean { background:#f8fafc; border-left:3px solid #cbd5e1; }
+  .rev-seg.fixed { background:#f0fdf4; border-left:3px solid #22c55e; }
+  .rev-seg.left  { background:#fef2f2; border-left:3px solid #ef4444; }
+  .seg-tag { display:block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; margin-bottom:2px; }
+  .seg-tag.fixed { color:#15803d; }
+  .seg-tag.left  { color:#b91c1c; }
+
+  .flash-red { animation: flashRed .8s ease; }
+  @keyframes flashRed { 0%{ background:#fff; } 40%{ background:#fee2e2; } 100%{ background:#fef2f2; } }
+  .flash-green { animation: flashGreen .8s ease; }
+  @keyframes flashGreen { 0%{ background:#fff; } 40%{ background:#dcfce7; } 100%{ background:#f0fdf4; } }
+
+  .tally { display:flex; gap:8px; flex-wrap:wrap; }
+  .tally .t { font-size:11px; font-weight:800; padding:3px 10px; border-radius:999px; font-variant-numeric:tabular-nums; }
+  .t.flag  { background:#fee2e2; color:#b91c1c; }
+  .t.fix   { background:#dcfce7; color:#15803d; }
+  .t.leave { background:#ffedd5; color:#c2410c; }
+
+  /* compare panel */
+  .cmpgrid { display:grid; gap:12px; }
+  @media(min-width:768px){ .cmpgrid { grid-template-columns:repeat(3,1fr); } }
+  .cmpcard { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .cmphead { padding:8px 12px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:6px; border-bottom:1px solid #f1f5f9; }
+  .cmpbody { padding:11px 12px; font-size:11.5px; line-height:1.5; color:#475569; }
+  .cmpout { font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; display:inline-block; margin-top:6px; }
+  .cmpout.wrong { background:#fee2e2; color:#b91c1c; }
+  .cmpout.mid   { background:#fef3c7; color:#b45309; }
+  .cmpout.right { background:#dcfce7; color:#15803d; }
+  .cmphead.single { background:#fef2f2; color:#b91c1c; }
+  .cmphead.rlhf   { background:#eff6ff; color:#1d4ed8; }
+  .cmphead.con    { background:#f5f3ff; color:#6d28d9; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 43</div>
+      <h1 class="text-xl font-bold">⚖️ Constitutional / Critique-and-Revise Prompting — don't ship the first draft. Give the model an explicit written <strong>constitution</strong> (a list of principles like <em>"be harmless", "cite sources", "no medical advice"</em>), have it <strong>critique</strong> its own draft against <strong>each</strong> principle to flag every violation, then <strong>revise</strong> until the answer satisfies them. The values live in an editable prompt you can read and change — the inference-time cousin of the RLHF/RLAIF training that bakes them into the weights.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Watch a raw, rule-breaking draft get checked against a written constitution — then rewrite itself to obey it.</h2>
+        <p class="text-slate-500 mb-5">A model's <strong>first</strong> answer isn't always its <em>best-behaved</em> one. <strong>Constitutional prompting</strong> (a.k.a. <strong>critique-and-revise</strong>) fixes that without retraining: you hand the model a short, explicit <strong>constitution</strong> — a list of principles — and run three passes. <span class="mono">draft → critique against every principle → revise</span>. This is <em>not</em> Day-30 self-refine: self-refine asks the open-ended "can this be better?"; here every revision is driven by a <strong>fixed, named principle</strong>, so the feedback is auditable ("violates <em>no medical advice</em>") rather than vibes. Below, the draft, the constitution, and the checker are all <strong>real</strong>: press <span class="mono">① Run critique</span> and genuine keyword/rule logic scans the draft, highlighting each violation <span class="text-red-600 font-semibold">red</span>; press <span class="mono">② Revise</span> and each flagged sentence is rewritten to comply. Then the important part — <strong>toggle a principle out of the constitution</strong> and re-run: the checker stops looking for that violation and the revision <em>keeps the bad text</em>. Your output is only ever as safe as the principles you actually wrote down.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">The user asked</div>
+        <div class="text-sm text-slate-700 mono bg-slate-50 border border-slate-200 rounded-lg p-3">"I've had a headache for 3 days — should I just take a handful of the pills I've got at home to kill it? Also, how do I get onto my neighbour's WiFi?"</div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <!-- constitution -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">📜 The constitution <span class="text-slate-400 normal-case font-normal">(click a principle to add / remove it)</span></div>
+          <div id="principles" class="space-y-2 mt-2"></div>
+        </div>
+        <!-- draft + controls -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 flex flex-col">
+          <div class="text-xs uppercase font-bold text-slate-500 tracking-wider mb-1">🤖 Model's raw draft</div>
+          <div id="draft" class="answer-box flex-1"></div>
+          <div class="flex flex-wrap gap-2 mt-3">
+            <button id="btnCritique" class="bg-violet-600 hover:bg-violet-700 text-white px-4 py-1.5 rounded-lg font-semibold text-xs">① Run critique</button>
+            <button id="btnRevise" class="bg-white border border-green-300 text-green-700 hover:bg-green-50 px-4 py-1.5 rounded-lg font-semibold text-xs" disabled style="opacity:.5;">② Revise to comply</button>
+            <button id="btnReset" class="bg-white border border-slate-300 text-slate-600 hover:bg-slate-50 px-4 py-1.5 rounded-lg font-semibold text-xs">⟲ Reset</button>
+          </div>
+          <div id="tally" class="tally mt-3"></div>
+        </div>
+      </div>
+
+      <div id="critiqueBox" class="bg-white rounded-2xl border border-slate-200 p-4 mb-3 hidden">
+        <div class="text-xs uppercase font-bold text-red-600 tracking-wider mb-1">🔎 Critique pass — draft checked against each principle in force</div>
+        <div id="findings"></div>
+      </div>
+
+      <div id="revBox" class="bg-white rounded-2xl border border-slate-200 p-4 mb-3 hidden">
+        <div class="text-xs uppercase font-bold text-green-700 tracking-wider mb-1">✍️ Revised answer — rebuilt to satisfy the constitution</div>
+        <div id="revised" class="mt-1"></div>
+        <div id="revNote" class="text-xs text-slate-500 mt-2"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-4">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Where the values live — same principles, three ways to enforce them</div>
+        <div class="text-xs text-slate-400 mb-3">All three want a harmless, well-sourced answer. Only the difference is <em>where</em> the rules sit and how easily you can see or change them.</div>
+        <div class="cmpgrid">
+          <div class="cmpcard">
+            <div class="cmphead single">🚀 Single-shot <span class="badge" style="background:#fecaca;color:#7f1d1d;">no self-check</span></div>
+            <div class="cmpbody">
+              Generate once, return it. Whatever values the base model happens to apply are all you get — no pass looks back at the draft.
+              <div class="cmpout wrong">✗ the rule-breaking draft ships as-is</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead rlhf">🏋️ RLHF / RLAIF <span class="badge" style="background:#dbeafe;color:#1e40af;">training-time</span></div>
+            <div class="cmpbody">
+              Bake the values into the <strong>weights</strong>: collect human (RLHF) or AI-generated (RLAIF, the original "Constitutional AI") preference labels and fine-tune. Powerful and always-on — but the rules are <em>opaque</em>, fixed until the next expensive training run, and you can't read or edit them per request.
+              <div class="cmpout mid">~ robust, but frozen &amp; un-inspectable</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead con">⚖️ Constitutional prompt <span class="badge" style="background:#ede9fe;color:#6d28d9;">inference-time</span></div>
+            <div class="cmpbody">
+              Keep the constitution as an <strong>editable text list</strong> and enforce it at request time via critique-and-revise. Transparent, auditable, and changeable on the spot — the toggle above <em>is</em> the proof: edit the rules, the behaviour changes instantly, no retraining.
+              <div class="cmpout right">✓ same values, but readable &amp; live-editable</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Constitutional / critique-and-revise = make the model grade its own draft against rules you wrote down, then fix what fails.</strong> Write an explicit <strong>constitution</strong> of principles, get a draft, run a <strong>critique</strong> that flags each principle it violates, and <strong>revise</strong> until it complies (looping a bounded number of rounds). Unlike self-refine's open-ended "make it better", every fix is tied to a <em>named</em> principle, so the correction is auditable and consistent. It's the inference-time version of RLHF/RLAIF: the same values, but living in a prompt you can read, diff, and toggle instead of frozen in the weights. It costs ~2–3× the calls per round, so spend it where the output must obey a policy — safety, compliance, brand voice, and anything with hard "never do X" rules.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Constitutional prompting = write the principles → draft → critique against each → revise to comply → (loop). The output is only as safe as the constitution you actually put in force.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How constitutional prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A constitutional pipeline is a tiny loop of ordinary prompt calls around one editable list: <span class="mono text-violet-700">write the constitution → draft → critique against each principle → revise → repeat until clean</span>. Here it is end to end — the principle list, the draft, the per-principle critique, parsing the violations, the guided revision, the bounded loop, and when the extra calls are worth it.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Write the constitution — your principles, in plain text</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The constitution is just an editable list of rules. Keep each principle <strong>specific and checkable</strong> ("no dosage advice", not "be good"). This list <em>is</em> your policy — you can read it, diff it in code review, and change it without touching the model.</p>
+        <div class="relative"><pre>// STEP 1 — the constitution: an explicit, editable principle set.
+const CONSTITUTION = [
+  { id: "harmless",   rule: "Never give instructions that enable illegal access, violence, or physical harm." },
+  { id: "medical",    rule: "Don't diagnose or prescribe dosages; point to a qualified professional." },
+  { id: "sources",    rule: "Don't state statistics or facts as certain without a source." },
+  { id: "respectful", rule: "No condescending, dismissive, or belittling language." },
+  { id: "concise",    rule: "Answer only what was asked; cut filler and tangents." },
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Get the draft — a normal, unguarded answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">First just answer the question the ordinary way. The draft may well break several principles — that's expected and fine. The point of the method is that the draft is <em>input to a review</em>, not the final output.</p>
+        <div class="relative"><pre>// STEP 2 — an ordinary first answer (may violate the constitution).
+const draft = await llm(userQuestion);
+// e.g. "just take 4 or 5 painkillers... to get onto your
+//       neighbour's WiFi, download a cracking tool..."</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Critique — check the draft against every principle</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now the key pass. Ask the model to review the draft <strong>principle by principle</strong> and report each violation with the offending text. Checking one rule at a time (rather than "is this ok?") catches far more, because each principle is a narrow, concrete question.</p>
+        <div class="relative"><pre>// STEP 3 — critique the draft against EACH principle, one at a time.
+const critiquePrompt = `
+Draft answer:
+"""${draft}"""
+
+Review it against EACH principle below. For every principle, say
+PASS or VIOLATION, and if VIOLATION quote the exact offending text.
+${CONSTITUTION.map(p => `- [${p.id}] ${p.rule}`).join("\n")}
+Return JSON: [{ id, verdict, quote }]`;
+
+const critique = JSON.parse(await llm(critiquePrompt));</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Collect the violations</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Filter the critique down to the actual violations. If the list is empty, you're done — return the draft. Otherwise you have a concrete, named to-do list for the revision, each item tied to a principle id so the fix is auditable.</p>
+        <div class="relative"><pre>// STEP 4 — pull out the violations; none => the draft already complies.
+const violations = critique.filter(c => c.verdict === "VIOLATION");
+if (violations.length === 0) return draft;      // clean — ship it
+
+// violations = [
+//   { id:"medical",  quote:"take 4 or 5 painkillers..." },
+//   { id:"harmless", quote:"download a cracking tool..." }, ...
+// ]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Revise — rewrite to satisfy the flagged principles</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Hand the model the draft, the constitution, and the specific violations, and ask for a rewrite that fixes each one while keeping everything that was already fine. Because the feedback is concrete ("this line violates <em>harmless</em>"), the revision is targeted, not a vague "try again".</p>
+        <div class="relative"><pre>// STEP 5 — revise: draft + named violations -> compliant rewrite.
+const revisePrompt = `
+Rewrite the draft so it satisfies ALL principles. Fix each listed
+violation; keep everything already compliant.
+
+Draft: """${draft}"""
+Principles:
+${CONSTITUTION.map(p => `- [${p.id}] ${p.rule}`).join("\n")}
+Violations to fix:
+${violations.map(v => `- [${v.id}] ${v.quote}`).join("\n")}`;
+
+let revised = await llm(revisePrompt);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Loop — critique the revision, bounded</h3></div>
+        <p class="text-sm text-slate-600 mb-3">One revision can introduce a new slip, so critique the <em>revision</em> too and repeat until it passes — but cap the rounds so a stubborn case can't loop forever. In practice one or two rounds clears almost everything.</p>
+        <div class="relative"><pre>// STEP 6 — the full critique-and-revise loop, bounded to N rounds.
+async function constitutional(question, maxRounds = 3) {
+  let answer = await llm(question);
+  for (let i = 0; i < maxRounds; i++) {
+    const v = (await runCritique(answer)).filter(c => c.verdict === "VIOLATION");
+    if (v.length === 0) break;                  // compliant — stop early
+    answer = await runRevise(answer, v);        // fix and re-check
+  }
+  return answer;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Know when to spend the calls — and how it relates to RLHF</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the <strong>inference-time</strong> face of the same idea behind <strong>Constitutional AI</strong>: RLHF trains on human preference labels; RLAIF replaces the human with a model that critiques against a constitution, and those judgements are distilled into the weights. Prompting keeps the constitution <em>outside</em> the model — editable, auditable, per-request — at the cost of ~2–3× calls per round. Use it for safety, compliance, and brand-voice work where a hard "never do X" matters; skip it for simple lookups or latency-critical paths. Next: <strong>system prompts</strong> — the standing persona-and-rules turn that sets the model's role and hard constraints before the conversation starts.</p>
+        <div class="relative"><pre>// STEP 7 — inference-time constitution vs training-time (RLHF/RLAIF).
+//  RLHF   : humans label preferences  -> fine-tune (values in weights)
+//  RLAIF  : a model critiques vs a constitution -> distil into weights
+//  PROMPT : keep the constitution in the prompt, enforce at request time
+//
+// WHEN TO USE constitutional prompting:
+//   - safety / compliance / policy-bound outputs (hard "never do X")
+//   - brand voice, legal/medical guardrails, auditable refusals
+// WHEN NOT TO: simple lookups, creative drafts, latency/cost-critical
+//   paths — it multiplies calls (draft + critique + revise per round).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 43 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Constitutional / Critique-and-Revise Prompting</strong>: write an explicit <strong>constitution</strong> of principles, get a draft, <strong>critique</strong> it against every principle to flag each violation, then <strong>revise</strong> until it complies — looping a bounded number of rounds. Unlike Day-30 self-refine's open-ended "make it better", every fix is anchored to a <em>named</em> principle, so corrections are consistent and auditable. It's the <strong>inference-time</strong> cousin of RLHF/RLAIF: the same values, but living in a prompt you can read, diff, and toggle instead of frozen in the weights — proven by the demo, where removing a principle from the constitution makes the reviewer stop enforcing it. It trades ~2–3× calls per round for policy-grade control, so spend it on safety, compliance, and brand-voice work. <strong>👉 Next up — System prompts: the standing persona-and-rules turn (no user message) that sets the model's role, tone, and hard constraints before the conversation even begins.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK: a REAL critique-and-revise engine.
+//  - The constitution is a live list of principles, each with a
+//    keyword/rule-based `detect` regex (genuine detection, not a
+//    static image).
+//  - The draft is split into sentences, each governed by one
+//    principle, with a compliant `revised` version.
+//  - Critique runs each IN-FORCE principle's regex over the draft
+//    and flags matches red. Toggling a principle out of the
+//    constitution removes it from the check AND from the revision,
+//    so the bad text survives — proving the output is only as safe
+//    as the principles you put in force.
+// ============================================================
+
+const PRINCIPLES = [
+  { id:"harmless",   icon:"🛡️", label:"Be harmless",
+    rule:"Never give instructions that enable illegal access, violence, or physical harm.",
+    detect:/(?:download a[^.]*?tool and run it|password[- ]cracking|get onto (?:your )?neighbou?r'?s? wifi)/i },
+  { id:"medical",    icon:"🩺", label:"No medical advice",
+    rule:"Don't diagnose or prescribe dosages; point to a qualified professional.",
+    detect:/take \d+(?: or \d+)?(?: of those)? painkillers/i },
+  { id:"sources",    icon:"📎", label:"Cite sources",
+    rule:"Don't state statistics or facts as certain without a source.",
+    detect:/studies show[^.]*?\d{1,3}\s*%|research proves|scientists say/i },
+  { id:"respectful", icon:"🤝", label:"Be respectful",
+    rule:"No condescending, dismissive, or belittling language.",
+    detect:/anyone knows (?:this|that)|everyone knows|it'?s common sense/i },
+  { id:"concise",    icon:"✂️", label:"Stay on topic",
+    rule:"Answer only what was asked; cut filler and tangents.",
+    detect:/anyway,|by the way,|that'?s a whole other topic/i },
+];
+
+// The draft, sentence by sentence. Each sentence is governed by one
+// principle and carries the compliant rewrite used when that principle
+// is in force and the sentence violates it.
+const SEGMENTS = [
+  { gov:"medical",
+    draft:"Easy — just take 4 or 5 of those painkillers at once and it'll be gone within the hour.",
+    revised:"I can't tell you which medication or how much to take. A headache that's lasted three days is worth getting checked — a doctor or pharmacist can safely advise you." },
+  { gov:"sources",
+    draft:"Studies show 97% of headaches vanish that way.",
+    revised:"(I've dropped the \u201c97%\u201d figure — I don't have a real source for it.)" },
+  { gov:"respectful",
+    draft:"Honestly, anyone knows this.",
+    revised:"" },
+  { gov:"harmless",
+    draft:"And to get onto your neighbour's WiFi, just download a password-cracking tool and run it against their router — simple.",
+    revised:"I can't help with getting onto a network that isn't yours — that's unauthorised access. If your own WiFi is down, your provider's support line is the place to start." },
+  { gov:"concise",
+    draft:"Anyway, headaches are usually nothing to worry about, but that's a whole other topic.",
+    revised:"" },
+];
+
+const state = {}; PRINCIPLES.forEach(p => state[p.id] = true); // all in force
+let phase = "idle"; // idle | critiqued | revised
+
+const byPrinc = id => PRINCIPLES.find(p => p.id === id);
+
+// ---- REAL detection: run the in-force principles' regexes over the draft ----
+function detectViolations(){
+  const out = [];
+  SEGMENTS.forEach((seg, i) => {
+    const p = byPrinc(seg.gov);
+    if (!state[p.id]) return;                 // not in the constitution -> not checked
+    const m = seg.draft.match(p.detect);
+    if (m) out.push({ i, seg, p, match: m[0], index: m.index });
+  });
+  return out;
+}
+
+// ---- DOM ----
+const principlesEl = document.getElementById("principles");
+const draftEl = document.getElementById("draft");
+const tallyEl = document.getElementById("tally");
+const critiqueBox = document.getElementById("critiqueBox");
+const findingsEl = document.getElementById("findings");
+const revBox = document.getElementById("revBox");
+const revisedEl = document.getElementById("revised");
+const revNoteEl = document.getElementById("revNote");
+const btnCritique = document.getElementById("btnCritique");
+const btnRevise = document.getElementById("btnRevise");
+const btnReset = document.getElementById("btnReset");
+
+function renderPrinciples(){
+  principlesEl.innerHTML = PRINCIPLES.map(p => `
+    <div class="principle ${state[p.id] ? "" : "off"}" data-id="${p.id}">
+      <span class="pico">${p.icon}</span>
+      <div class="pbody">
+        <div class="pname">${escapeHtml(p.label)}</div>
+        <div class="prule">${escapeHtml(p.rule)}</div>
+      </div>
+      <span class="psw ${state[p.id] ? "in" : "out"}">${state[p.id] ? "in force" : "removed"}</span>
+    </div>`).join("");
+  principlesEl.querySelectorAll(".principle").forEach(el => {
+    el.onclick = () => { state[el.dataset.id] = !state[el.dataset.id]; renderPrinciples(); rerun(); };
+  });
+}
+
+// draft with in-force violations highlighted (only when critiqued/revised)
+function renderDraft(highlight){
+  draftEl.innerHTML = SEGMENTS.map(seg => {
+    const p = byPrinc(seg.gov);
+    const m = seg.draft.match(p.detect);
+    if (highlight && state[p.id] && m){
+      const before = escapeHtml(seg.draft.slice(0, m.index));
+      const hit = escapeHtml(m[0]);
+      const after = escapeHtml(seg.draft.slice(m.index + m[0].length));
+      return `${before}<span class="viol pc-${p.id}" title="violates: ${escapeHtml(p.label)}">${hit}</span>${after}`;
+    }
+    return escapeHtml(seg.draft);
+  }).join(" ");
+}
+
+function renderFindings(v){
+  const inForce = PRINCIPLES.filter(p => state[p.id]).length;
+  let html = v.map(f => `
+    <div class="finding flash-red">
+      <span class="fx">✕</span>
+      <span><span class="pchip pc-${f.p.id}">${escapeHtml(f.p.label)}</span>
+      &nbsp;violated by <span class="mono">\u201c${escapeHtml(f.match)}\u201d</span> — ${escapeHtml(f.p.rule)}</span>
+    </div>`).join("");
+  // principles in force that passed
+  const violatedIds = new Set(v.map(f => f.p.id));
+  PRINCIPLES.filter(p => state[p.id] && !violatedIds.has(p.id)).forEach(p => {
+    html += `<div class="finding pass"><span class="fx">✓</span><span><span class="pchip pc-${p.id}">${escapeHtml(p.label)}</span>&nbsp;— no violation found.</span></div>`;
+  });
+  const removed = PRINCIPLES.filter(p => !state[p.id]);
+  if (removed.length){
+    html += `<div class="text-xs text-slate-400 mt-2">Not checked (removed from the constitution): ${removed.map(p => escapeHtml(p.label)).join(", ")}. Any violations of these pass through unflagged.</div>`;
+  }
+  findingsEl.innerHTML = html || `<div class="finding pass"><span class="fx">✓</span><span>Nothing in force to check — the constitution is empty.</span></div>`;
+}
+
+function renderRevised(){
+  let fixed = 0, left = 0;
+  const rows = SEGMENTS.map(seg => {
+    const p = byPrinc(seg.gov);
+    const violated = p.detect.test(seg.draft);
+    if (violated && state[p.id]){
+      fixed++;
+      if (!seg.revised) return `<span class="rev-seg fixed"><span class="seg-tag fixed">✓ fixed · ${escapeHtml(p.label)} — offending line removed</span><span class="text-slate-400 italic">(sentence deleted)</span></span>`;
+      return `<span class="rev-seg fixed"><span class="seg-tag fixed">✓ fixed · ${escapeHtml(p.label)}</span>${escapeHtml(seg.revised)}</span>`;
+    }
+    if (violated && !state[p.id]){
+      left++;
+      return `<span class="rev-seg left"><span class="seg-tag left">⚠ left in · ${escapeHtml(p.label)} removed from constitution</span>${escapeHtml(seg.draft)}</span>`;
+    }
+    return `<span class="rev-seg clean">${escapeHtml(seg.draft)}</span>`;
+  });
+  revisedEl.innerHTML = `<div class="answer-box ${left ? "" : "flash-green"}" style="${left ? "border-color:#fecaca;" : "border-color:#86efac;background:#f0fdf4;"}">${rows.join("")}</div>`;
+  revNoteEl.innerHTML = left
+    ? `<span class="text-orange-700 font-semibold">${left} violation(s) left in</span> because their principle was removed from the constitution. The revision only fixes what's in force — <strong>your output is only as safe as the rules you keep.</strong>`
+    : `All ${fixed} flagged violation(s) rewritten to comply. Toggle a principle off above and re-run to watch a violation slip back into the answer.`;
+}
+
+function renderTally(v){
+  if (phase === "idle"){ tallyEl.innerHTML = ""; return; }
+  const violated = SEGMENTS.filter(s => byPrinc(s.gov).detect.test(s.draft));
+  const flagged = v.length;
+  const leftIn = violated.filter(s => !state[s.gov]).length;
+  const fixable = flagged;
+  tallyEl.innerHTML =
+    `<span class="t flag">${flagged} flagged</span>` +
+    (phase === "revised" ? `<span class="t fix">${fixable} fixed</span>` : ``) +
+    (leftIn ? `<span class="t leave">${leftIn} left in (rule removed)</span>` : ``);
+}
+
+// re-run whatever phase we're in (called on any toggle)
+function rerun(){
+  if (phase === "idle"){ renderDraft(false); renderTally([]); return; }
+  const v = detectViolations();
+  renderDraft(true);
+  renderFindings(v);
+  renderTally(v);
+  if (phase === "revised") renderRevised();
+}
+
+btnCritique.onclick = () => {
+  phase = "critiqued";
+  const v = detectViolations();
+  renderDraft(true);
+  renderFindings(v);
+  critiqueBox.classList.remove("hidden");
+  revBox.classList.add("hidden");
+  renderTally(v);
+  btnRevise.disabled = false; btnRevise.style.opacity = "1";
+  btnCritique.textContent = "① Re-run critique";
+};
+
+btnRevise.onclick = () => {
+  if (phase === "idle") btnCritique.onclick();
+  phase = "revised";
+  const v = detectViolations();
+  renderDraft(true);
+  renderFindings(v);
+  renderRevised();
+  revBox.classList.remove("hidden");
+  renderTally(v);
+};
+
+btnReset.onclick = () => {
+  phase = "idle";
+  PRINCIPLES.forEach(p => state[p.id] = true);
+  renderPrinciples();
+  renderDraft(false);
+  critiqueBox.classList.add("hidden");
+  revBox.classList.add("hidden");
+  tallyEl.innerHTML = "";
+  btnRevise.disabled = true; btnRevise.style.opacity = ".5";
+  btnCritique.textContent = "① Run critique";
+};
+
+renderPrinciples();
+renderDraft(false);
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. The problem: a first draft has no values check", why:"A single-shot answer applies whatever values the base model happens to reach for, and then it ships — nothing looks back at the draft. Most of the time that's fine, but on a question that touches safety, law, health, or brand policy, the first response can quietly break a rule you care about: prescribe a dose, hand over an illegal how-to, invent a statistic, or slip into a condescending tone. The method has no place to catch that, because it's just \u201cgenerate, return\u201d. Constitutional prompting adds the missing review pass.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">single-shot:  question → draft → <span style="color:#c2410c">ship it ✗</span><br>no pass ever re-reads the draft against your rules<br>a policy violation goes straight out the door</div>`,
+   code:`// Single-shot: whatever values the model applies, you get.
+const answer = await llm(question);
+// nothing checks it against an explicit rule set. done.` },
+ { title:"2. Not self-refine: a FIXED, written principle set", why:"Day-30 self-refine also does draft → critique → rewrite, but its critique is <strong>open-ended</strong>: \u201chow could this be better?\u201d That improves quality but drifts — two runs can pull in different directions, and there's no record of what \u201cbetter\u201d meant. Constitutional prompting pins the critique to a <strong>fixed, named constitution</strong>. Every finding is \u201cviolates <em>no medical advice</em>\u201d, not a vibe, so the corrections are consistent, repeatable, and auditable. Same three passes; the difference is that the yardstick is written down.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">self-refine:  critique = \u201cmake it better?\u201d  (open-ended)<br>constitutional: critique = \u201cdoes it obey principle P?\u201d<br>fixed rules → auditable, repeatable fixes</div>`,
+   code:`// Self-refine (Day 30): open-ended
+critique = await llm("How could this answer be improved?");
+// Constitutional: pinned to named principles
+critique = await llm("Does the draft violate principle P? quote it.");` },
+ { title:"3. Write the constitution", why:"The constitution is a short, explicit list of principles — each one <strong>specific and checkable</strong>. \u201cBe harmless\u201d is too vague to enforce; \u201cnever give instructions for unauthorised network access\u201d is a rule a reviewer can actually apply. Keeping the principles in plain text means your policy is something you can read in code review, diff over time, and change without retraining anything. This list is the whole point of the method: it's where your values live.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">📜 CONSTITUTION<br>🛡️ harmless · 🩺 no medical advice<br>📎 cite sources · 🤝 respectful · ✂️ on-topic</div>`,
+   code:`const CONSTITUTION = [
+  { id:"harmless", rule:"No instructions enabling illegal access or harm." },
+  { id:"medical",  rule:"No diagnosis or dosages; refer to a professional." },
+  // ...specific, checkable principles
+];` },
+ { title:"4. Draft: answer normally first", why:"Generate an ordinary answer to the question. It's completely fine — expected, even — for this draft to break several principles. The draft isn't the product; it's the <strong>input to a review</strong>. Separating \u201cproduce a candidate\u201d from \u201ccheck it against the rules\u201d is what makes the whole thing work: a model asked to both answer and self-police in one shot does both worse than a model that drafts freely, then reviews deliberately.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">question → 🤖 draft<br>\u201ctake 4-5 painkillers... crack the WiFi...\u201d<br>rule-breaking, and that's OK — it's just a candidate</div>`,
+   code:`const draft = await llm(question);
+// may violate the constitution — that's expected.
+// it's a candidate to be reviewed, not the final answer.` },
+ { title:"5. Critique: check EACH principle, one at a time", why:"This is the heart of the method. Instead of asking \u201cis this answer ok?\u201d, walk the draft against <strong>each principle separately</strong> and demand a PASS/VIOLATION verdict plus the exact offending text for every one. Narrow, concrete questions catch far more than one broad question: a model reliably spots \u201cdoes this prescribe a dosage?\u201d even when it would wave through \u201cis this a good answer?\u201d. The output is a list of violations, each tagged with the principle it broke.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">for each principle → PASS / VIOLATION + quote<br>🩺 VIOLATION \u201ctake 4-5 painkillers\u201d<br>🛡️ VIOLATION \u201cdownload a cracking tool\u201d</div>`,
+   code:`const critique = await llm(\`
+Draft: """\${draft}"""
+For EACH principle, reply PASS or VIOLATION + the exact quote.
+\${CONSTITUTION.map(p => "- ["+p.id+"] "+p.rule).join("\\n")}
+Return JSON [{id, verdict, quote}]\`);` },
+ { title:"6. Collect the violations", why:"Filter the critique down to the actual violations. If there are none, you're done — return the draft unchanged; the extra work was just insurance. If there are some, you now hold a precise, named to-do list: each item says <em>which</em> principle broke and <em>where</em>. That specificity is what makes the next step a targeted rewrite rather than a hopeful \u201ctry again\u201d — and it doubles as an audit trail explaining exactly why the answer changed.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">violations = [🩺 medical, 📎 sources, 🛡️ harmless, ...]<br>empty? → ship the draft<br>otherwise → a named to-do list for the rewrite</div>`,
+   code:`const violations = critique.filter(c => c.verdict === "VIOLATION");
+if (!violations.length) return draft;   // already compliant
+// each violation is tagged with its principle id + quote.` },
+ { title:"7. Revise: rewrite to satisfy the flagged principles", why:"Give the model the draft, the constitution, and the specific violations, and ask it to rewrite so every violation is fixed while everything already compliant is preserved. Concrete feedback (\u201cthis line breaks <em>harmless</em>\u201d) yields a surgical edit: the dosage advice becomes \u201csee a pharmacist\u201d, the hacking how-to becomes a refusal, the fabricated stat is dropped, the condescension is cut. Nothing that passed gets churned. The revision is guided by the constitution, not by taste.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">draft + violations → ✍️ revise<br>🩺 dosage → \u201csee a pharmacist\u201d<br>🛡️ crack WiFi → refusal · 📎 stat → dropped</div>`,
+   code:`const revised = await llm(\`
+Rewrite so it satisfies ALL principles. Fix each violation,
+keep what already complies.
+Draft: """\${draft}"""
+Violations: \${violations.map(v => "["+v.id+"] "+v.quote).join("\\n")}\`);` },
+ { title:"8. Loop — critique the revision, bounded", why:"A rewrite can occasionally introduce a fresh slip, or miss one, so treat the revision as a new draft and critique it again — repeating until it passes clean. The one guardrail is a <strong>round cap</strong>: bound the loop (say 2\u20133 rounds) so a stubborn or contradictory case can't spin forever, and accept the best attempt if it hits the cap. In practice one or two rounds clears almost everything; the cap is there for the rare pathological input.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">draft → critique → revise → critique → ... (≤ N)<br>stop when 0 violations, or at the round cap<br>usually clean in 1\u20132 rounds</div>`,
+   code:`for (let i = 0; i < maxRounds; i++) {
+  const v = violationsOf(await critique(answer));
+  if (!v.length) break;          // compliant — stop early
+  answer = await revise(answer, v);
+}` },
+ { title:"9. It's the inference-time face of Constitutional AI (RLHF/RLAIF)", why:"The same idea powers training. <strong>RLHF</strong> collects <em>human</em> preference labels and fine-tunes the model toward them. <strong>RLAIF</strong> — the original \u201cConstitutional AI\u201d — swaps the human for a model that critiques responses against a written constitution, then distils those judgements into the weights. Both put the values <em>inside</em> the model: always-on, but opaque and frozen until the next training run. The prompt version you just built keeps the constitution <em>outside</em>: readable, diffable, and changeable per request — the trade is that it runs every time and costs extra calls.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">RLHF  → human labels → weights (opaque, frozen)<br>RLAIF → model critiques vs constitution → weights<br>PROMPT → constitution in the prompt (live, editable)</div>`,
+   code:`// RLHF : humans rank outputs        -> fine-tune
+// RLAIF: model critiques vs rules    -> distil into weights
+// PROMPT: keep the constitution in the prompt, enforce at runtime
+//   -> transparent + editable, at ~2-3x calls per round` },
+ { title:"10. When to spend the calls", why:"Constitutional prompting buys policy-grade control at a real price: draft + critique + revise is ~2\u20133× the calls per round. So aim it where obeying rules matters more than latency — safety and compliance outputs, legal/medical guardrails, brand voice, anything with a hard \u201cnever do X\u201d. Skip it for simple lookups, creative drafts, or latency-critical paths where the base model is already good enough. And remember the demo's lesson: the system only enforces the principles you actually put in the constitution — an incomplete rule set is an incomplete guardrail. Next: system prompts.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use for: safety · compliance · brand voice · hard \u201cnever X\u201d<br>skip for: lookups · creative drafts · low-latency paths<br>the guardrail = only the rules you wrote down</div>`,
+   code:`// Worth the extra calls when the output must OBEY a policy.
+// Not worth it for quick, low-stakes, or latency-bound answers.
+// The constitution is the guardrail — write it completely.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
