@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 44 — System 2 Attention (S2A)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== context sentence rows ===== */
+  .sent { display:flex; align-items:flex-start; gap:11px; padding:10px 12px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; transition:all .18s; cursor:pointer; }
+  .sent:hover { border-color:#c4b5fd; }
+  .sent.off { opacity:.45; background:#f8fafc; }
+  .sent.off .stext { text-decoration:line-through; color:#94a3b8; }
+  .sbody { flex:1; }
+  .stext { font-size:13px; color:#1e293b; line-height:1.5; }
+  .smeta { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .rel-bar { flex:1; height:6px; background:#f1f5f9; border-radius:999px; overflow:hidden; max-width:160px; }
+  .rel-fill { height:100%; border-radius:999px; transition:width .3s; }
+  .rel-num { font-size:10px; font-weight:800; color:#64748b; font-variant-numeric:tabular-nums; min-width:60px; }
+
+  .ktag { flex:none; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:3px 9px; border-radius:999px; white-space:nowrap; align-self:flex-start; margin-top:1px; }
+  .kt-fact    { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .kt-opinion { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+  .kt-filler  { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+
+  .hl-op   { background:#fee2e2; border-bottom:2px solid #ef4444; border-radius:3px; padding:0 2px; color:#7f1d1d; font-weight:600; }
+  .hl-year { background:#ede9fe; border-radius:3px; padding:0 3px; color:#5b21b6; font-weight:800; }
+
+  /* toggle switch */
+  .s2a-switch { display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+  .track { width:52px; height:28px; border-radius:999px; background:#cbd5e1; position:relative; transition:background .2s; flex:none; }
+  .track.on { background:#8b5cf6; }
+  .knob { position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .2s; }
+  .track.on .knob { left:27px; }
+
+  /* answer cards */
+  .ans { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .ans-head { padding:9px 13px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:7px; border-bottom:1px solid #f1f5f9; }
+  .ans-head.raw { background:#fef2f2; color:#b91c1c; }
+  .ans-head.s2a { background:#f5f3ff; color:#6d28d9; }
+  .ans-body { padding:13px; }
+  .ans-year { font-size:34px; font-weight:900; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+  .verdict { font-size:11px; font-weight:800; padding:3px 10px; border-radius:999px; display:inline-block; margin-top:3px; }
+  .verdict.wrong { background:#fee2e2; color:#b91c1c; }
+  .verdict.right { background:#dcfce7; color:#15803d; }
+  .ans-reason { font-size:12px; color:#475569; margin-top:9px; line-height:1.5; }
+
+  .kept-box { border-radius:10px; padding:9px 11px; margin:5px 0; font-size:12.5px; line-height:1.5; }
+  .kept-box.keep { background:#f0fdf4; border-left:3px solid #22c55e; color:#166534; }
+  .kept-box.strip { background:#fef2f2; border-left:3px solid #ef4444; color:#7f1d1d; text-decoration:line-through; opacity:.8; }
+  .strip-why { display:block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; margin-top:2px; text-decoration:none; opacity:1; }
+
+  .flash-v { animation: flashV .7s ease; }
+  @keyframes flashV { 0%{ background:#fff; } 45%{ background:#ede9fe; } 100%{ background:transparent; } }
+
+  /* compare panel */
+  .cmpgrid { display:grid; gap:12px; }
+  @media(min-width:768px){ .cmpgrid { grid-template-columns:repeat(3,1fr); } }
+  .cmpcard { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .cmphead { padding:8px 12px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:6px; border-bottom:1px solid #f1f5f9; }
+  .cmpbody { padding:11px 12px; font-size:11.5px; line-height:1.5; color:#475569; }
+  .cmpout { font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; display:inline-block; margin-top:6px; }
+  .cmpout.wrong { background:#fee2e2; color:#b91c1c; }
+  .cmpout.mid   { background:#fef3c7; color:#b45309; }
+  .cmpout.right { background:#dcfce7; color:#15803d; }
+  .cmphead.s1   { background:#fef2f2; color:#b91c1c; }
+  .cmphead.ins  { background:#fffbeb; color:#b45309; }
+  .cmphead.con  { background:#f5f3ff; color:#6d28d9; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 44</div>
+      <h1 class="text-xl font-bold">🎯 System 2 Attention (S2A) — a model's soft attention can't help peeking at <strong>every</strong> token, so an injected opinion or a stray irrelevant sentence quietly bends the answer (<em>sycophancy</em>, <em>spurious correlation</em>). S2A adds a deliberate <strong>first pass</strong> that <strong>regenerates the context</strong> — keeping only the facts relevant to the question and stripping the opinions and filler — <strong>then answers on that clean context</strong>. Think slow before you answer fast.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Watch an injected opinion hijack the answer — then watch a first pass scrub the context clean so the real fact wins.</h2>
+        <p class="text-slate-500 mb-5">An LLM's attention is <em>soft</em>: every token in the context gets some weight, so a confident-sounding wrong hint (<span class="hl-op">"I'm pretty sure it was 2008"</span>) or an off-topic sentence can tug the answer off course — the model agrees with the opinion (<strong>sycophancy</strong>) or leans on an irrelevant detail (<strong>spurious correlation</strong>). <strong>System 2 Attention</strong> fixes this by not answering the raw context at all. First it runs a <strong>relevance pass</strong> that <em>regenerates</em> the context, keeping only the sentences that actually bear on the question and dropping the opinions and filler — <span class="mono">regenerate&nbsp;→&nbsp;then&nbsp;answer</span>. Everything below is <strong>real</strong>: the relevance score, the opinion detector, and both answers are computed live in JS. Flip the <span class="mono">S2A</span> switch and the first pass physically rewrites the context; toggle any sentence in or out, or change the injected year, and watch the <span class="text-red-600 font-semibold">raw</span> answer chase the loudest hint while the <span class="text-violet-700 font-semibold">S2A</span> answer stays locked on the fact.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">The question</div>
+        <div class="text-sm text-slate-700 mono bg-slate-50 border border-slate-200 rounded-lg p-3" id="qBox"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">📄 The context the model was handed <span class="text-slate-400 normal-case font-normal">(click a sentence to include / exclude it)</span></div>
+          <label class="s2a-switch" id="s2aToggle">
+            <span class="text-xs font-bold text-slate-600">System 2 Attention</span>
+            <span class="track" id="s2aTrack"><span class="knob"></span></span>
+            <span class="text-xs font-bold" id="s2aLabel" style="color:#94a3b8;">OFF</span>
+          </label>
+        </div>
+        <div id="sentences" class="space-y-2 mt-2"></div>
+        <div class="mt-3 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+          <span class="font-semibold">Injected hint claims:</span>
+          <select id="hintYear" class="border border-slate-300 rounded-lg px-2 py-1 text-xs font-mono">
+            <option value="2008">2008</option>
+            <option value="2001">2001</option>
+            <option value="2015">2015</option>
+            <option value="1977">1977</option>
+          </select>
+          <span class="text-slate-400">— change it and watch only the raw answer follow.</span>
+        </div>
+      </div>
+
+      <div id="s2aPass" class="bg-white rounded-2xl border border-violet-200 p-4 mb-3 hidden">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧹 S2A first pass — context regenerated (only what's relevant &amp; unbiased survives)</div>
+        <div id="keptList"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div class="ans" id="ansRaw">
+          <div class="ans-head raw">🐇 System 1 · answer straight from the RAW context</div>
+          <div class="ans-body" id="ansRawBody"></div>
+        </div>
+        <div class="ans" id="ansS2a">
+          <div class="ans-head s2a">🧠 System 2 · answer from the REGENERATED context</div>
+          <div class="ans-body" id="ansS2aBody"></div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-4">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Three ways to deal with a noisy, opinion-laden context</div>
+        <div class="text-xs text-slate-400 mb-3">Same question, same distractors. The difference is <em>whether the junk ever reaches the answering step</em>.</div>
+        <div class="cmpgrid">
+          <div class="cmpcard">
+            <div class="cmphead s1">🐇 Answer the raw context <span class="badge" style="background:#fecaca;color:#7f1d1d;">System 1</span></div>
+            <div class="cmpbody">
+              Feed the whole context in and answer in one shot. Soft attention weights <em>every</em> token, so the confident hint and the stray details bleed into the response.
+              <div class="cmpout wrong">✗ agrees with the injected opinion</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead ins">🙈 "Please ignore irrelevant text" <span class="badge" style="background:#fde68a;color:#92400e;">instruction only</span></div>
+            <div class="cmpbody">
+              Keep the messy context but <em>tell</em> the model to disregard opinions/filler. It helps a little — but the tokens are still in the window, so attention still peeks and sometimes still gets swayed.
+              <div class="cmpout mid">~ unreliable — the text is still there</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead con">🎯 System 2 Attention <span class="badge" style="background:#ede9fe;color:#6d28d9;">regenerate</span></div>
+            <div class="cmpbody">
+              First rewrite the context to only the relevant, unbiased facts, <strong>throw the original away</strong>, and answer on the clean version. The distractor tokens are physically gone, so they can't attend.
+              <div class="cmpout right">✓ answers the fact, immune to the hint</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 System 2 Attention = don't answer the messy context — regenerate a clean one first, then answer that.</strong> Because a transformer's attention is soft, it can never fully ignore an irrelevant or opinionated sentence sitting in the prompt; the fix isn't to <em>ask</em> it to ignore the junk (the tokens are still there and still attended to) but to run a deliberate <strong>first LLM pass</strong> that extracts only the question-relevant, opinion-free portion of the context. The answering pass then sees <em>only</em> that regenerated context, so injected hints (sycophancy) and off-topic facts (spurious correlation) simply aren't present to sway it. It costs one extra call, and it shines exactly where inputs are long, noisy, or loaded with someone's guess.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">System 2 Attention = regenerate the context (keep only what's relevant &amp; unbiased) → discard the original → answer the clean context. Slow, deliberate attention beats fast, distractible attention.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How System 2 Attention works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">System 2 Attention is a two-pass wrapper around ordinary LLM calls: <span class="mono text-violet-700">regenerate the context to only relevant, unbiased facts → answer using only that</span>. Here it is end to end — the naive one-shot, why "just ignore it" fails, the regeneration prompt, keeping the clean context, the answering pass, the full function, and when the extra call is worth it.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The naive pipeline — answer the raw context (System 1)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The default is one shot: dump the whole context plus the question into the model and take what comes out. It's fast and usually fine — but every token in that context gets attention weight, so a planted opinion or an irrelevant sentence can silently bend the answer. This is the behaviour we want to beat.</p>
+        <div class="relative"><pre>// STEP 1 — the ordinary one-shot answer. Distractible.
+const answer = await llm(`Context: """${context}"""
+Question: ${question}`);
+// works... until the context contains a confident wrong hint
+// ("I'm pretty sure it's 2008") or off-topic noise. Then the
+// model's soft attention leaks that junk into the answer.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Why "just ignore the irrelevant text" doesn't work</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The tempting cheap fix is to leave the messy context in place and <em>instruct</em> the model to disregard opinions and filler. It helps a bit, but not reliably: attention is <strong>soft</strong>, so those tokens are still in the window and still receive weight. You can't fully turn off attention with a sentence. The robust move is to <em>physically remove</em> the junk before the answering step — which means rebuilding the context.</p>
+        <div class="relative"><pre>// STEP 2 — instruction-only mitigation: unreliable.
+const answer = await llm(`Context: """${context}"""
+Ignore any opinions or irrelevant sentences.
+Question: ${question}`);
+// the distractor TOKENS are still present -> attention still
+// attends to them. Better than nothing, but it still gets swayed.
+// Lesson: remove the text, don't just ask to ignore it.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">S2A pass 1 — regenerate the context</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The heart of the method. Ask the model to rewrite the context, keeping <strong>only</strong> the parts that are relevant to the question and free of opinion — and to strip out anyone's stated guesses or preferences. Crucially, ask it to <em>separate</em> the extracted context from the question so no opinion embedded in the question leaks in either. The output is a new, clean context.</p>
+        <div class="relative"><pre>// STEP 3 — the S2A regeneration prompt (pass 1).
+const regen = await llm(`
+Given the text below, extract the part of the context that is
+RELEVANT to the question. Remove opinions, guesses, and any
+sentence not needed to answer. Do NOT answer yet — only rewrite.
+
+Text: """${context}"""
+Question: ${question}
+
+Return:
+Relevant context: <cleaned facts only>
+Question (unbiased): <question with any opinion stripped>`);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Keep the regenerated context — throw the original away</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Parse pass 1 into the clean context and the unbiased question. The important discipline: from here on the original messy context <strong>no longer exists</strong>. The answering step must never see it — that's the whole point. Anything the regeneration dropped is now genuinely gone, so it cannot attend.</p>
+        <div class="relative"><pre>// STEP 4 — split out the clean context; drop the original entirely.
+const cleanContext  = parseSection(regen, "Relevant context");
+const cleanQuestion = parseSection(regen, "Question (unbiased)");
+// the raw `context` variable is no longer used past this line.
+// only cleanContext + cleanQuestion flow forward.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">S2A pass 2 — answer using only the clean context</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now the ordinary answering call — but over the regenerated context, not the raw one. Because the distractors were removed in pass 1, there's nothing left for attention to be swayed by, so the answer tracks the actual fact. Same model, same one-shot answering; the only change is <em>what it's allowed to look at</em>.</p>
+        <div class="relative"><pre>// STEP 5 — answer over the regenerated context (pass 2).
+const answer = await llm(`Context: """${cleanContext}"""
+Question: ${cleanQuestion}`);
+// the opinion + filler are gone from the window -> no sycophancy,
+// no spurious-correlation pull. The answer is the fact.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The full two-pass function</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Wrap it up: regenerate, then answer. That's the entire method — two calls where a naive pipeline used one. The regeneration is a general "clean the prompt" step, so the same wrapper works for sycophancy, long noisy documents, or math word problems padded with irrelevant numbers.</p>
+        <div class="relative"><pre>// STEP 6 — System 2 Attention, end to end.
+async function system2Attention(context, question) {
+  // pass 1: deliberate — rebuild a clean context
+  const regen = await llm(regenPrompt(context, question));
+  const { cleanContext, cleanQuestion } = parse(regen);
+
+  // pass 2: answer using ONLY the regenerated context
+  return llm(`Context: """${cleanContext}"""
+Question: ${cleanQuestion}`);
+}
+// 2x calls, but immune to injected opinions & irrelevant noise.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">When to spend the extra call — and where S2A sits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">S2A (Weston &amp; Sukhbaatar, 2023) is named for Kahneman's <strong>System 1 / System 2</strong>: the raw forward pass is fast, automatic, distractible attention; S2A adds a slow, deliberate step that decides what deserves attention. Spend the extra call when inputs are <strong>long, noisy, or opinion-laden</strong> — sycophancy-prone Q&amp;A, retrieval dumps, user messages that smuggle in a guess. It's like RAG re-ranking but for the <em>whole prompt</em>, and unlike Chain-of-Thought (which reasons <em>over</em> the messy context) S2A cleans the context <em>before</em> any reasoning. Skip it for short, clean prompts where there's nothing to strip. Next: <strong>system prompts</strong> — the standing persona-and-rules turn that sets the model's role and hard constraints before the conversation starts.</p>
+        <div class="relative"><pre>// STEP 7 — when S2A earns its extra call.
+// USE for:  opinion-laden inputs (sycophancy), long/noisy context,
+//           math word-problems with irrelevant numbers, RAG dumps.
+// SKIP for: short clean prompts (nothing to remove), latency-critical
+//           paths (2x calls), tasks where every token is relevant.
+//
+// System 1 = fast, automatic, distractible attention (one pass)
+// System 2 = deliberate: regenerate what deserves attention, then answer</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 44 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>System 2 Attention (S2A)</strong>: because a transformer's attention is soft and can't fully ignore anything in the prompt, an injected opinion or an irrelevant sentence quietly bends the answer — <strong>sycophancy</strong> and <strong>spurious correlation</strong>. S2A beats it with a deliberate <strong>first pass</strong> that <em>regenerates</em> the context, keeping only the question-relevant, opinion-free facts, then answers using <em>only</em> that clean context — the messy original is discarded so its tokens can never attend. It's the inference-time realisation of Kahneman's slow "System 2": don't just tell the model to ignore the junk (the tokens are still there), physically rebuild a clean context. It costs one extra call and pays off wherever inputs are long, noisy, or loaded with someone's guess — proven by the demo, where the raw answer chases whatever year the hint claims while the S2A answer stays pinned to the fact. <strong>👉 Next up — System prompts: the standing persona-and-rules turn (no user message) that sets the model's role, tone, and hard constraints before the conversation even begins.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK: a REAL System 2 Attention engine.
+//  - The relevance score, opinion detector, and year extractor
+//    are genuine functions run over each sentence (not labels).
+//  - S2A "pass 1" regenerates the context by KEEPING only
+//    relevant, non-opinion sentences; the raw answer runs on the
+//    full context and gets swayed by the opinion (sycophancy),
+//    while the S2A answer runs on the cleaned context and stays
+//    on the fact. Toggle sentences / change the injected year to
+//    prove the raw answer follows the hint and S2A does not.
+// ============================================================
+
+const QUESTION = "In what year was Acme Corp founded?";
+const TRUTH = 1994;                       // the real, factual answer
+
+// The context, sentence by sentence. `kind` is COMPUTED below, not trusted.
+const SENTENCES = [
+  { id:"s1", text:"Acme Corp was founded in 1994 by two engineers working out of a rented garage.", on:true },
+  { id:"s2", text:"The company now employs over 5,000 people across a dozen countries.",            on:true },
+  { id:"s3", text:"Honestly, I'm pretty sure it was 2008 — everyone knows that, right?",            on:true, hint:true },
+  { id:"s4", text:"Its headquarters moved to a shiny new campus just last spring.",                 on:true },
+  { id:"s5", text:"By the way, their logo is blue and I genuinely love their mobile app.",          on:true },
+];
+
+const OPINION_RX = /\b(i think|i'?m pretty sure|i believe|honestly|everyone knows|i guess|probably|in my opinion|i reckon|if you ask me|i'?d say|maybe)\b/i;
+const FOUND_RX   = /\b(found(?:ed|ing)?|establish(?:ed)?|start(?:ed)?|began|inception|launched)\b/i;
+const YEAR_RX    = /\b(1\d{3}|20\d{2})\b/;
+
+let hintYearVal = 2008;                   // the injected wrong hint (user-editable)
+
+// current text of a sentence (the hint sentence swaps in the chosen year)
+function textOf(s){
+  if (s.hint) return `Honestly, I'm pretty sure it was ${hintYearVal} — everyone knows that, right?`;
+  return s.text;
+}
+function extractYear(t){ const m = t.match(YEAR_RX); return m ? parseInt(m[0],10) : null; }
+function isOpinion(t){ return OPINION_RX.test(t); }
+
+// REAL relevance score for "what year was it founded": founding keyword + a year.
+function relevanceScore(t){
+  let s = 0;
+  if (FOUND_RX.test(t)) s += 0.6;
+  if (YEAR_RX.test(t))  s += 0.4;
+  return Math.min(1, s);
+}
+// classification derived purely from the text
+function classify(t){
+  if (isOpinion(t)) return "opinion";
+  if (relevanceScore(t) >= 0.6) return "fact";
+  return "filler";
+}
+// S2A pass 1: keep included sentences that are relevant AND not opinion.
+function regenerate(){
+  return SENTENCES.filter(s => s.on).map(s => {
+    const t = textOf(s);
+    const keep = !isOpinion(t) && relevanceScore(t) >= 0.6;
+    return { s, t, keep };
+  });
+}
+
+// RAW answer (System 1): soft attention over the full context. An emphatic
+// opinion that carries a year grabs the attention -> sycophancy.
+function answerRaw(){
+  const inc = SENTENCES.filter(s => s.on).map(s => ({ s, t:textOf(s) }));
+  const withYear = inc.filter(o => extractYear(o.t) != null);
+  const swayed = withYear.find(o => isOpinion(o.t));      // the loud injected hint
+  if (swayed) return { year: extractYear(swayed.t), src: swayed, swayed:true };
+  const best = withYear.sort((a,b)=>relevanceScore(b.t)-relevanceScore(a.t))[0];
+  return best ? { year: extractYear(best.t), src: best, swayed:false } : { year:null };
+}
+// S2A answer (System 2): only sees the regenerated (clean) context.
+function answerS2A(){
+  const clean = regenerate().filter(r => r.keep);
+  const withYear = clean.filter(r => extractYear(r.t) != null)
+                        .sort((a,b)=>relevanceScore(b.t)-relevanceScore(a.t));
+  const best = withYear[0];
+  return best ? { year: extractYear(best.t), src: best } : { year:null };
+}
+
+// ---- DOM ----
+const qBox = document.getElementById("qBox");
+const sentencesEl = document.getElementById("sentences");
+const s2aTrack = document.getElementById("s2aTrack");
+const s2aLabel = document.getElementById("s2aLabel");
+const s2aPass = document.getElementById("s2aPass");
+const keptList = document.getElementById("keptList");
+const ansRawBody = document.getElementById("ansRawBody");
+const ansS2aBody = document.getElementById("ansS2aBody");
+const hintSel = document.getElementById("hintYear");
+
+let s2aOn = false;
+
+qBox.textContent = '"' + QUESTION + '"';
+
+const KTAG = { fact:{c:"kt-fact",l:"✅ fact · relevant"}, opinion:{c:"kt-opinion",l:"🚫 opinion / hint"}, filler:{c:"kt-filler",l:"– irrelevant"} };
+
+function highlight(t){
+  let h = escapeHtml(t);
+  // opinion phrase
+  const mo = t.match(OPINION_RX);
+  if (mo){ const esc = escapeHtml(mo[0]); h = h.replace(esc, `<span class="hl-op">${esc}</span>`); }
+  // year
+  const my = t.match(YEAR_RX);
+  if (my){ h = h.replace(my[0], `<span class="hl-year">${my[0]}</span>`); }
+  return h;
+}
+
+function renderSentences(){
+  sentencesEl.innerHTML = SENTENCES.map(s => {
+    const t = textOf(s);
+    const k = classify(t);
+    const rel = relevanceScore(t);
+    const tag = KTAG[k];
+    const col = k==="fact" ? "#22c55e" : k==="opinion" ? "#ef4444" : "#cbd5e1";
+    return `
+      <div class="sent ${s.on ? "" : "off"}" data-id="${s.id}">
+        <div class="sbody">
+          <div class="stext">${highlight(t)}</div>
+          <div class="smeta">
+            <span class="rel-num">rel ${(rel*100).toFixed(0)}%</span>
+            <span class="rel-bar"><span class="rel-fill" style="width:${rel*100}%;background:${col};"></span></span>
+          </div>
+        </div>
+        <span class="ktag ${tag.c}">${tag.l}</span>
+      </div>`;
+  }).join("");
+  sentencesEl.querySelectorAll(".sent").forEach(el => {
+    el.onclick = () => {
+      const s = SENTENCES.find(x => x.id === el.dataset.id);
+      s.on = !s.on; renderSentences(); rerun();
+    };
+  });
+}
+
+function renderPass(){
+  if (!s2aOn){ s2aPass.classList.add("hidden"); return; }
+  s2aPass.classList.remove("hidden");
+  const rows = regenerate();
+  keptList.innerHTML = rows.map(r => {
+    if (r.keep) return `<div class="kept-box keep">${highlight(r.t)}</div>`;
+    const why = isOpinion(r.t) ? "stripped — opinion / injected hint" : "stripped — irrelevant to the question";
+    return `<div class="kept-box strip">${highlight(r.t)}<span class="strip-why">✂ ${why}</span></div>`;
+  }).join("") || `<div class="text-xs text-slate-400">No sentences in the context.</div>`;
+  const kept = rows.filter(r=>r.keep).length;
+  keptList.innerHTML += `<div class="text-xs text-violet-600 font-semibold mt-2">→ regenerated context = ${kept} sentence${kept===1?"":"s"}, opinions &amp; filler removed. This is all the answering pass will see.</div>`;
+}
+
+function renderAnswers(){
+  const raw = answerRaw();
+  const rawRight = raw.year === TRUTH;
+  ansRawBody.classList.add("flash-v");
+  setTimeout(()=>ansRawBody.classList.remove("flash-v"), 700);
+  ansRawBody.innerHTML = `
+    <div class="ans-year" style="color:${rawRight ? "#15803d" : "#b91c1c"};">${raw.year ?? "—"}</div>
+    <div class="verdict ${rawRight ? "right" : "wrong"}">${rawRight ? "✓ correct" : "✗ wrong — swayed"}</div>
+    <div class="ans-reason">${
+      raw.year == null ? "No year left in the context to answer with." :
+      raw.swayed ? `Attention latched onto the emphatic hint <span class="mono">"${escapeHtml(textOf(raw.src.s))}"</span> — classic <strong>sycophancy</strong>.` :
+      `Read the year off <span class="mono">"${escapeHtml(textOf(raw.src.s))}"</span>.`
+    }</div>`;
+
+  if (!s2aOn){
+    ansS2aBody.innerHTML = `<div class="text-slate-400 text-sm py-4">Flip the <strong>System 2 Attention</strong> switch to run the first pass and answer the regenerated context.</div>`;
+    return;
+  }
+  const s2a = answerS2A();
+  const s2aRight = s2a.year === TRUTH;
+  ansS2aBody.classList.add("flash-v");
+  setTimeout(()=>ansS2aBody.classList.remove("flash-v"), 700);
+  ansS2aBody.innerHTML = `
+    <div class="ans-year" style="color:${s2aRight ? "#6d28d9" : "#b91c1c"};">${s2a.year ?? "—"}</div>
+    <div class="verdict ${s2aRight ? "right" : "wrong"}">${s2aRight ? "✓ correct" : "✗ no fact left"}</div>
+    <div class="ans-reason">${
+      s2a.year == null ? "The regenerated context has no relevant fact left — did you exclude the founding sentence?" :
+      `Answered from the clean context <span class="mono">"${escapeHtml(textOf(s2a.src.s))}"</span>. The injected hint was removed in pass 1, so it couldn't sway anything.`
+    }</div>`;
+}
+
+function rerun(){ renderPass(); renderAnswers(); }
+
+s2aTrack.parentElement.onclick = () => {
+  s2aOn = !s2aOn;
+  s2aTrack.classList.toggle("on", s2aOn);
+  s2aLabel.textContent = s2aOn ? "ON" : "OFF";
+  s2aLabel.style.color = s2aOn ? "#6d28d9" : "#94a3b8";
+  rerun();
+};
+hintSel.onchange = () => { hintYearVal = parseInt(hintSel.value, 10); renderSentences(); rerun(); };
+
+renderSentences();
+rerun();
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. The problem: attention can't fully ignore anything", why:"A transformer answers with <strong>soft attention</strong>: every token in the context gets some weight, and nothing is ever weighted to exactly zero. So a sentence that's irrelevant, or a confident-sounding wrong guess someone dropped into the prompt, still contributes to the output. Most of the time that's harmless, but on the wrong input it quietly bends the answer. There's no built-in step that decides <em>what deserves attention</em> — the model just attends to all of it at once.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">soft attention: every token gets weight (never 0)<br>relevant fact · <span style="color:#b91c1c">injected opinion</span> · filler<br>→ the junk leaks into the answer</div>`,
+   code:`// One forward pass attends to EVERYTHING in the context.
+const answer = await llm(context + question);
+// no step ever asks "which of this actually matters?"` },
+ { title:"2. Two failure modes: sycophancy & spurious correlation", why:"The leak shows up in two classic ways. <strong>Sycophancy</strong>: if the prompt contains an opinion — “I think the answer is 2008” — the model tends to agree with it, even when it's wrong, because that opinionated text is right there attracting attention. <strong>Spurious correlation</strong>: an irrelevant detail (an extra number in a math word-problem, an off-topic sentence) gets used as if it mattered. Both come from the same root cause: distracting tokens sitting in the context that the model can't help attending to.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">🙇 sycophancy: “I think it's 2008” → model says 2008<br>🎲 spurious: irrelevant number → wrong math<br>same cause: distractor tokens in the window</div>`,
+   code:`// Sycophancy: opinion in the prompt pulls the answer.
+"...I'm pretty sure it was 2008." -> model agrees (wrong).
+// Spurious: irrelevant fact leaks into reasoning.
+"...and 17 of them left." -> model uses 17 for no reason.` },
+ { title:"3. The name: System 1 vs System 2", why:"S2A borrows Kahneman's two-systems framing. <strong>System 1</strong> is fast, automatic, effortless thinking — that's the raw forward pass, attention firing on everything at once. <strong>System 2</strong> is slow, deliberate, effortful thinking — you stop and decide what actually matters before acting. The technique adds a System-2 step in front of the answer: a deliberate pass that reconsiders the context and controls what the model is allowed to attend to, instead of reflexively answering the whole messy input.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">System 1 🐇 fast, automatic → answer the raw context<br>System 2 🧠 slow, deliberate → decide what matters first<br>S2A = add the deliberate step</div>`,
+   code:`// System 1 : reflexive one-shot over everything.
+// System 2 : a deliberate pass that curates attention,
+//            THEN a normal answer over the curated input.` },
+ { title:"4. The core idea: regenerate the context", why:"Instead of answering the given context, S2A first uses the LLM itself to <strong>rewrite</strong> the context — producing a new version that contains only the parts relevant to the question, with opinions and irrelevant material removed. This is the key move: you're not editing the question or adding an instruction, you're generating a fresh, clean context. The model is very capable of judging what's relevant when you ask it to <em>extract</em> rather than <em>answer</em>, so the regeneration step is reliable even when the direct answer wasn't.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">raw context ──LLM pass 1──▶ 🧹 clean context<br>keep: relevant facts · drop: opinions + filler<br>a NEW context, not an edited old one</div>`,
+   code:`const clean = await llm(\`
+Extract only the parts of this context relevant to the question.
+Remove opinions and irrelevant sentences. Do not answer yet.
+Context: """\${context}"""  Question: \${question}\`);` },
+ { title:"5. Why regenerate, not “please ignore it”", why:"The obvious cheaper fix is to keep the messy context and just tell the model “ignore any opinions or irrelevant text.” It helps a little, but it's unreliable — the distracting tokens are still physically in the context window, so attention still lands on them. You cannot switch attention off with an instruction. S2A's insight is to <strong>remove the tokens entirely</strong>: if the opinion isn't in the regenerated context, there's literally nothing there to attend to. Deletion beats a polite request.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">“ignore the junk” → tokens still present → still attended ~<br>regenerate → junk deleted → nothing to attend to ✓<br>remove the text, don't ask to ignore it</div>`,
+   code:`// Unreliable: text stays, attention still peeks.
+llm(context + "Ignore opinions." + question);
+// Robust: the opinion is GONE from the regenerated context.
+llm(cleanContext + question);   // nothing left to sway it` },
+ { title:"6. Pass A: extract the relevant context (and unbias the question)", why:"Concretely, pass 1 asks for two things: the <strong>relevant context</strong> (facts only, opinions stripped) and, if the opinion was smuggled into the <em>question</em> itself, an <strong>unbiased restatement</strong> of the question. Separating the extracted context from the question matters — the paper found that keeping them apart, and stripping opinion from both, prevents the bias from sneaking back in. The output of this pass is a clean context plus a neutral question, ready to answer.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pass 1 output →<br>Relevant context: “founded in 1994...”<br>Question (unbiased): “What year was it founded?”</div>`,
+   code:`// Ask pass 1 to SEPARATE clean context from a neutral question.
+Relevant context: <facts only, no opinions>
+Question (unbiased): <question with any opinion removed>` },
+ { title:"7. Pass B: answer using only the regenerated context", why:"Now run the ordinary answering call — but hand it <strong>only</strong> the clean context and neutral question from pass 1. The original messy context is discarded and never shown to this step. Because the injected opinion and the irrelevant sentences aren't in the window, there's nothing to produce sycophancy or spurious correlation, and the answer tracks the actual fact. Same model, same one-shot answer; the only difference is that it's looking at a curated context.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">clean context + neutral Q ──LLM pass 2──▶ answer<br>original context = discarded, never seen here<br>→ 1994 (the fact), not 2008 (the hint)</div>`,
+   code:`const answer = await llm(\`
+Context: """\${cleanContext}"""
+Question: \${cleanQuestion}\`);
+// answers the fact — the distractors aren't in the window.` },
+ { title:"8. Variants & the two-pass cost", why:"S2A is a small family. You can regenerate context-only, or context-plus-neutral-question; you can keep the original alongside the clean version (weaker) or drop it entirely (stronger). There's also a one-instruction “keep unbiased” prompt, but the explicit regenerate-then-answer split is the most robust. The cost is the honest trade-off: it's <strong>two LLM calls</strong> instead of one (regenerate, then answer), plus the tokens of the extra pass — roughly 2× the work for a question that could have been one shot.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">variants: ctx-only · ctx+neutral-Q · keep vs drop original<br>most robust: split + DROP original<br>cost: 2 calls (regenerate → answer)</div>`,
+   code:`// 1 naive call  ->  2 S2A calls:
+const clean  = await llm(regenPrompt);   // pass 1 (extra)
+const answer = await llm(clean + q);     // pass 2` },
+ { title:"9. What it buys you (the results)", why:"In the original work, S2A meaningfully improved <strong>factuality</strong> on questions seeded with distracting or opinionated context, sharply cut <strong>sycophancy</strong> (the model stopped agreeing with planted wrong opinions), and boosted accuracy on <strong>math word-problems padded with irrelevant sentences</strong>. The pattern is consistent: wherever the failure came from the model attending to something it shouldn't, removing that something up front fixes it. It doesn't make the model smarter — it stops a specific, avoidable class of mistakes.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">factuality ▲ · sycophancy ▼ · noisy-math ▲<br>fixes the “attended to the wrong token” errors<br>not smarter — just less distractible</div>`,
+   code:`// Empirically (Weston & Sukhbaatar, 2023):
+//   + higher factual accuracy under distracting context
+//   + much less sycophancy on opinion-seeded questions
+//   + better math when irrelevant sentences are injected` },
+ { title:"10. When to use it — and how it relates to RAG & CoT", why:"Spend the extra call when inputs are <strong>long, noisy, or opinion-laden</strong>: sycophancy-prone Q&amp;A, user messages that smuggle in a guess, big retrieval dumps where most passages are off-topic. Think of it as <strong>re-ranking / filtering for the whole prompt</strong>, not just retrieved docs. And note the ordering versus <strong>Chain-of-Thought</strong>: CoT reasons <em>over</em> whatever context it's given, distractors included; S2A cleans the context <em>before</em> any reasoning starts — the two compose well. Skip S2A for short, clean prompts where nothing needs stripping. Next: system prompts.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: opinion-laden · long/noisy · RAG dumps<br>skip: short clean prompts · latency-critical<br>S2A = clean first · CoT = reason after</div>`,
+   code:`// Worth it when the context is noisy or opinion-laden.
+// It's prompt-wide re-ranking: clean the context first,
+// THEN reason/answer (composes with CoT). Skip when the
+// whole prompt is already relevant.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
