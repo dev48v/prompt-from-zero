@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 45 — Thread of Thought (ThoT)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== context chunk rows ===== */
+  .chunk { display:flex; align-items:flex-start; gap:11px; padding:11px 12px; border:1px solid #e2e8f0; border-radius:12px; background:#fff; transition:all .18s; cursor:pointer; position:relative; }
+  .chunk:hover { border-color:#c4b5fd; }
+  .chunk.off { opacity:.42; background:#f8fafc; }
+  .chunk.off .ctext { text-decoration:line-through; color:#94a3b8; }
+  .chunk.iskey { box-shadow:0 0 0 2px #ede9fe inset; }
+  .cnum { flex:none; width:30px; height:30px; border-radius:9px; background:#f1f5f9; color:#64748b; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; font-variant-numeric:tabular-nums; margin-top:1px; }
+  .cnum.act { background:#8b5cf6; color:#fff; }
+  .cbody { flex:1; min-width:0; }
+  .ctext { font-size:13px; color:#1e293b; line-height:1.5; }
+  .cmeta { display:flex; align-items:center; gap:8px; margin-top:6px; flex-wrap:wrap; }
+  .rel-bar { flex:1; height:6px; background:#f1f5f9; border-radius:999px; overflow:hidden; max-width:150px; }
+  .rel-fill { height:100%; border-radius:999px; transition:width .3s; }
+  .rel-num { font-size:10px; font-weight:800; color:#64748b; font-variant-numeric:tabular-nums; min-width:52px; }
+  .csumm { margin-top:8px; font-size:12px; color:#334155; background:#f8fafc; border-left:3px solid #c4b5fd; border-radius:0 8px 8px 0; padding:6px 10px; line-height:1.45; }
+
+  .rt { flex:none; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.03em; padding:3px 9px; border-radius:999px; white-space:nowrap; }
+  .rt-answer { background:#dcfce7; color:#15803d; border:1px solid #bbf7d0; }
+  .rt-super  { background:#fef3c7; color:#b45309; border:1px solid #fde68a; }
+  .rt-off    { background:#fee2e2; color:#b91c1c; border:1px solid #fecaca; }
+  .rt-ctx    { background:#f1f5f9; color:#64748b; border:1px solid #e2e8f0; }
+
+  .hl-date  { background:#ede9fe; border-radius:3px; padding:0 3px; color:#5b21b6; font-weight:800; }
+  .hl-final { background:#dcfce7; border-bottom:2px solid #22c55e; border-radius:3px; padding:0 2px; color:#14532d; font-weight:700; }
+  .hl-neg   { background:#fee2e2; border-radius:3px; padding:0 2px; color:#991b1b; font-weight:600; }
+
+  /* toggle switch */
+  .thot-switch { display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+  .track { width:52px; height:28px; border-radius:999px; background:#cbd5e1; position:relative; transition:background .2s; flex:none; }
+  .track.on { background:#8b5cf6; }
+  .knob { position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:left .2s; }
+  .track.on .knob { left:27px; }
+
+  /* running thread panel */
+  .thread { position:relative; padding-left:6px; }
+  .thread-row { position:relative; display:flex; gap:10px; align-items:flex-start; padding:7px 0 7px 18px; }
+  .thread-row::before { content:""; position:absolute; left:5px; top:0; bottom:0; width:2px; background:#ede9fe; }
+  .thread-row:first-child::before { top:14px; }
+  .thread-row:last-child::before  { bottom:calc(100% - 14px); }
+  .thread-dot { position:absolute; left:0; top:9px; width:12px; height:12px; border-radius:50%; background:#fff; border:2px solid #a78bfa; }
+  .thread-dot.answer { background:#22c55e; border-color:#16a34a; }
+  .thread-dot.super  { background:#f59e0b; border-color:#d97706; }
+  .thread-dot.off    { background:#ef4444; border-color:#dc2626; }
+  .thread-txt { font-size:12.5px; color:#334155; line-height:1.5; }
+  .thread-synth { margin-top:8px; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:10px; padding:9px 12px; font-size:12.5px; color:#5b21b6; line-height:1.5; }
+
+  /* answer cards */
+  .ans { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .ans-head { padding:9px 13px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:7px; border-bottom:1px solid #f1f5f9; }
+  .ans-head.raw  { background:#fef2f2; color:#b91c1c; }
+  .ans-head.thot { background:#f5f3ff; color:#6d28d9; }
+  .ans-body { padding:13px; }
+  .ans-date { font-size:30px; font-weight:900; letter-spacing:-.02em; }
+  .verdict { font-size:11px; font-weight:800; padding:3px 10px; border-radius:999px; display:inline-block; margin-top:3px; }
+  .verdict.wrong { background:#fee2e2; color:#b91c1c; }
+  .verdict.right { background:#dcfce7; color:#15803d; }
+  .ans-reason { font-size:12px; color:#475569; margin-top:9px; line-height:1.5; }
+
+  .flash-v { animation: flashV .7s ease; }
+  @keyframes flashV { 0%{ background:#fff; } 45%{ background:#ede9fe; } 100%{ background:transparent; } }
+
+  /* compare panel */
+  .cmpgrid { display:grid; gap:12px; }
+  @media(min-width:768px){ .cmpgrid { grid-template-columns:repeat(3,1fr); } }
+  .cmpcard { border:1px solid #e2e8f0; border-radius:14px; padding:0; overflow:hidden; }
+  .cmphead { padding:8px 12px; font-size:12px; font-weight:800; display:flex; align-items:center; gap:6px; border-bottom:1px solid #f1f5f9; }
+  .cmpbody { padding:11px 12px; font-size:11.5px; line-height:1.5; color:#475569; }
+  .cmpout { font-size:11px; font-weight:800; padding:3px 8px; border-radius:999px; display:inline-block; margin-top:6px; }
+  .cmpout.wrong { background:#fee2e2; color:#b91c1c; }
+  .cmpout.mid   { background:#fef3c7; color:#b45309; }
+  .cmpout.right { background:#dcfce7; color:#15803d; }
+  .cmphead.s1   { background:#fef2f2; color:#b91c1c; }
+  .cmphead.ins  { background:#fffbeb; color:#b45309; }
+  .cmphead.con  { background:#f5f3ff; color:#6d28d9; }
+
+  .seg { display:inline-flex; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  .seg button { font-size:11px; font-weight:700; padding:5px 12px; background:#fff; color:#64748b; border:none; cursor:pointer; }
+  .seg button.on { background:#8b5cf6; color:#fff; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 45</div>
+      <h1 class="text-xl font-bold">🧵 Thread of Thought (ThoT) — when the context is <strong>long, chaotic and multi-part</strong>, dumping it all in one blob and asking makes the model skim: it attends hardest to the <strong>start and end</strong> and loses the fact <strong>buried in the middle</strong>. ThoT fixes it with one instruction — <em>&ldquo;walk me through this context in manageable parts, summarizing and analyzing as we go, then answer&rdquo;</em>. The model reads segment by segment, writes a mini-summary of each, carries a <strong>running thread</strong> forward, and only then synthesizes — so scattered, buried info actually surfaces.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Watch a one-shot read miss a decision buried mid-thread — then watch the model walk the context part by part and pin it.</h2>
+        <p class="text-slate-500 mb-5">Long inputs have a well-known flaw: models suffer <strong>&ldquo;lost in the middle&rdquo;</strong> — attention is strongest at the <em>beginning</em> and <em>end</em> of the context and weakest in the center, so a key fact sitting mid-way gets skimmed past while a louder distractor at an edge wins. <strong>Thread of Thought</strong> beats it not by shortening the input but by changing <em>how it's read</em>: a single instruction tells the model to <span class="mono">segment&nbsp;→&nbsp;summarize&nbsp;each&nbsp;part&nbsp;→&nbsp;carry&nbsp;a&nbsp;running&nbsp;thread&nbsp;→&nbsp;then&nbsp;answer</span>. Every part now gets equal, deliberate attention and its takeaway is written down, so the buried fact can't vanish. Everything below is <strong>real</strong>: the per-chunk relevance score, the date extractor, the finality detector, the running thread, and both answers are computed live in JS. Flip <span class="mono">Thread&nbsp;of&nbsp;Thought</span> on to watch the model walk the thread; drag the buried decision to a different position and watch the <span class="text-red-600 font-semibold">one-shot</span> answer flip with it while the <span class="text-violet-700 font-semibold">ThoT</span> answer stays locked on the fact.</p>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">The question</div>
+        <div class="text-sm text-slate-700 mono bg-slate-50 border border-slate-200 rounded-lg p-3" id="qBox"></div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🧵 A long, messy thread handed to the model <span class="text-slate-400 normal-case font-normal">(click any part to include / exclude it)</span></div>
+          <label class="thot-switch" id="thotToggle">
+            <span class="text-xs font-bold text-slate-600">Thread of Thought</span>
+            <span class="track" id="thotTrack"><span class="knob"></span></span>
+            <span class="text-xs font-bold" id="thotLabel" style="color:#94a3b8;">OFF</span>
+          </label>
+        </div>
+        <div class="mb-3 flex items-center gap-2 flex-wrap text-xs text-slate-500">
+          <span class="font-semibold">Bury the real decision at the:</span>
+          <span class="seg" id="burySeg">
+            <button data-p="start">start</button>
+            <button data-p="middle" class="on">middle</button>
+            <button data-p="end">end</button>
+          </span>
+          <span class="text-slate-400">— only the one-shot answer cares where it sits.</span>
+        </div>
+        <div id="chunks" class="space-y-2 mt-2"></div>
+      </div>
+
+      <div id="threadPanel" class="bg-white rounded-2xl border border-violet-200 p-4 mb-3 hidden">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-3">🧵 The running thread — each part read, summarized, and carried forward</div>
+        <div id="threadList" class="thread"></div>
+      </div>
+
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div class="ans" id="ansRaw">
+          <div class="ans-head raw">📄 One-shot · dump the whole thread &amp; ask</div>
+          <div class="ans-body" id="ansRawBody"></div>
+        </div>
+        <div class="ans" id="ansThot">
+          <div class="ans-head thot">🧵 Thread of Thought · walk it part by part</div>
+          <div class="ans-body" id="ansThotBody"></div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mt-4">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-1">Three ways to read a long, chaotic context</div>
+        <div class="text-xs text-slate-400 mb-3">Same thread, same buried decision. The difference is <em>how the context is read before the answer is formed</em>.</div>
+        <div class="cmpgrid">
+          <div class="cmpcard">
+            <div class="cmphead s1">📄 Dump it all &amp; ask <span class="badge" style="background:#fecaca;color:#7f1d1d;">one-shot</span></div>
+            <div class="cmpbody">
+              Paste the whole thread in and answer in a single pass. Attention peaks at the start and end, so a mid-thread decision is skimmed past — <strong>lost in the middle</strong>.
+              <div class="cmpout wrong">✗ grabs an edge date, misses the real one</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead ins">🪜 &ldquo;Think step by step&rdquo; (plain CoT) <span class="badge" style="background:#fde68a;color:#92400e;">reason only</span></div>
+            <div class="cmpbody">
+              Add chain-of-thought and it reasons more carefully — but over the <em>same undivided blob</em>. CoT segments the <strong>reasoning</strong>, not the <strong>reading</strong>, so a buried fact it never noticed still can't be used.
+              <div class="cmpout mid">~ better logic, same skim of the input</div>
+            </div>
+          </div>
+          <div class="cmpcard">
+            <div class="cmphead con">🧵 Thread of Thought <span class="badge" style="background:#ede9fe;color:#6d28d9;">segment + summarize</span></div>
+            <div class="cmpbody">
+              Walk the context in parts, summarize each, and carry a running thread. Every segment gets equal attention and its takeaway is written down, so the buried decision surfaces — <strong>position no longer matters</strong>.
+              <div class="cmpout right">✓ lands the fact wherever it's buried</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Thread of Thought = don't read a long context in one gulp — walk it in parts, summarize each, keep a running thread, then answer.</strong> Because a model's attention over a long input is uneven (strong at the ends, weak in the middle), a single-pass read quietly drops facts buried mid-context. ThoT is chain-of-thought applied to <em>reading</em> instead of just reasoning: one zero-shot instruction — <span class="mono">&ldquo;walk me through this context in manageable parts, summarizing and analyzing as we go&rdquo;</span> — makes the model give each segment its own deliberate pass and externalize a mini-summary, so nothing depends on where it happened to sit. It costs no extra API call (it's a prompt change, not a pipeline) and it shines exactly where inputs are long, chaotic, multi-document, or needle-in-a-haystack.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Thread of Thought = segment the context → summarize each part into a running thread → synthesize the answer from the thread. Deliberate, part-by-part reading beats one distractible gulp.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Thread of Thought works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Thread of Thought is a <em>prompt</em>, not a pipeline: <span class="mono text-violet-700">walk the context in parts → summarize each → carry a running thread → then answer</span>. No extra API call, no retriever. Here it is end to end — the naive one-shot, why plain CoT isn't enough, the ThoT trigger phrase, segmenting the context, the walk with per-part summaries, the running thread + synthesis, and when the technique earns its place.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The naive pipeline — dump the whole context &amp; ask</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The default is one shot: paste the entire long context plus the question and take the answer. It's fine for short, tidy inputs — but on a long chaotic thread the model's attention is uneven (strong at the ends, weak in the middle), so a fact buried mid-context gets skimmed past and a louder edge detail wins. This is the behaviour we want to beat.</p>
+        <div class="relative"><pre>// STEP 1 — the ordinary one-shot answer. Skims long inputs.
+const answer = await llm(`Context: """${context}"""
+Question: ${question}`);
+// works... until the context is long and the key fact sits in
+// the middle. "Lost in the middle" -> the buried fact is dropped.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Why plain &ldquo;think step by step&rdquo; isn't enough</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The obvious upgrade is chain-of-thought — but CoT segments the <strong>reasoning</strong>, not the <strong>reading</strong>. It still consumes the context as one undivided blob in a single pass, so a fact it never noticed can't enter the reasoning at all. Better logic over a skimmed input is still an answer built on a gap. ThoT's move is to segment the <em>input</em>, not just the thoughts.</p>
+        <div class="relative"><pre>// STEP 2 — CoT: better reasoning, same one-pass read.
+const answer = await llm(`Context: """${context}"""
+Question: ${question}
+Let's think step by step.`);
+// the reasoning is structured, but the CONTEXT was still read in
+// one gulp -> a mid-context fact it skimmed never reaches the logic.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The ThoT trigger — one zero-shot line</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole technique is a single instruction appended to the prompt: <span class="mono">&ldquo;Walk me through this context in manageable parts step by step, summarizing and analyzing as we go.&rdquo;</span> That phrase makes the model split the context itself, give each part a deliberate pass, and write down what it found — no examples, no extra calls. It's the ThoT paper's exact zero-shot prompt.</p>
+        <div class="relative"><pre>// STEP 3 — the ThoT trigger phrase (zero-shot, one line).
+const THOT = "Walk me through this context in manageable parts " +
+             "step by step, summarizing and analyzing as we go.";
+
+const walk = await llm(`Context: """${context}"""
+Question: ${question}
+${THOT}`);
+// one instruction -> segment + summarize each part + carry forward.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Segment the context into manageable parts</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Conceptually the first thing ThoT does is cut the long context into parts — by message, paragraph, section, or a fixed window. You can let the model do it implicitly from the trigger phrase, or split explicitly in code for tighter control. Each part is small enough to get full attention on its own pass, which is exactly what defeats &ldquo;lost in the middle&rdquo;.</p>
+        <div class="relative"><pre>// STEP 4 — segment (implicit via the phrase, or explicit in code).
+const parts = context.split(/\n{2,}/);   // by paragraph/message
+// now each `parts[i]` is short enough to read with full attention,
+// instead of one 8k-token blob where the middle gets skimmed.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Walk part by part — summarize &amp; analyze each</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For every part the model writes a short summary and notes how it bears on the question — is this the fact, a superseded detail, or noise? The single ThoT call produces this walk in one response, but the mental (and code) model is a loop: read a part, summarize it, judge its relevance, move on. Writing each takeaway down is what stops the middle from disappearing.</p>
+        <div class="relative"><pre>// STEP 5 — per-part: summarize + judge relevance to the question.
+const notes = parts.map((p, i) => ({
+  i,
+  summary: summarize(p),               // one-line takeaway
+  relevant: bearsOn(p, question)       // fact? superseded? noise?
+}));
+// each part got its OWN deliberate pass -> nothing skimmed away.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Carry a running thread → then synthesize</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The summaries accumulate into a <strong>running thread</strong> — a compact, externalized memory of everything relevant, in order. The final answer is synthesized from that thread, not from the raw blob. Because the thread already isolated the decisive fact and downgraded the distractors, the synthesis is short and correct. That's the full method: segment → summarize → thread → answer.</p>
+        <div class="relative"><pre>// STEP 6 — Thread of Thought, end to end (still ONE call).
+async function threadOfThought(context, question) {
+  const THOT = "Walk me through this context in manageable parts " +
+               "step by step, summarizing and analyzing as we go, " +
+               "keep a running summary, then answer.";
+  return llm(`Context: """${context}"""
+Question: ${question}
+${THOT}`);
+}
+// no extra call, no retriever -> just a smarter way to READ.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">When to reach for ThoT — and where it sits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Thread of Thought (Zhou et al., 2023) targets <strong>chaotic, long-context</strong> tasks — messy conversation histories, multi-document QA, retrieval dumps where the answer hides among distractors. Use it whenever a fact could be buried in the middle of a big input. It's cheaper than retrieval-augmented pipelines (one prompt, no index) and complementary: it composes with RAG (walk the retrieved passages), and unlike plain CoT it segments the <em>reading</em>, not just the reasoning. Skip it for short, clean prompts where nothing is buried. Next: <strong>system prompts</strong> — the standing persona-and-rules turn that sets the model's role and hard constraints before the conversation begins.</p>
+        <div class="relative"><pre>// STEP 7 — when ThoT earns its place.
+// USE for:  long/chaotic context, multi-doc QA, messy chat history,
+//           retrieval dumps, "needle in a haystack" lookups.
+// SKIP for: short clean prompts (nothing buried), single-fact recall.
+//
+// vs CoT : CoT segments the REASONING; ThoT segments the READING.
+// vs RAG : RAG fetches less; ThoT reads what you already have, better.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 45 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Thread of Thought (ThoT)</strong>: on a long, chaotic context a one-shot read is <strong>lost in the middle</strong> — attention peaks at the start and end, so a fact buried mid-input is skimmed past. ThoT fixes it with a single zero-shot instruction — <em>&ldquo;walk me through this context in manageable parts, summarizing and analyzing as we go&rdquo;</em> — that makes the model segment the context, give each part a deliberate pass, write a mini-summary, and carry a <strong>running thread</strong> forward before synthesizing the answer. It's chain-of-thought applied to <em>reading</em> rather than reasoning, it costs no extra call, and it pays off wherever inputs are long, multi-document, or needle-in-a-haystack — proven by the demo, where the one-shot answer chases whatever date sits at an edge while the ThoT answer stays pinned to the buried decision no matter where it's placed. <strong>👉 Next up — System prompts: the standing persona-and-rules turn (no user message) that sets the model's role, tone, and hard constraints before the conversation even begins.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK: a REAL Thread-of-Thought engine.
+//  - The per-chunk relevance score, date extractor, finality
+//    detector and role classifier are genuine functions run over
+//    each chunk (not labels).
+//  - The ONE-SHOT answer models "lost in the middle": a positional
+//    weight (high at the start/end, low in the centre) times a
+//    shallow surface-relevance -> it grabs an edge date and skips
+//    the buried decision.
+//  - The ThoT answer walks every chunk with EQUAL attention, builds
+//    a running thread of takeaways, and synthesizes from the thread
+//    -> it lands the decisive date wherever it sits.
+//  Move the buried decision (start / middle / end) to prove the
+//  one-shot answer follows position and ThoT does not.
+// ============================================================
+
+const QUESTION = "What is the FINAL agreed launch date for Project Helios?";
+const TRUTH = "April 9";
+
+// The messy thread, message by message. `key` marks the buried decision.
+// `role` is COMPUTED below from the text, never trusted.
+const CHUNKS = [
+  { id:"c1", text:"Kicking off the Helios thread — the original target was March 14, but that's still under discussion.", on:true },
+  { id:"c2", text:"Marketing wants a Friday release so the blog post lands before the weekend.", on:true },
+  { id:"c3", text:"Engineering flagged the payments migration is risky; we can't commit to a March date.", on:true },
+  { id:"KEY", text:"OK — decision made: we're locking the Helios launch for April 9. That's final.", on:true, key:true },
+  { id:"c4", text:"Perfect, I'll get the release checklist and staging sign-off ready.", on:true },
+  { id:"c5", text:"Unrelated reminder: the Q2 company all-hands is on May 2.", on:true },
+  { id:"c6", text:"Heads up: the old spec doc still says March 14 at the top — ignore that, it's stale.", on:true },
+];
+
+const DATE_RX   = /\b(?:January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2}\b/;
+const LAUNCH_RX = /\b(launch|target|release|go-live|golive|ship)\b/i;
+const FINAL_RX  = /\b(decision made|locking|locked|final|finali[sz]ed|agreed|confirmed|settled)\b/i;
+const NEG_RX    = /\b(original|under discussion|unrelated|ignore|stale|old|reminder|can'?t commit|still says|proposed|earlier)\b/i;
+
+let buryPos = "middle";     // where the KEY decision is placed
+let thotOn  = false;
+
+function extractDate(t){ const m = t.match(DATE_RX); return m ? m[0] : null; }
+function decisiveness(t){ let s = 0; if (FINAL_RX.test(t)) s += 0.6; if (NEG_RX.test(t)) s -= 0.5; return s; }
+
+// shallow "does this look relevant" score shown on each row
+function baseRelevance(t){
+  let s = 0;
+  if (DATE_RX.test(t))   s += 0.45;
+  if (LAUNCH_RX.test(t)) s += 0.35;
+  return Math.min(1, s);
+}
+// surface relevance the ONE-SHOT reader uses (no notion of finality)
+function surfaceRel(t){
+  let s = 0.35;
+  if (LAUNCH_RX.test(t)) s += 0.5;
+  if (DATE_RX.test(t))   s += 0.15;
+  return Math.min(1, s);
+}
+// role derived purely from the text
+function classify(t){
+  const d = extractDate(t);
+  if (!d) return "context";
+  const dec = decisiveness(t);
+  if (LAUNCH_RX.test(t) && dec > 0.2) return "answer";     // decisive launch date
+  if (LAUNCH_RX.test(t))              return "super";       // a launch date, but not final
+  return "off";                                             // a date, but off-topic / stale
+}
+// the mini-summary + thread takeaway for a chunk
+function noteFor(t){
+  const role = classify(t), d = extractDate(t);
+  if (role === "answer") return { role, tag:"🎯 final date", cls:"rt-answer",
+    thread:`🎯 Decision locked — Helios launches <b>${d}</b>. This is the final, agreed date.` };
+  if (role === "super")  return { role, tag:"↩︎ earlier target", cls:"rt-super",
+    thread:`↩︎ <b>${d}</b> was an earlier/original target — explicitly <i>not</i> final.` };
+  if (role === "off"){
+    const stale = /\b(ignore|stale|old|still says)\b/i.test(t);
+    return stale
+      ? { role, tag:"🗑 stale", cls:"rt-off", thread:`🗑 An old doc still shows <b>${d}</b> — flagged stale, ignore it.` }
+      : { role, tag:"➖ unrelated", cls:"rt-off", thread:`➖ <b>${d}</b> is an unrelated event, not the launch.` };
+  }
+  const risk = /risk|can'?t commit/i.test(t);
+  return { role:"context", tag:"· context", cls:"rt-ctx",
+    thread:`· No launch date here${risk ? " — a constraint / risk was raised" : ""}.` };
+}
+
+// positional attention weight: HIGH at the ends, LOW in the middle
+// (the "lost in the middle" curve), over the actually-included list.
+function posWeight(i, n){
+  if (n <= 1) return 1;
+  const mid = (n - 1) / 2;
+  return 0.3 + 0.7 * Math.abs(i - mid) / mid;
+}
+
+// the working order: reposition the KEY decision per buryPos
+function workingOrder(){
+  const rest = CHUNKS.filter(c => c.id !== "KEY");
+  const key  = CHUNKS.find(c => c.id === "KEY");
+  const arr  = rest.slice();
+  const idx  = buryPos === "start" ? 0 : buryPos === "end" ? arr.length : Math.floor(arr.length / 2);
+  arr.splice(idx, 0, key);
+  return arr;
+}
+
+// ONE-SHOT answer: soft attention over the whole context, biased by
+// position -> picks the highest posWeight * surfaceRel dated chunk.
+function answerOneShot(order){
+  const inc = order.filter(c => c.on);
+  const n = inc.length;
+  const cands = inc.map((c, i) => ({ c, i, date: extractDate(c.text) }))
+                   .filter(o => o.date != null)
+                   .map(o => ({ ...o, score: posWeight(o.i, n) * surfaceRel(o.c.text) + 0.001 * o.i }));
+  if (!cands.length) return { date:null };
+  cands.sort((a, b) => b.score - a.score);
+  const best = cands[0];
+  return { date: best.date, src: best.c, role: classify(best.c.text) };
+}
+
+// ThoT answer: walk every chunk with equal attention, build the
+// thread, and synthesize the chunk flagged "answer" (position-free).
+function answerThoT(order){
+  const inc = order.filter(c => c.on);
+  const walked = inc.map(c => ({ c, note: noteFor(c.text), date: extractDate(c.text) }));
+  const ans = walked
+    .filter(w => w.note.role === "answer")
+    .sort((a, b) => decisiveness(b.c.text) - decisiveness(a.c.text))[0];
+  return { date: ans ? ans.date : null, src: ans ? ans.c : null, walked };
+}
+
+// ---- DOM ----
+const qBox = document.getElementById("qBox");
+const chunksEl = document.getElementById("chunks");
+const thotTrack = document.getElementById("thotTrack");
+const thotLabel = document.getElementById("thotLabel");
+const threadPanel = document.getElementById("threadPanel");
+const threadList = document.getElementById("threadList");
+const ansRawBody = document.getElementById("ansRawBody");
+const ansThotBody = document.getElementById("ansThotBody");
+const burySeg = document.getElementById("burySeg");
+
+qBox.textContent = '"' + QUESTION + '"';
+
+function highlight(t){
+  let h = escapeHtml(t);
+  const md = t.match(DATE_RX);
+  if (md){ h = h.replace(md[0], `<span class="hl-date">${md[0]}</span>`); }
+  const mf = t.match(FINAL_RX);
+  if (mf){ const e = escapeHtml(mf[0]); h = h.replace(e, `<span class="hl-final">${e}</span>`); }
+  const mn = t.match(NEG_RX);
+  if (mn){ const e = escapeHtml(mn[0]); h = h.replace(e, `<span class="hl-neg">${e}</span>`); }
+  return h;
+}
+
+function renderChunks(){
+  const order = workingOrder();
+  let partNo = 0;
+  chunksEl.innerHTML = order.map(c => {
+    const on = c.on;
+    if (on) partNo++;
+    const rel = baseRelevance(c.text);
+    const col = rel >= 0.75 ? "#22c55e" : rel >= 0.4 ? "#f59e0b" : "#cbd5e1";
+    const note = noteFor(c.text);
+    const summ = thotOn && on ? `<div class="csumm">${note.thread}</div>` : "";
+    const tag  = thotOn && on ? `<span class="rt ${note.cls}">${note.tag}</span>` : "";
+    return `
+      <div class="chunk ${on ? "" : "off"} ${c.key ? "iskey" : ""}" data-id="${c.id}">
+        <div class="cnum ${on ? "act" : ""}">${on ? partNo : "—"}</div>
+        <div class="cbody">
+          <div class="ctext">${highlight(c.text)}</div>
+          <div class="cmeta">
+            <span class="rel-num">rel ${(rel*100).toFixed(0)}%</span>
+            <span class="rel-bar"><span class="rel-fill" style="width:${rel*100}%;background:${col};"></span></span>
+            ${c.key ? '<span class="badge" style="background:#ede9fe;color:#6d28d9;">buried decision</span>' : ""}
+          </div>
+          ${summ}
+        </div>
+        ${tag}
+      </div>`;
+  }).join("");
+  chunksEl.querySelectorAll(".chunk").forEach(el => {
+    el.onclick = () => {
+      const c = CHUNKS.find(x => x.id === el.dataset.id);
+      c.on = !c.on; rerun();
+    };
+  });
+}
+
+function renderThread(){
+  if (!thotOn){ threadPanel.classList.add("hidden"); return; }
+  threadPanel.classList.remove("hidden");
+  const order = workingOrder();
+  const { walked, date } = answerThoT(order);
+  if (!walked.length){ threadList.innerHTML = `<div class="text-xs text-slate-400">No parts in the thread.</div>`; return; }
+  const dotCls = r => r === "answer" ? "answer" : r === "super" ? "super" : r === "off" ? "off" : "";
+  threadList.innerHTML = walked.map((w, i) => `
+    <div class="thread-row fade-in" style="animation-delay:${i*60}ms">
+      <span class="thread-dot ${dotCls(w.note.role)}"></span>
+      <span class="thread-txt"><b>Part ${i+1}:</b> ${w.note.thread}</span>
+    </div>`).join("");
+  const synth = date
+    ? `🧵 <b>Thread synthesis →</b> across all ${walked.length} parts, the only one carrying a <b>final, agreed</b> launch date is <b>${date}</b>; the March 14 / May 2 dates were tagged superseded, stale or unrelated and dropped. Answer: <b>${date}</b>.`
+    : `🧵 <b>Thread synthesis →</b> no part in the thread carries a final agreed launch date — did you exclude the decision?`;
+  threadList.innerHTML += `<div class="thread-synth">${synth}</div>`;
+}
+
+function renderAnswers(){
+  const order = workingOrder();
+
+  const raw = answerOneShot(order);
+  const rawRight = raw.date === TRUTH;
+  ansRawBody.classList.add("flash-v");
+  setTimeout(() => ansRawBody.classList.remove("flash-v"), 700);
+  ansRawBody.innerHTML = `
+    <div class="ans-date" style="color:${rawRight ? "#15803d" : "#b91c1c"};">${raw.date ?? "—"}</div>
+    <div class="verdict ${rawRight ? "right" : "wrong"}">${rawRight ? "✓ correct" : "✗ wrong — lost in the middle"}</div>
+    <div class="ans-reason">${
+      raw.date == null ? "No date left in the context to answer with." :
+      rawRight ? `The decision sits at an <strong>edge</strong> of the context, so the one-shot read's attention caught it. Bury it in the middle and this answer slips.` :
+      `Single-pass attention peaks at the start &amp; end, so it grabbed the edge date <span class="mono">"${escapeHtml(raw.date)}"</span> (${raw.role === "super" ? "a superseded target" : "an unrelated / stale date"}) and skimmed past the decision buried mid-thread — <strong>lost in the middle</strong>.`
+    }</div>`;
+
+  if (!thotOn){
+    ansThotBody.innerHTML = `<div class="text-slate-400 text-sm py-4">Flip the <strong>Thread of Thought</strong> switch to walk the context part by part and answer from the running thread.</div>`;
+    return;
+  }
+  const thot = answerThoT(order);
+  const thotRight = thot.date === TRUTH;
+  ansThotBody.classList.add("flash-v");
+  setTimeout(() => ansThotBody.classList.remove("flash-v"), 700);
+  ansThotBody.innerHTML = `
+    <div class="ans-date" style="color:${thotRight ? "#6d28d9" : "#b91c1c"};">${thot.date ?? "—"}</div>
+    <div class="verdict ${thotRight ? "right" : "wrong"}">${thotRight ? "✓ correct" : "✗ no final date in the thread"}</div>
+    <div class="ans-reason">${
+      thot.date == null ? "The running thread holds no final launch date — did you exclude the decision part?" :
+      `Walked all ${order.filter(c=>c.on).length} parts with equal attention and wrote each takeaway down. The thread flagged <span class="mono">"${escapeHtml(thot.src.text)}"</span> as the one <strong>final</strong> decision, so it's immune to where the fact sits.`
+    }</div>`;
+}
+
+function rerun(){ renderChunks(); renderThread(); renderAnswers(); }
+
+thotTrack.parentElement.onclick = () => {
+  thotOn = !thotOn;
+  thotTrack.classList.toggle("on", thotOn);
+  thotLabel.textContent = thotOn ? "ON" : "OFF";
+  thotLabel.style.color = thotOn ? "#6d28d9" : "#94a3b8";
+  rerun();
+};
+burySeg.querySelectorAll("button").forEach(b => {
+  b.onclick = () => {
+    buryPos = b.dataset.p;
+    burySeg.querySelectorAll("button").forEach(x => x.classList.remove("on"));
+    b.classList.add("on");
+    rerun();
+  };
+});
+
+rerun();
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. The problem: a long, chaotic context read in one gulp", why:"Real inputs are messy — a sprawling chat history, a stack of retrieved passages, a document with the answer scattered across it. The default move is to paste it all in and ask one question. On short, tidy inputs that's fine. But as the context grows, a single forward pass can't give every part the same care: it forms a global impression and skims. Facts that aren't near where the model is 'looking hardest' get under-weighted, and the answer is built on a partial read.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">long messy context ──one gulp──▶ answer<br>start · <span style="color:#94a3b8">…middle…</span> · end<br>→ the middle is skimmed</div>`,
+   code:`// One pass over a huge blob: the middle is under-attended.
+const answer = await llm(bigContext + question);
+// no step ever reads each part on its own.` },
+ { title:"2. 'Lost in the middle' is a real, measured effect", why:"This isn't hand-waving. Studies of long-context models show a U-shaped accuracy curve: models are best at using information placed at the very start or very end of the context and noticeably worse when the same fact sits in the middle. Attention is uneven along the sequence — primacy and recency dominate. So a decision buried halfway through a long thread is exactly where the model is weakest, and a louder detail at an edge can win instead.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">accuracy vs position = U-shaped<br>start ▓▓▓ · middle ░ · end ▓▓▓<br>the buried fact lands in the dip</div>`,
+   code:`// Empirically: recall is high at the ends, low in the middle.
+// pos 0%..100% -> accuracy ~ U-shape (Liu et al., 2023).
+// a mid-context fact is the worst case for one-shot reading.` },
+ { title:"3. Why plain Chain-of-Thought doesn't fix it", why:"The natural reflex is 'add think step by step.' CoT genuinely helps reasoning — but it structures the <em>thoughts</em>, not the <em>reading</em>. The context is still consumed as one undivided blob in a single pass. If the model skimmed past a fact, more careful reasoning can't use a fact it never registered. You can reason beautifully over an incomplete picture and still be wrong. ThoT's insight is that the fix has to happen at the READING stage, not the reasoning stage.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT: segment the REASONING 🪜<br>ThoT: segment the READING 🧵<br>reasoning over a skimmed input = still a gap</div>`,
+   code:`// CoT structures thoughts, not the intake of the context.
+llm(context + question + "Let's think step by step.");
+// the blob was still read in one pass -> gap remains.` },
+ { title:"4. The core idea: walk the context in parts", why:"Thread of Thought changes how the model reads. Instead of one impression of the whole thing, you instruct it to move through the context in <strong>manageable parts</strong>, step by step. Each part is small enough to receive full attention on its own, so there's no 'middle' to fall into — every segment briefly becomes the thing being read. It's the same spirit as chain-of-thought, but applied to comprehension: break the hard reading job into a sequence of easy ones.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">context ▸ part1 ▸ part2 ▸ part3 ▸ …<br>each part = its own focused pass<br>no 'middle' left to skim</div>`,
+   code:`const THOT = "Walk me through this context in manageable " +
+             "parts step by step, summarizing as we go.";
+llm(context + question + THOT);` },
+ { title:"5. It's one zero-shot instruction — no pipeline", why:"The striking part of ThoT is how cheap it is. There's no retriever, no second model, no extra API call — it's a single sentence appended to the prompt: 'Walk me through this context in manageable parts step by step, summarizing and analyzing as we go.' Zero examples needed. That one line reshapes the model's behaviour from 'skim and answer' to 'segment, summarize, then answer,' which is why ThoT is attractive: almost free to add, easy to try on any existing prompt.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">+1 sentence in the prompt<br>no retriever · no extra call · no examples<br>skim-and-answer → segment-and-answer</div>`,
+   code:`// The entire technique is a prompt suffix:
+const THOT = "Walk me through this context in manageable parts " +
+             "step by step, summarizing and analyzing as we go.";` },
+ { title:"6. Summarize & analyze each part as you go", why:"Walking isn't enough on its own — the model also <strong>writes down</strong> a short summary of each part and judges its relevance to the question: is this the fact, an outdated version, or noise? Producing that takeaway forces the model to actually process the segment rather than glance at it, and it turns each part into a durable note instead of a fading impression. This per-part summarize-and-analyze is the working core of the method.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">part → 📝 summary + relevance tag<br>fact? · superseded? · noise?<br>each takeaway is written, not glanced</div>`,
+   code:`// For every part, emit a takeaway + a judgement.
+parts.map(p => ({ summary: summarize(p),
+                  role: bearsOn(p, question) }));` },
+ { title:"7. Carry a running thread (externalized memory)", why:"The per-part summaries don't vanish — they accumulate into a <strong>running thread</strong>, a compact ordered memory of everything relevant seen so far. This is the 'thread' in Thread of Thought: the model keeps threading each new takeaway onto the last, so by the end it holds a distilled version of the whole context in which the buried fact is now explicit and the distractors are already labelled. Externalizing memory this way is exactly what keeps a mid-context fact from being forgotten.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">note1 → note1+note2 → note1+2+3 → …<br>a growing, ordered summary carried forward<br>buried fact now sits IN the thread</div>`,
+   code:`let thread = [];
+for (const p of parts) thread.push(summarize(p));
+// thread = distilled context, buried fact made explicit.` },
+ { title:"8. Synthesize the answer from the thread", why:"Only at the end does the model answer — and it answers from the <strong>running thread</strong>, not the raw blob. Because the thread already isolated the decisive fact and downgraded the superseded and unrelated ones, the final synthesis is short and reliable: pick the fact the thread marked as the answer. The messy original never has to be re-skimmed. Read-in-parts, remember-in-a-thread, answer-from-the-thread — that's the full loop.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">running thread ──synthesize──▶ answer<br>decisive fact isolated · distractors labelled<br>→ the buried date, not an edge date</div>`,
+   code:`const answer = synthesize(thread, question);
+// answers from the distilled thread, not the raw context.` },
+ { title:"9. Why it works — equal attention + written memory", why:"Two mechanisms combine. First, segmenting gives every part its own focused pass, flattening the U-shaped attention curve so position stops mattering — a fact in the middle is read as carefully as one at the edge. Second, writing each takeaway into the thread externalizes memory, so what was read can't quietly decay before the answer. Together they make the process <strong>position-invariant</strong>: move the buried fact anywhere and ThoT still finds it, exactly as the demo shows.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">equal attention per part → flattens the U<br>+ written thread → memory can't decay<br>= position-invariant reading</div>`,
+   code:`// Move the key fact start/middle/end:
+// one-shot flips with position; ThoT is invariant.
+// segment (equal attention) + thread (written memory).` },
+ { title:"10. When to use it — vs CoT, vs RAG", why:"Reach for ThoT when inputs are <strong>long, chaotic, or multi-document</strong>: tangled chat histories, retrieval dumps full of distractors, needle-in-a-haystack lookups. It's cheaper than a retrieval pipeline (one prompt, no index) and it composes with one — walk the retrieved passages with ThoT to guard against 'lost in the middle' inside them. Versus CoT: CoT segments the reasoning, ThoT segments the reading, and they stack. Skip ThoT for short, clean prompts where nothing is buried. Next: system prompts.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: long/chaotic · multi-doc · needle-in-haystack<br>skip: short clean prompts<br>ThoT = read in parts · CoT = reason in steps · RAG = fetch less</div>`,
+   code:`// Worth it when a fact could be buried in a big input.
+// Composes with RAG (walk retrieved passages) and CoT
+// (segment reading THEN reason). Skip when nothing's buried.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
