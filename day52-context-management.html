@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 52 — Context Management</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+  .kchip { font-size:12px; font-weight:800; padding:6px 13px; border-radius:999px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .kchip:hover { border-color:#c4b5fd; color:#6d28d9; }
+  .kchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .stratchip { font-size:12.5px; font-weight:800; padding:8px 14px; border-radius:12px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:1px; }
+  .stratchip small { font-weight:600; color:#94a3b8; font-size:10px; }
+  .stratchip:hover { border-color:#c4b5fd; }
+  .stratchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .stratchip.active small { color:#e9d5ff; }
+
+  /* ===== conversation ===== */
+  .convo { display:flex; flex-direction:column; gap:8px; }
+  .turn { border:1px solid #e2e8f0; border-radius:12px; padding:8px 12px; transition:.2s; }
+  .turn .thead { display:flex; align-items:center; gap:7px; font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; margin-bottom:4px; flex-wrap:wrap; }
+  .turn .tbody { font-size:12px; line-height:1.5; color:#334155; white-space:pre-wrap; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .turn .tok { margin-left:auto; font-size:10px; font-weight:700; color:#94a3b8; }
+  .turn.sys  { background:#f5f3ff; border-color:#ddd6fe; } .turn.sys .thead  { color:#6d28d9; }
+  .turn.user { background:#eff6ff; border-color:#bfdbfe; } .turn.user .thead { color:#1d4ed8; }
+  .turn.asst { background:#f0fdf4; border-color:#bbf7d0; } .turn.asst .thead { color:#15803d; }
+  .turn.dropped { opacity:.42; }
+  .turn.dropped .tbody { text-decoration:line-through; }
+  .turn.summ { background:#fffbeb; border-color:#fde68a; opacity:.9; }
+  .turn.summ .tbody { color:#92400e; }
+  .kf { background:#fef9c3; color:#854d0e; border:1px solid #fde68a; border-radius:999px; padding:1px 7px; font-size:9px; }
+  .cbk { background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; border-radius:999px; padding:1px 7px; font-size:9px; }
+  .sttag { border-radius:999px; padding:1px 7px; font-size:9px; font-weight:800; }
+  .sttag.keep { background:#dcfce7; color:#15803d; }
+  .sttag.drop { background:#fee2e2; color:#b91c1c; }
+  .sttag.sum  { background:#fed7aa; color:#9a3412; }
+  .pinbtn { border:1px solid #e2e8f0; background:#fff; border-radius:999px; font-size:11px; width:22px; height:20px; line-height:1; cursor:pointer; filter:grayscale(1); opacity:.5; transition:.15s; }
+  .pinbtn:hover { border-color:#c4b5fd; }
+  .pinbtn.on { filter:none; opacity:1; background:#f5f3ff; border-color:#ddd6fe; }
+  .pinbtn:disabled { cursor:not-allowed; }
+  .summ-node { background:#fff7ed; border:1px dashed #fb923c; border-radius:12px; padding:9px 12px; }
+  .summ-node .sh { font-size:11px; font-weight:800; color:#9a3412; display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .summ-node .tbody { font-size:12px; line-height:1.5; color:#7c2d12; white-space:pre-wrap; margin-top:4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ===== meter ===== */
+  .meterwrap { display:flex; flex-direction:column; gap:9px; }
+  .meterrow { display:flex; align-items:center; gap:9px; }
+  .meterrow .lbl { width:118px; flex:none; font-size:11px; font-weight:800; color:#475569; }
+  .meter { position:relative; flex:1; height:22px; border-radius:999px; background:#eef2f7; overflow:hidden; border:1px solid #e2e8f0; }
+  .meter .fill { height:100%; border-radius:999px; transition:width .35s ease; }
+  .meter .fill.raw  { background:linear-gradient(90deg,#94a3b8,#64748b); }
+  .meter .fill.ok   { background:linear-gradient(90deg,#34d399,#10b981); }
+  .meter .fill.over { background:linear-gradient(90deg,#fb7185,#ef4444); }
+  .meter .val { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:10.5px; font-weight:800; color:#0f172a; }
+  .limit { position:relative; height:14px; margin-left:127px; }
+  .limit .line { position:absolute; top:-62px; width:0; border-left:2px dashed #0f172a; height:64px; }
+  .limit .cap { position:absolute; top:1px; transform:translateX(-50%); font-size:9.5px; font-weight:800; color:#0f172a; white-space:nowrap; background:#fff; padding:0 3px; }
+
+  /* ===== fact tracker ===== */
+  .factgrid { display:flex; flex-wrap:wrap; gap:8px; }
+  .factchip { border:1px solid #e2e8f0; border-radius:10px; padding:7px 11px; font-size:11.5px; display:flex; flex-direction:column; gap:2px; min-width:150px; }
+  .factchip .fh { font-weight:800; color:#334155; }
+  .factchip .fs { font-size:10px; font-weight:800; }
+  .factchip.verbatim { background:#f0fdf4; border-color:#bbf7d0; } .factchip.verbatim .fs { color:#15803d; }
+  .factchip.insum    { background:#fffbeb; border-color:#fde68a; } .factchip.insum .fs    { color:#b45309; }
+  .factchip.lost     { background:#fef2f2; border-color:#fecaca; } .factchip.lost .fs     { color:#b91c1c; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 52</div>
+      <h1 class="text-xl font-bold">✂️ Context management — fitting an <strong>ever-growing conversation</strong> into the model's <strong>fixed context window</strong>. Every turn you add (a user question + the assistant's reply) piles more tokens onto the system prompt and the whole history; once the running total crosses the window limit the request is rejected or silently truncated — so you must <strong>MANAGE</strong> the context: decide which turns to keep verbatim, which to drop, and which to compress. The core strategies are <strong>truncate-oldest</strong> (FIFO-drop the front until it fits), <strong>sliding-window</strong> (always keep just the last N turns), <strong>summarize-old</strong> (fold older turns into a compact running summary, keep the recent ones verbatim), and <strong>pinned + recent</strong> (never drop the system prompt and flagged key facts, then fill the remaining budget with the newest turns) — all governed by <strong>token-budgeting</strong>: count tokens per turn and keep the total under the limit. The tradeoff <em>is</em> the whole game: drop or over-compress and you lose the detail the model needs to stay coherent; keep everything and you blow the budget. Distinct from the system-prompt day (WHAT you pin) and from prompt/semantic caching (reuse for cost) — this is choosing <strong>what survives</strong> so the conversation still fits.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Grow a conversation past the window, then pick a <em>strategy</em> — watch which turns are <span class="text-emerald-600">kept</span>, <span class="text-red-600">dropped</span> or <span class="text-amber-600">compressed</span>, and the token meter drop back under the limit.</h2>
+        <p class="text-slate-500 mb-5">The window is a hard token budget. As you add turns the <span class="text-slate-600 font-semibold">raw</span> total climbs until it <span class="text-red-600 font-semibold">blows the budget</span>. Each strategy manages it differently: <span class="text-violet-600 font-semibold">truncate</span> FIFO-drops the oldest turns (even the system prompt), <span class="text-violet-600 font-semibold">sliding-window</span> keeps a fixed last-N, <span class="text-violet-600 font-semibold">summarize-old</span> folds the early turns into one compact summary, and <span class="text-violet-600 font-semibold">pinned + recent</span> protects the system prompt and any 📌 turns then fills the rest with the newest. Everything below is deterministic (no API key): token counts, the trim decision and the summary are all computed live from the turns and the budget, so every toggle is felt immediately — including whether the model can still answer the final <em>“remind me what stack we chose”</em> question.</p>
+      </div>
+
+      <!-- controls -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="grid md:grid-cols-2 gap-4">
+          <div>
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📈 Grow the conversation</div>
+            <div class="flex items-center gap-3">
+              <input type="range" id="growRange" min="2" max="14" value="14" class="flex-1" style="accent-color:#8b5cf6;">
+              <span class="mono text-xs font-bold text-slate-500 w-24" id="growLbl">14 messages</span>
+            </div>
+            <button class="btn mt-2" id="autoGrow">▶ Auto-grow</button>
+            <span class="text-xs text-slate-400 ml-1">— add turns and watch the raw total overflow.</span>
+          </div>
+          <div>
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎯 Window limit (token budget)</div>
+            <div class="flex flex-wrap gap-2" id="budgets"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- strategy -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧰 Context-management strategy</div>
+        <div class="flex flex-wrap gap-2" id="strats"></div>
+        <div id="stratOpts" class="mt-3"></div>
+      </div>
+
+      <!-- meter -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">📊 Token meter vs the window</div>
+          <span class="text-xs font-bold mono" id="fitBadge">—</span>
+        </div>
+        <div class="meterwrap">
+          <div class="meterrow"><span class="lbl">Raw (everything)</span><div class="meter"><div class="fill raw" id="rawFill"></div><span class="val" id="rawVal"></span></div></div>
+          <div class="meterrow"><span class="lbl" id="afterLbl">After strategy</span><div class="meter"><div class="fill ok" id="afterFill"></div><span class="val" id="afterVal"></span></div></div>
+          <div class="limit"><div class="line" id="limLine"></div><div class="cap" id="limCap"></div></div>
+        </div>
+        <div class="text-xs text-slate-400 mt-2" id="meterNote"></div>
+      </div>
+
+      <!-- tradeoff + facts -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-3">⚖️ The tradeoff</div>
+          <div id="tradeoff"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-3">🔑 Key facts — did they survive?</div>
+          <div class="factgrid" id="facts"></div>
+          <div class="mt-3" id="callback"></div>
+        </div>
+      </div>
+
+      <!-- conversation -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">💬 The conversation <span class="text-slate-400 normal-case font-normal">— 🔒 system + 🙋 user + 🤖 assistant turns; 📌 pin a turn to protect it (used by <em>pinned + recent</em>)</span></div>
+          <div class="flex gap-3 text-[10px] font-bold uppercase tracking-wide">
+            <span class="text-emerald-600">■ kept</span><span class="text-amber-600">■ compressed</span><span class="text-red-500">■ dropped</span>
+          </div>
+        </div>
+        <div class="convo" id="convo"></div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Context management is choosing what survives the window.</strong> The context window is a fixed token budget, and a chat only grows — so left alone, every conversation eventually overflows and the request fails or gets silently cut. Management is the answer: <strong>token-budget</strong> the history, then apply a strategy. <strong>Truncate-oldest</strong> is simplest but blunt — FIFO can drop the system prompt or the one early turn that held your requirements. <strong>Sliding-window</strong> keeps a fixed last-N: predictable, but count-based not token-based, so a big recent turn can still overflow and a tiny history wastes budget. <strong>Summarize-old</strong> compresses the early turns into a running summary — it preserves the <em>gist</em> of everything within a tiny token cost, at the price of verbatim detail. <strong>Pinned + recent</strong> is the workhorse: never drop the system prompt and flagged key facts, then fill the rest with the newest turns. The demo makes the tradeoff bite — with a tight budget, truncate and sliding-window forget the stack chosen in turn 1, so the final <em>“remind me”</em> question can't be answered; summarize and pinning keep it. In practice you <strong>combine</strong> them: pin the system prompt, summarize the middle, keep a recent window, all under a token budget. Distinct from the system prompt (D51 — what you pin) and from caching (reuse for cost) — this is what you keep so it still fits.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Context management = token-budget the growing history, then keep / drop / compress turns so the conversation stays under the window — trading detail against budget.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How context management works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Context management is a function that runs <em>before</em> every request: <span class="mono text-violet-700">count tokens → pin system → decide keep / drop / summarize → assemble under budget</span>. Here it is end to end, provider-portable — real token counting with <span class="mono">js-tiktoken</span>, the four trimming strategies, and a combined <span class="mono">manageContext()</span> you reuse on every turn (works with the Vercel AI SDK's <span class="mono">messages</span> array, which maps to Anthropic and OpenAI alike).</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Count tokens — you can't budget what you can't measure</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Tokens, not characters, fill the window. Use the real tokenizer (<span class="mono">js-tiktoken</span> / <span class="mono">tiktoken</span>) so your count matches the model's; a rough <span class="mono">chars/4</span> fallback is fine for a first pass but undercounts code and non-English. Count every message plus a small per-message overhead.</p>
+        <div class="relative"><pre>// STEP 1 — measure tokens per message with a real tokenizer.
+import { getEncoding } from "js-tiktoken";
+const enc = getEncoding("cl100k_base");            // GPT-4o / 3.5 family
+
+const countText = (s) => enc.encode(s).length;
+const countMsg  = (m) => countText(m.content) + 4; // ~4 tok/message overhead
+const countAll  = (msgs) => msgs.reduce((n, m) => n + countMsg(m), 0);
+
+// no tokenizer handy? approximate — undercounts, so keep headroom:
+const approx = (s) => Math.ceil(s.length / 4);</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Set the budget — leave room for the reply</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The window holds <em>input + output</em>. Budget the history to <span class="mono">contextWindow − reserveForReply − systemTokens</span> so you never crowd out the model's answer. The system prompt is spent first and always; everything else competes for what's left.</p>
+        <div class="relative"><pre>// STEP 2 — the history budget is what's LEFT after system + reply.
+const CONTEXT_WINDOW = 8192;   // model limit (input + output)
+const RESERVE_REPLY  = 1024;   // keep room for the completion
+
+function historyBudget(system) {
+  return CONTEXT_WINDOW - RESERVE_REPLY - countMsg(system);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Truncate oldest — keep the newest that fit</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The simplest trimmer: walk the history from newest to oldest, keep messages while they fit the budget, drop the rest. It's FIFO on the front — cheap and stateless, but blunt: it will happily drop the early turn that held your requirements. Always keep the system prompt outside this loop.</p>
+        <div class="relative"><pre>// STEP 3 — fit-from-newest: keep recent messages until the budget runs out.
+function truncateOldest(history, budget) {
+  const kept = [];
+  let used = 0;
+  for (let i = history.length - 1; i >= 0; i--) {   // newest → oldest
+    const t = countMsg(history[i]);
+    if (used + t > budget) break;                   // older ones are dropped
+    kept.unshift(history[i]);
+    used += t;
+  }
+  return kept;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Sliding window — a fixed last-N</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Keep exactly the last N turns regardless of size. Predictable and dead simple, but count-based, not token-based: a couple of long recent turns can still overflow, and a short history wastes budget. Good default when turns are roughly uniform; pair it with a token check as a guard.</p>
+        <div class="relative"><pre>// STEP 4 — keep the last N messages (a fixed-size window).
+function slidingWindow(history, n) {
+  return history.slice(-n);
+}
+// guard: if the window still overflows, fall back to truncateOldest.
+function windowThenFit(history, n, budget) {
+  const win = slidingWindow(history, n);
+  return countAll(win) <= budget ? win : truncateOldest(win, budget);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Summarize old — compress the middle</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Keep the last K turns verbatim; fold everything older into one running <em>summary</em> message with a cheap model. This preserves the gist of the whole conversation for a tiny token cost — the key move when early context matters but you can't afford it verbatim. Re-summarize incrementally as the tail grows so cost stays flat.</p>
+        <div class="relative"><pre>// STEP 5 — summarize the older block, keep the recent tail verbatim.
+async function summarizeOld(history, keepLast, summarize) {
+  if (history.length <= keepLast) return history;
+  const older  = history.slice(0, -keepLast);
+  const recent = history.slice(-keepLast);
+  const gist = await summarize(older);   // cheap model → 2–3 sentences
+  const summaryMsg = {
+    role: "system",
+    content: "Summary of earlier conversation:\n" + gist,
+  };
+  return [summaryMsg, ...recent];        // 1 small msg replaces many
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Pinned + recent — protect what must not be lost</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Reserve budget for pinned messages (the system prompt and any flagged key facts) first, then fill the remainder with the newest turns. Pins never get dropped, so the requirement stated in turn 1 survives no matter how long the chat runs — the fix for truncate's biggest failure mode.</p>
+        <div class="relative"><pre>// STEP 6 — pinned messages are reserved; recent fills what's left.
+function pinnedPlusRecent(history, budget, isPinned) {
+  const pinned = history.filter(isPinned);
+  const rest   = history.filter((m) => !isPinned(m));
+  let used = countAll(pinned);           // pins are paid for up front
+  const recent = [];
+  for (let i = rest.length - 1; i >= 0; i--) {
+    const t = countMsg(rest[i]);
+    if (used + t > budget) break;
+    recent.unshift(rest[i]);
+    used += t;
+  }
+  // re-interleave pinned + recent back into chronological order:
+  return history.filter((m) => pinned.includes(m) || recent.includes(m));
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Put it together — pin, summarize, window, under budget</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Production context management combines the moves: pin the system prompt, summarize the old middle, keep a recent window, and verify the whole thing fits before sending — every turn. Run it in front of your model call and reuse it across the conversation. It differs from the system prompt (D51 — the standing behaviour you pin) and from prompt/semantic caching (reuse for cost). <strong>Next: evaluation — regression-testing your outputs with promptfoo so a context change can't silently break quality.</strong></p>
+        <div class="relative"><pre>// STEP 7 — the combined manager, run before every model call.
+async function manageContext(system, history, summarize) {
+  const budget = historyBudget(system);
+  // 1) summarize everything older than the recent window
+  let msgs = await summarizeOld(history, 6, summarize);
+  // 2) hard-fit under budget, protecting the summary + recent tail
+  if (countAll(msgs) > budget) msgs = truncateOldest(msgs, budget);
+  return [system, ...msgs];              // system is pinned, always first
+}
+
+// reuse it on every turn — history grows, the window never overflows:
+async function ask(system, history, q, summarize) {
+  history.push({ role: "user", content: q });
+  const messages = await manageContext(system, history, summarize);
+  const r = await generateText({ model, messages });
+  history.push({ role: "assistant", content: r.text });
+  return r.text;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 52 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>context management</strong>: fitting a growing conversation into a fixed context window by <strong>token-budgeting</strong> the history and then keeping, dropping or compressing turns. The four strategies — <strong>truncate-oldest</strong> (blunt FIFO), <strong>sliding-window</strong> (fixed last-N), <strong>summarize-old</strong> (compress the middle into a running summary), and <strong>pinned + recent</strong> (protect the system prompt + key facts, fill with the newest) — each trade <em>detail</em> against <em>budget</em> differently. The live demo made it concrete: under a tight window, truncate and sliding-window forget the stack chosen in turn 1 so the final “remind me” question can't be answered, while summarizing and pinning keep it. In practice you combine them — pin the system, summarize the old middle, keep a recent window, verify it fits — and run that manager before every call. Distinct from the system prompt (D51, what you pin) and from caching (reuse for cost). <strong>👉 Next up — Evaluation: regression-testing outputs with promptfoo so a context change can't silently break quality.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK — a REAL context manager.
+//  - SCRIPT is a scripted, growing conversation. tok() is a deterministic
+//    token estimate (chars/4) standing in for a real tokenizer.
+//  - computePlan() applies the chosen strategy against the token BUDGET and
+//    labels every turn kept / dropped / summarized, builds the running
+//    summary, and totals the surviving tokens — no API key, no hard-coding:
+//    the trim decision and the summary are computed live from state.
+//  - The fact tracker + callback answer read the SAME plan, so you can see
+//    a dropped early turn make the final "remind me" question unanswerable.
+// ============================================================
+
+function tok(s){ return Math.max(1, Math.round(s.length / 4)); }
+
+// scripted conversation: 0 = pinned system prompt, then user/assistant turns.
+const RAW = [
+  { role:"system", pinned:true, topic:"role",
+    text:"You are a senior pair-programming assistant. Be concise, show code, and remember the user's stack and prior decisions across the whole session." },
+  { role:"user", key:"stack = Node.js + TypeScript + Postgres", topic:"stack setup",
+    text:"I'm building a URL shortener in Node.js. Use TypeScript and Postgres — those are hard requirements." },
+  { role:"assistant", topic:"scaffold plan",
+    text:"Got it. Plan: an Express server in TypeScript, `pg` for Postgres, a base62 encoder for slugs, and a links table. Want me to scaffold it?" },
+  { role:"user", key:"schema = links(id, slug, target, clicks)", topic:"table schema",
+    text:"Yes. My table is `links(id serial, slug text unique, target text, clicks int)`." },
+  { role:"assistant", topic:"base62 slug",
+    text:"Perfect. INSERT returns the id; encode that id to base62 for the slug; store the target; default clicks to 0." },
+  { role:"user", topic:"rate limiting",
+    text:"Add rate limiting to the create endpoint." },
+  { role:"assistant", topic:"rate limiting",
+    text:"Use `express-rate-limit`: 10 requests/min per IP on POST /links, returning 429 when exceeded." },
+  { role:"user", topic:"case-sensitive slugs",
+    text:"How do I make slug lookups case-sensitive?" },
+  { role:"assistant", topic:"case-sensitive slugs",
+    text:"Postgres text is case-sensitive by default, so a plain `WHERE slug = $1` already tells `Ab` apart from `ab`." },
+  { role:"user", topic:"redirect handler",
+    text:"Now write the redirect handler." },
+  { role:"assistant", topic:"redirect handler",
+    text:"`GET /:slug` → `SELECT target FROM links WHERE slug=$1`, 302 to target, then `UPDATE links SET clicks=clicks+1`. Typed with your `Link` interface." },
+  { role:"user", topic:"analytics",
+    text:"Add an analytics endpoint that returns total clicks." },
+  { role:"assistant", topic:"analytics",
+    text:"`GET /stats/:slug` → `SELECT clicks FROM links WHERE slug=$1`, respond `{ slug, clicks }` as JSON." },
+  { role:"user", callback:true, topic:"recap",
+    text:"Remind me — what language and database did we commit to at the very start?" },
+];
+const SCRIPT = RAW.map((t,i) => ({ ...t, idx:i, tokens: tok(t.text) }));
+
+// ---- live state ----
+let grownTo = SCRIPT.length;      // how many messages are in the conversation
+let BUDGET  = 200;                // token window
+let STRAT   = "none";            // strategy id
+let WIN_N   = 4;                  // sliding-window size
+let SUMM_K  = 4;                  // summarize: keep last K verbatim
+const PINNED = new Set([0]);      // system always pinned
+
+const BUDGETS = [120, 200, 320];
+const STRATS = [
+  { id:"none",      label:"🚫 None",            sub:"send everything" },
+  { id:"truncate",  label:"✂️ Truncate oldest", sub:"FIFO-drop the front" },
+  { id:"window",    label:"🪟 Sliding window",  sub:"keep last N" },
+  { id:"summarize", label:"📝 Summarize old",   sub:"compress the middle" },
+  { id:"pinned",    label:"📌 Pinned + recent", sub:"protect + fill newest" },
+];
+
+// ---- summary generation from the folded turns ----
+function buildSummary(olds){
+  const uniq = a => [...new Set(a)];
+  const facts  = uniq(olds.filter(t => t.key).map(t => t.key));
+  const topics = uniq(olds.filter(t => t.topic).map(t => t.topic));
+  const bits = [...facts];
+  if(topics.length) bits.push("also covered: " + topics.join(", "));
+  return "Summary of " + olds.length + " earlier turns — " +
+         (bits.length ? bits.join("; ") : "general setup discussion") + ".";
+}
+
+// ---- the strategy engine: label every turn, total the survivors ----
+function computePlan(){
+  const turns = SCRIPT.slice(0, grownTo);
+  const raw = turns.reduce((a,t) => a + t.tokens, 0);
+  const status = {};
+  let summaryNode = null, summarizedIdxs = [];
+
+  if(STRAT === "none"){
+    turns.forEach(t => status[t.idx] = "kept");
+  }
+  else if(STRAT === "truncate"){
+    // naive FIFO: keep the newest that fit, drop oldest — system NOT protected
+    let used = 0;
+    for(let i = turns.length - 1; i >= 0; i--){
+      if(used + turns[i].tokens <= BUDGET){ status[turns[i].idx] = "kept"; used += turns[i].tokens; }
+      else status[turns[i].idx] = "dropped";
+    }
+  }
+  else if(STRAT === "window"){
+    // keep the system + the last N non-system turns
+    const nonSys = turns.filter(t => t.role !== "system");
+    const keep = new Set(nonSys.slice(-WIN_N).map(t => t.idx));
+    turns.forEach(t => status[t.idx] = (t.role === "system" || keep.has(t.idx)) ? "kept" : "dropped");
+  }
+  else if(STRAT === "summarize"){
+    // keep system + last K verbatim; fold older non-system turns into a summary
+    const nonSys = turns.filter(t => t.role !== "system");
+    const recent = new Set(nonSys.slice(-SUMM_K).map(t => t.idx));
+    const older = nonSys.filter(t => !recent.has(t.idx));
+    turns.forEach(t => {
+      if(t.role === "system" || recent.has(t.idx)) status[t.idx] = "kept";
+      else status[t.idx] = "summarized";
+    });
+    summarizedIdxs = older.map(t => t.idx);
+    if(older.length){
+      const text = buildSummary(older);
+      summaryNode = { text, tokens: tok(text), from: older.length,
+        fromTok: older.reduce((a,t) => a + t.tokens, 0),
+        afterIdx: Math.max(...summarizedIdxs) };
+    }
+  }
+  else if(STRAT === "pinned"){
+    // pinned turns reserved first; newest non-pinned fill the rest
+    const pins = turns.filter(t => PINNED.has(t.idx));
+    let used = pins.reduce((a,t) => a + t.tokens, 0);
+    pins.forEach(t => status[t.idx] = "kept");
+    const rest = turns.filter(t => !PINNED.has(t.idx));
+    for(let i = rest.length - 1; i >= 0; i--){
+      if(used + rest[i].tokens <= BUDGET){ status[rest[i].idx] = "kept"; used += rest[i].tokens; }
+      else status[rest[i].idx] = "dropped";
+    }
+  }
+
+  let after = 0;
+  turns.forEach(t => { if(status[t.idx] === "kept") after += t.tokens; });
+  if(summaryNode) after += summaryNode.tokens;
+
+  return { turns, raw, status, summaryNode, summarizedIdxs, after, fits: after <= BUDGET };
+}
+
+// ---- DOM ----
+const budgetsEl = document.getElementById("budgets");
+const stratsEl  = document.getElementById("strats");
+const stratOpts = document.getElementById("stratOpts");
+const convoEl   = document.getElementById("convo");
+const growRange = document.getElementById("growRange");
+const growLbl   = document.getElementById("growLbl");
+const factsEl   = document.getElementById("facts");
+const callbackEl= document.getElementById("callback");
+const tradeoffEl= document.getElementById("tradeoff");
+
+// budget chips
+BUDGETS.forEach(b => {
+  const btn = document.createElement("button");
+  btn.className = "kchip" + (b === BUDGET ? " active" : "");
+  btn.textContent = b + " tok";
+  btn.onclick = () => { BUDGET = b; budgetsEl.querySelectorAll(".kchip").forEach(x => x.classList.toggle("active", x.textContent === b + " tok")); update(); };
+  budgetsEl.appendChild(btn);
+});
+
+// strategy chips
+STRATS.forEach(s => {
+  const btn = document.createElement("button");
+  btn.className = "stratchip" + (s.id === STRAT ? " active" : "");
+  btn.innerHTML = `<span>${s.label}</span><small>${s.sub}</small>`;
+  btn.onclick = () => {
+    STRAT = s.id;
+    stratsEl.querySelectorAll(".stratchip").forEach((x,i) => x.classList.toggle("active", STRATS[i].id === STRAT));
+    renderOpts(); update();
+  };
+  stratsEl.appendChild(btn);
+});
+
+// per-strategy options
+function renderOpts(){
+  if(STRAT === "window"){
+    stratOpts.innerHTML = `<div class="flex items-center gap-3"><span class="text-xs font-bold text-slate-600">Keep last N turns</span>
+      <input type="range" id="winN" min="1" max="10" value="${WIN_N}" style="accent-color:#8b5cf6;">
+      <span class="mono text-xs font-bold text-violet-600" id="winNlbl">${WIN_N}</span></div>
+      <div class="text-xs text-slate-400 mt-1">Count-based — a fixed number of turns regardless of their token size.</div>`;
+    document.getElementById("winN").oninput = e => { WIN_N = +e.target.value; document.getElementById("winNlbl").textContent = WIN_N; update(); };
+  } else if(STRAT === "summarize"){
+    stratOpts.innerHTML = `<div class="flex items-center gap-3"><span class="text-xs font-bold text-slate-600">Keep last K verbatim</span>
+      <input type="range" id="summK" min="1" max="10" value="${SUMM_K}" style="accent-color:#8b5cf6;">
+      <span class="mono text-xs font-bold text-violet-600" id="summKlbl">${SUMM_K}</span></div>
+      <div class="text-xs text-slate-400 mt-1">Everything older than the last K non-system turns folds into one running summary.</div>`;
+    document.getElementById("summK").oninput = e => { SUMM_K = +e.target.value; document.getElementById("summKlbl").textContent = SUMM_K; update(); };
+  } else if(STRAT === "pinned"){
+    stratOpts.innerHTML = `<div class="text-xs text-slate-500">📌 Pinned turns are always kept; the newest non-pinned turns fill the rest of the budget. The 🔒 system prompt is pinned by default — <b>pin the 🔑 key-fact turns below</b> to make them survive a tight budget.</div>`;
+  } else if(STRAT === "truncate"){
+    stratOpts.innerHTML = `<div class="text-xs text-amber-600 font-semibold">⚠️ Naive FIFO — nothing is protected. If the budget is small enough, even the 🔒 system prompt at turn 0 gets dropped.</div>`;
+  } else {
+    stratOpts.innerHTML = `<div class="text-xs text-slate-400">No management — the full history is sent. Watch the raw total blow past the window as the conversation grows.</div>`;
+  }
+}
+
+// grow slider
+growRange.oninput = () => { grownTo = +growRange.value; update(); };
+let autoTimer = null;
+document.getElementById("autoGrow").onclick = function(){
+  if(autoTimer){ clearInterval(autoTimer); autoTimer = null; this.textContent = "▶ Auto-grow"; return; }
+  this.textContent = "⏸ Pause";
+  grownTo = 2; growRange.value = 2; update();
+  autoTimer = setInterval(() => {
+    if(grownTo >= SCRIPT.length){ clearInterval(autoTimer); autoTimer = null; this.textContent = "▶ Replay"; return; }
+    grownTo++; growRange.value = grownTo; update();
+  }, 850);
+};
+
+// convo pin toggles (event delegation)
+convoEl.addEventListener("click", e => {
+  const btn = e.target.closest("[data-pin]");
+  if(!btn) return;
+  const idx = +btn.dataset.pin;
+  if(idx === 0) return;                 // system locked pinned
+  if(PINNED.has(idx)) PINNED.delete(idx); else PINNED.add(idx);
+  update();
+});
+
+// ---- renderers ----
+function meterFill(fill, valEl, value, scale, cls){
+  fill.style.width = Math.min(100, (value / scale) * 100) + "%";
+  fill.className = "fill " + cls;
+  valEl.textContent = value + " tok";
+}
+function renderMeter(plan){
+  const scale = Math.max(plan.raw, BUDGET, plan.after, 1);
+  const rawOver = plan.raw > BUDGET;
+  meterFill(document.getElementById("rawFill"), document.getElementById("rawVal"), plan.raw, scale, rawOver ? "over" : "raw");
+  meterFill(document.getElementById("afterFill"), document.getElementById("afterVal"), plan.after, scale, plan.fits ? "ok" : "over");
+
+  // .limit is offset by the 127px label so 0-100% maps onto the meter track.
+  const pct = Math.min(100, (BUDGET / scale) * 100);
+  document.getElementById("limLine").style.left = pct + "%";
+  document.getElementById("limCap").style.left = pct + "%";
+  document.getElementById("limCap").textContent = "window " + BUDGET;
+
+  const fit = document.getElementById("fitBadge");
+  fit.textContent = plan.fits ? "✓ fits (" + plan.after + " ≤ " + BUDGET + ")" : "✗ OVER by " + (plan.after - BUDGET);
+  fit.style.color = plan.fits ? "#15803d" : "#b91c1c";
+  document.getElementById("afterLbl").textContent = STRAT === "none" ? "After (no mgmt)" : "After " + STRATS.find(s => s.id === STRAT).label.replace(/^[^ ]+ /, "");
+
+  const note = document.getElementById("meterNote");
+  if(STRAT === "none")
+    note.innerHTML = rawOver
+      ? `Raw history is <b>${plan.raw}</b> tok vs a <b>${BUDGET}</b>-tok window — <span class="text-red-600 font-bold">over by ${plan.raw - BUDGET}</span>. Unmanaged, the API rejects this or silently truncates the front.`
+      : `Fits for now (${plan.raw} ≤ ${BUDGET}) — grow the conversation and watch it overflow. That overflow is exactly what a strategy prevents.`;
+  else
+    note.innerHTML = `Raw <b>${plan.raw}</b> tok → managed <b>${plan.after}</b> tok against a <b>${BUDGET}</b>-tok window. The dashed line is the limit; the green (or red) bar is what actually gets sent.`;
+}
+
+function pinBtnHtml(t){
+  const on = PINNED.has(t.idx);
+  const dis = t.idx === 0 ? "disabled" : "";
+  const title = t.idx === 0 ? "system is always pinned" : (on ? "unpin" : "pin this turn");
+  return `<button class="pinbtn ${on ? "on" : ""}" data-pin="${t.idx}" ${dis} title="${title}">📌</button>`;
+}
+function renderConvo(plan){
+  const rc = { system:"sys", user:"user", assistant:"asst" };
+  const rl = { system:"🔒 system", user:"🙋 user", assistant:"🤖 assistant" };
+  let html = "";
+  plan.turns.forEach(t => {
+    const st = plan.status[t.idx];
+    const cls = st === "dropped" ? "dropped" : st === "summarized" ? "summ" : "";
+    const stTag = st === "dropped" ? `<span class="sttag drop">dropped</span>`
+              : st === "summarized" ? `<span class="sttag sum">compressed →</span>`
+              : `<span class="sttag keep">kept</span>`;
+    const kf = t.key ? `<span class="kf" title="${escapeHtml(t.key)}">🔑 key fact</span>` : "";
+    const cbk = t.callback ? `<span class="cbk">↩ recall question</span>` : "";
+    html += `<div class="turn ${rc[t.role]} ${cls}">
+        <div class="thead">${rl[t.role]} ${kf} ${cbk} ${stTag}<span class="tok">${t.tokens} tok</span>${pinBtnHtml(t)}</div>
+        <div class="tbody">${escapeHtml(t.text)}</div>
+      </div>`;
+    if(plan.summaryNode && plan.summaryNode.afterIdx === t.idx){
+      const s = plan.summaryNode;
+      const pct = Math.round(100 - (s.tokens / s.fromTok) * 100);
+      html += `<div class="summ-node">
+          <div class="sh">📝 Running summary <span class="badge" style="background:#fed7aa;color:#9a3412;">${s.from} turns → 1 · ${s.fromTok} → ${s.tokens} tok · ${pct}% smaller</span></div>
+          <div class="tbody">${escapeHtml(s.text)}</div>
+        </div>`;
+    }
+  });
+  convoEl.innerHTML = html;
+}
+
+function renderFacts(plan){
+  const keyTurns = plan.turns.filter(t => t.key);
+  if(!keyTurns.length){ factsEl.innerHTML = `<div class="text-xs text-slate-400">No key-fact turns in the conversation yet — grow it past turn 3.</div>`; return; }
+  factsEl.innerHTML = keyTurns.map(t => {
+    const st = plan.status[t.idx];
+    const map = st === "kept" ? ["verbatim","✓ kept verbatim"]
+              : st === "summarized" ? ["insum","≈ in summary (gist)"]
+              : ["lost","✗ LOST (dropped)"];
+    return `<div class="factchip ${map[0]}"><span class="fh">🔑 ${escapeHtml(t.key)}</span><span class="fs">${map[1]}</span></div>`;
+  }).join("");
+}
+
+function renderCallback(plan){
+  const cb = plan.turns.find(t => t.callback);
+  if(!cb){ callbackEl.innerHTML = ""; return; }
+  const stackTurn = plan.turns.find(t => t.key && /stack/i.test(t.key));
+  const st = stackTurn ? plan.status[stackTurn.idx] : "dropped";
+  if(st === "kept")
+    callbackEl.innerHTML = `<div class="callout good"><b>Final question:</b> “what language & database did we commit to?” → turn 1 is <b>kept verbatim</b>, so the model answers confidently: <b>Node.js + TypeScript + Postgres</b>. ✓</div>`;
+  else if(st === "summarized")
+    callbackEl.innerHTML = `<div class="callout warn"><b>Final question:</b> “what language & database did we commit to?” → turn 1 was compressed, but the <b>summary preserved the stack</b>, so the model still answers: <b>Node.js + TypeScript + Postgres</b>. ≈ gist survived.</div>`;
+  else
+    callbackEl.innerHTML = `<div class="callout bad"><b>Final question:</b> “what language & database did we commit to?” → turn 1 was <b>dropped</b>. The model no longer has that fact and will <b>guess or ask again</b>. ✗ This is context loss biting.</div>`;
+}
+
+function renderTradeoff(plan){
+  const dropped = plan.turns.filter(t => plan.status[t.idx] === "dropped");
+  const sysDropped = plan.turns.some(t => t.role === "system" && plan.status[t.idx] === "dropped");
+  let html = "";
+  if(STRAT === "none"){
+    html = plan.fits
+      ? `<div class="callout warn">🚫 <b>No management.</b> It fits for now (${plan.raw} ≤ ${BUDGET}), but nothing is trimming the history — add a couple more turns and the request overflows the window and fails.</div>`
+      : `<div class="callout bad">🚫 <b>No management → over budget by ${plan.raw - BUDGET} tok.</b> The provider rejects the call, or silently truncates the front — dropping your system prompt unpredictably. This is the failure every strategy exists to prevent.</div>`;
+  } else if(STRAT === "truncate"){
+    html = sysDropped
+      ? `<div class="callout bad">✂️ <b>Truncate dropped the SYSTEM PROMPT.</b> FIFO doesn't know turn 0 is special — the model has just lost its role and rules. Fits the budget, but at the worst possible cost. (Try <b>pinned + recent</b>.)</div>`
+      : `<div class="callout ${plan.fits ? "warn" : "bad"}">✂️ <b>Dropped ${dropped.length} oldest turn${dropped.length===1?"":"s"}</b> to fit. Recent context is intact, but early turns — including requirements stated up front — may be gone. Cheap and stateless, but blunt.</div>`;
+  } else if(STRAT === "window"){
+    html = plan.fits
+      ? `<div class="callout warn">🪟 <b>Kept the system + last ${WIN_N} turns.</b> Predictable, but count-based: it ignores token size, so it can waste budget on a short history or (with a big N) still overflow. Dropped ${dropped.length} older turn${dropped.length===1?"":"s"}.</div>`
+      : `<div class="callout bad">🪟 <b>Last ${WIN_N} turns still overflow by ${plan.after - BUDGET} tok.</b> A fixed count can't guarantee a fit when recent turns are large — lower N, or add a token-fit guard after the window.</div>`;
+  } else if(STRAT === "summarize"){
+    const s = plan.summaryNode;
+    html = s
+      ? `<div class="callout ${plan.fits ? "good" : "warn"}">📝 <b>Folded ${s.from} old turns into a ${s.tokens}-tok summary</b> (from ${s.fromTok} tok) and kept the last ${SUMM_K} verbatim. The <b>gist of everything survives</b> — early facts included — for a fraction of the tokens. You lose verbatim detail, but keep coherence. ${plan.fits ? "Fits ✓" : "Still over — shrink K or the budget."}</div>`
+      : `<div class="callout good">📝 Nothing old enough to summarize yet — the last ${SUMM_K} turns already cover the whole conversation.</div>`;
+  } else if(STRAT === "pinned"){
+    const pins = plan.turns.filter(t => PINNED.has(t.idx)).length;
+    html = `<div class="callout ${plan.fits ? "good" : "warn"}">📌 <b>Protected ${pins} pinned turn${pins===1?"":"s"}</b> (system + your key facts), then filled with the newest that fit — dropped ${dropped.length} un-pinned middle turn${dropped.length===1?"":"s"}. Pinned facts <b>never</b> get lost, so turn 1's requirements survive any budget. ${plan.fits ? "Fits ✓" : "Pins alone exceed the budget — raise it or un-pin something."}</div>`;
+  }
+  tradeoffEl.innerHTML = html;
+}
+
+function update(){
+  grownTo = +growRange.value;
+  growLbl.textContent = grownTo + " message" + (grownTo === 1 ? "" : "s");
+  const plan = computePlan();
+  renderMeter(plan);
+  renderConvo(plan);
+  renderFacts(plan);
+  renderCallback(plan);
+  renderTradeoff(plan);
+}
+
+// ---- init ----
+renderOpts();
+update();
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. The window fills up — every turn costs tokens", why:"A chat model has a FIXED context window measured in tokens, and it re-reads the ENTIRE history on every turn — there's no server-side memory. So each exchange (user question + assistant reply) permanently adds tokens on top of the system prompt and everything before it. The running total only ever grows, which means any long-enough conversation eventually crosses the limit. When it does, the request is rejected or the provider silently truncates the front — dropping context you didn't choose to drop. Context management is deciding, on purpose, what to keep.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">turn 1 ▓░░░░░ &nbsp; turn 5 ▓▓▓▓░░<br>turn 9 ▓▓▓▓▓▓ ← window full<br>every turn adds tokens, never removes</div>`,
+   code:`// no server memory — you resend the whole history each turn.
+messages = [system, ...history, newUserTurn];  // grows forever
+// eventually: countAll(messages) > CONTEXT_WINDOW  → rejected/truncated` },
+ { title:"2. Token budgeting — measure before you send", why:"You can't manage what you don't measure. Count tokens with the model's real tokenizer (tiktoken / js-tiktoken) so your numbers match the model's; chars/4 is a rough fallback that undercounts code and non-English. Crucially, the window holds INPUT + OUTPUT, so budget the history to (window − reserve-for-reply − system tokens). The system prompt is paid first and always; everything else competes for what's left. That single number — the history budget — drives every trim decision.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">window 8192<br>− reply 1024 − system 240<br>= history budget 6928 tok</div>`,
+   code:`const budget = CONTEXT_WINDOW - RESERVE_REPLY - countMsg(system);
+// count with the real tokenizer, not characters:
+const used = history.reduce((n,m) => n + enc.encode(m.content).length + 4, 0);` },
+ { title:"3. Truncate oldest — the blunt default", why:"The simplest strategy: keep the newest messages that fit the budget and drop the oldest — FIFO on the front. It's cheap, stateless and needs no extra model call. But it's blunt: it has no idea that turn 1 held your hard requirements, or that turn 0 is the system prompt. Run naively it will happily throw away exactly the context that matters most. Always lift the system prompt out of the truncation loop, and treat truncate as a floor, not a finished solution.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">[drop][drop] · keep · keep · keep<br>◀── oldest cut first ──▶ newest<br>⚠️ can cut the turn you needed</div>`,
+   code:`function truncateOldest(history, budget){
+  const kept=[]; let used=0;
+  for(let i=history.length-1;i>=0;i--){        // newest → oldest
+    const t=countMsg(history[i]);
+    if(used+t>budget) break;                   // drop the rest
+    kept.unshift(history[i]); used+=t;
+  }
+  return kept;   // keep system OUTSIDE this loop
+}` },
+ { title:"4. Sliding window — a fixed last-N", why:"Keep exactly the last N turns, always. It's the most predictable strategy — constant size, trivial to reason about — and a fine default when turns are roughly uniform. Its weakness is that it's COUNT-based, not TOKEN-based: two long recent turns can still blow the budget, while a short history under-fills the window and wastes context you could have used. The fix is a guard — after slicing the last N, verify it fits and fall back to a token trim if not. It also forgets anything older than N turns, so pair it with pinning or a summary for long-range facts.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">history … [ turn N-2 · N-1 · N ]<br>keep the last N, drop the rest<br>predictable size · ignores token weight</div>`,
+   code:`const window = history.slice(-N);           // last N, always
+// guard: counts, not tokens — verify the fit
+const safe = countAll(window) <= budget
+  ? window : truncateOldest(window, budget);` },
+ { title:"5. Summarize old — compress the middle", why:"Instead of DROPPING the old turns, COMPRESS them: keep the last K verbatim and fold everything older into one running summary produced by a cheap model. This is the key move when early context matters but you can't afford it token-for-token — a 300-token opening stretch becomes a 40-token 'here's what we established' note that still carries the requirements, decisions and names forward. You trade verbatim fidelity for gist, and re-summarize incrementally as the tail grows so cost stays flat. It's how assistants 'remember' conversations far longer than their window.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">[ 8 old turns · 300 tok ]<br>⬇ summarize (cheap model)<br>[ 1 summary · 40 tok ] + recent K</div>`,
+   code:`async function summarizeOld(history, keepLast, summarize){
+  if(history.length<=keepLast) return history;
+  const older=history.slice(0,-keepLast);
+  const gist=await summarize(older);          // 2–3 sentences
+  return [{role:"system",content:"Summary:\\n"+gist},
+          ...history.slice(-keepLast)];
+}` },
+ { title:"6. Pinned + recent — protect what must not be lost", why:"Some messages must never be dropped: the system prompt, and the key facts a task depends on (the schema, the chosen stack, the user's name). Pin them. Reserve their tokens first, then fill the remaining budget with the newest turns. Pins are immune to trimming, so the requirement stated in turn 1 survives no matter how long the chat runs — this is the direct fix for truncate's worst failure. Keep the pinned set SMALL and high-value; every pin is budget you can't spend on recency, so pin facts, not whole conversations.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">📌 system · 📌 key fact &nbsp;(reserved)<br>+ newest turns that fit the rest<br>pins never dropped</div>`,
+   code:`function pinnedPlusRecent(history, budget, isPinned){
+  const pinned=history.filter(isPinned);
+  let used=countAll(pinned);                  // reserved first
+  const recent=[];
+  for(let i=history.length-1;i>=0;i--){
+    const m=history[i]; if(isPinned(m)) continue;
+    const t=countMsg(m); if(used+t>budget) break;
+    recent.unshift(m); used+=t;
+  }
+  return history.filter(m=>pinned.includes(m)||recent.includes(m));
+}` },
+ { title:"7. Summarize vs drop — when to compress, when to cut", why:"The choice hinges on whether the OLD context still matters. DROP (truncate / window) when the conversation is stateless-ish — each turn stands alone, like independent Q&A — because compressing adds cost and latency for nothing. SUMMARIZE when the thread is cumulative — later turns depend on earlier decisions, constraints or facts — because a summary preserves that dependency for a few tokens where a drop would break coherence. Summarizing costs an extra (cheap) model call and can lose exact detail, so it's not free; but for any assistant that must 'remember', it's the difference between staying on-track and repeatedly re-asking what was already settled.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">independent Q&A → DROP (free)<br>cumulative thread → SUMMARIZE (keeps gist)<br>match the strategy to the dependency</div>`,
+   code:`// heuristic: does anything recent still reference old turns?
+const cumulative = laterTurnsReferenceEarlier(history);
+const managed = cumulative
+  ? await summarizeOld(history, K, summarize)   // keep the thread
+  : truncateOldest(history, budget);            // cheap, stateless` },
+ { title:"8. The tradeoff — detail vs budget", why:"Every strategy sits on one axis: how much detail you keep versus how much budget you spend. Keep everything and you're maximally faithful but you overflow and fail. Drop aggressively and you always fit but you forget — the model loses the plot, contradicts earlier turns, or re-asks settled questions. Summarize and you land in between: most of the meaning for a fraction of the tokens, minus the verbatim specifics. There is no free lunch; the craft is tuning the window size, the recent-K, and the pin set to your task so the model has exactly what it needs and not a token more. Measure it: the right setting is the smallest context that still answers correctly.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">keep all → overflow ✗<br>drop hard → fits, forgets<br>summarize + pin → fits, remembers gist</div>`,
+   code:`// there's no free lunch — tune to the task, then measure.
+// too little context → wrong/contradictory answers
+// too much context   → overflow, higher cost & latency
+// right = smallest context that still answers correctly.` },
+ { title:"9. Combine them — the production recipe", why:"Real systems don't pick one strategy — they layer them. The workhorse pipeline: PIN the system prompt (and any hard facts) so they're immune; SUMMARIZE the old middle into a running summary so long-range context survives cheaply; keep a RECENT WINDOW verbatim for immediate coherence; and finally token-FIT the whole assembly under budget as a hard guard. Run that manager in front of every model call and reuse it across the conversation. Add incremental re-summarization (only summarize what's newly fallen out of the window) so cost stays flat as the chat grows arbitrarily long.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">📌 pin system + facts<br>📝 summarize old middle<br>🪟 keep recent window · ✂️ fit under budget</div>`,
+   code:`async function manageContext(system, history, summarize){
+  const budget = historyBudget(system);
+  let msgs = await summarizeOld(history, 6, summarize); // pin+summarize
+  if(countAll(msgs) > budget) msgs = truncateOldest(msgs, budget); // fit
+  return [system, ...msgs];              // run this before EVERY call
+}` },
+ { title:"10. When to use it — and where it sits", why:"Use context management for essentially any multi-turn assistant, long document, or agent loop — anything whose token footprint grows toward the window. It's distinct from its neighbours: the SYSTEM PROMPT (D51) is WHAT you pin — the standing behaviour; context management is HOW you keep it (plus the history) inside the budget. Prompt / semantic CACHING is about reusing computation to cut cost and latency, not about fitting the window — they compose (you cache the pinned prefix you decided to keep). It also pairs with RAG (retrieve just the relevant chunks instead of stuffing everything) and with long-context models (a bigger window raises the ceiling but never removes it — cost and 'lost-in-the-middle' still push you to manage). Next: evaluation — regression-testing outputs with promptfoo so a context change can't silently degrade quality.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: any growing multi-turn context<br>vs D51 system prompt (what to pin)<br>vs caching (reuse for cost) · next → eval</div>`,
+   code:`// context mgmt = keep system + history INSIDE the token budget.
+// vs D51 system prompt  = the standing behaviour you pin.
+// vs caching            = reuse computation for cost (composes).
+// pairs with RAG + long-context. next → promptfoo eval.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>

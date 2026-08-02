@@ -53,6 +53,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 44 — System 2 Attention (S2A)](https://dev48v.infy.uk/prompt/day44-system-2-attention.html) — `day44-system-2-attention.html`
 - [PromptFromZero · Day 45 — Thread of Thought (ThoT)](https://dev48v.infy.uk/prompt/day45-thread-of-thought.html) — `day45-thread-of-thought.html`
 - [PromptFromZero · Day 51 — System Prompt](https://dev48v.infy.uk/prompt/day51-system-prompt.html) — `day51-system-prompt.html`
+- [PromptFromZero · Day 52 — Context Management](https://dev48v.infy.uk/prompt/day52-context-management.html) — `day52-context-management.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
