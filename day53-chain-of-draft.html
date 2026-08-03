@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 53 — Chain-of-Draft</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+  .kchip { font-size:12px; font-weight:800; padding:6px 13px; border-radius:999px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .kchip:hover { border-color:#c4b5fd; color:#6d28d9; }
+  .kchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .exchip { font-size:12.5px; font-weight:800; padding:8px 14px; border-radius:12px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:1px; }
+  .exchip small { font-weight:600; color:#94a3b8; font-size:10px; }
+  .exchip:hover { border-color:#c4b5fd; }
+  .exchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .exchip.active small { color:#e9d5ff; }
+
+  /* ===== traces (side by side) ===== */
+  .traces { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width: 820px){ .traces { grid-template-columns:1fr; } }
+  .tracecol { border:1px solid #e2e8f0; border-radius:14px; padding:12px; display:flex; flex-direction:column; gap:8px; }
+  .tracecol.cot { background:#f8fafc; border-color:#e2e8f0; }
+  .tracecol.cod { background:#f0fdf4; border-color:#bbf7d0; }
+  .tracehead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .tracehead .ttl { font-size:13px; font-weight:800; }
+  .tracecol.cot .ttl { color:#475569; }
+  .tracecol.cod .ttl { color:#15803d; }
+  .tracehead .sub { font-size:10px; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:.04em; }
+  .tracehead .runtok { margin-left:auto; font-size:11px; font-weight:800; padding:2px 9px; border-radius:999px; }
+  .tracecol.cot .runtok { background:#e2e8f0; color:#334155; }
+  .tracecol.cod .runtok { background:#dcfce7; color:#15803d; }
+
+  .step { border:1px solid #e2e8f0; border-radius:10px; padding:7px 10px; font-size:12px; line-height:1.5; transition:.2s; }
+  .step .sbody { font-family: ui-monospace, "SF Mono", Menlo, monospace; color:#334155; white-space:pre-wrap; }
+  .step .smeta { display:flex; align-items:center; gap:6px; margin-top:4px; }
+  .step .wc { font-size:9px; font-weight:800; border-radius:999px; padding:1px 7px; }
+  .step.cotstep { background:#fff; border-color:#e2e8f0; }
+  .step.cotstep .wc { background:#fee2e2; color:#b91c1c; }
+  .step.cotstep .wc.lean { background:#e2e8f0; color:#475569; }
+  .step.codstep { background:#fff; border-color:#bbf7d0; }
+  .step.codstep .sbody { color:#166534; font-weight:600; }
+  .step.codstep .wc { background:#dcfce7; color:#15803d; }
+  .step.codstep .wc.over { background:#fef3c7; color:#b45309; }
+  .step.pending { opacity:.28; filter:grayscale(1); }
+  .step.answer { border-style:dashed; }
+  .step.answer .sbody { font-weight:800; }
+  .step.cotstep.answer { border-color:#94a3b8; background:#f1f5f9; }
+  .step.codstep.answer { border-color:#22c55e; background:#f0fdf4; }
+  .tok { color:#94a3b8; font-size:10px; font-weight:700; }
+
+  /* ===== meter ===== */
+  .meterwrap { display:flex; flex-direction:column; gap:10px; }
+  .meterrow { display:flex; align-items:center; gap:9px; }
+  .meterrow .lbl { width:150px; flex:none; font-size:11px; font-weight:800; color:#475569; }
+  .meter { position:relative; flex:1; height:22px; border-radius:999px; background:#eef2f7; overflow:hidden; border:1px solid #e2e8f0; }
+  .meter .fill { height:100%; border-radius:999px; transition:width .35s ease; }
+  .meter .fill.cot  { background:linear-gradient(90deg,#fb7185,#ef4444); }
+  .meter .fill.cod  { background:linear-gradient(90deg,#34d399,#10b981); }
+  .meter .fill.lat  { background:linear-gradient(90deg,#94a3b8,#64748b); }
+  .meter .val { position:absolute; right:8px; top:50%; transform:translateY(-50%); font-size:10.5px; font-weight:800; color:#0f172a; }
+
+  .savbig { font-size:34px; font-weight:900; line-height:1; }
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 53</div>
+      <h1 class="text-xl font-bold">✏️ Chain-of-Draft (CoD) — a 2025 technique (Xu et al., Zoom) that keeps the step-by-step reasoning of <strong>Chain-of-Thought</strong> but forces every step to be a terse <strong>draft</strong> — a few words, an equation, a fragment — instead of a full explanatory sentence. The insight: on most reasoning tasks the tokens that actually <em>carry the answer</em> (the intermediate numbers, the one key transformation) are a tiny slice of a verbose CoT trace; the rest is fluent connective prose the model writes <em>for the reader</em>, not for itself. CoD strips that prose. You still get an explicit scratchpad — so the reasoning signal that makes CoT work is <strong>preserved</strong> — but at a fraction of the output tokens, cutting both <strong>cost</strong> and <strong>latency</strong> (the paper reports roughly <strong>80% fewer reasoning tokens at accuracy close to CoT</strong> on arithmetic / commonsense / symbolic benchmarks). It sits between verbose CoT (maximal detail, maximal tokens) and direct answering (no reasoning, brittle on multi-step): terse drafts are the sweet spot where the model still <em>shows its work to itself</em> but stops narrating. Distinct from context management (D52 — fitting the <em>input</em> history into the window); CoD shrinks the model's <strong>output</strong> reasoning.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Pick a problem, then watch a verbose <span class="text-red-500">Chain-of-Thought</span> trace and a compact <span class="text-emerald-600">Chain-of-Draft</span> trace reach the <em>same answer</em> — side by side, with a live token meter showing the savings.</h2>
+        <p class="text-slate-500 mb-5">Both columns run the identical reasoning; only the <span class="text-slate-600 font-semibold">verbosity</span> differs. CoT narrates every step in a full sentence; CoD keeps each step to a <span class="text-emerald-600 font-semibold">few words</span> — just the number, the equation, the fragment that carries the signal. Everything below is deterministic (no API key, no network): the traces are baked in and the token counts are computed live from the text, so the meter, the savings percentage and the latency proxy all update the instant you switch examples or step through the reveal. Hit <b>▶ Play</b> to watch both scratchpads grow token-by-token and see CoD finish far leaner — same answer, a fraction of the output.</p>
+      </div>
+
+      <!-- controls -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧪 Pick a sample problem</div>
+        <div class="flex flex-wrap gap-2" id="examples"></div>
+        <div class="mt-3 bg-slate-50 border border-slate-200 rounded-xl p-3">
+          <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1">Question</div>
+          <div class="text-sm text-slate-700 font-semibold" id="qText"></div>
+        </div>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <button class="btn btn-p" id="play">▶ Play reasoning</button>
+          <button class="btn" id="showAll">Show all steps</button>
+          <span class="text-xs text-slate-400 ml-1">— reveal both traces step-by-step and watch the token meters climb.</span>
+        </div>
+      </div>
+
+      <!-- token meter -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">📊 Live token meter — reasoning tokens produced</div>
+          <span class="text-xs font-bold mono" id="fitBadge">—</span>
+        </div>
+        <div class="grid md:grid-cols-4 gap-4 items-center">
+          <div class="md:col-span-3">
+            <div class="meterwrap">
+              <div class="meterrow"><span class="lbl">🗣️ Chain-of-Thought</span><div class="meter"><div class="fill cot" id="cotFill"></div><span class="val" id="cotVal"></span></div></div>
+              <div class="meterrow"><span class="lbl">✏️ Chain-of-Draft</span><div class="meter"><div class="fill cod" id="codFill"></div><span class="val" id="codVal"></span></div></div>
+              <div class="meterrow"><span class="lbl">⏱️ Latency (proxy)</span><div class="meter"><div class="fill lat" id="latFill"></div><span class="val" id="latVal"></span></div></div>
+            </div>
+            <div class="text-xs text-slate-400 mt-2" id="meterNote"></div>
+          </div>
+          <div class="text-center border-l border-slate-100 md:pl-3">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Token savings</div>
+            <div class="savbig text-emerald-600" id="savBig">—</div>
+            <div class="text-xs font-bold text-slate-500" id="savSub"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- traces -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🧠 The two reasoning traces <span class="text-slate-400 normal-case font-normal">— same problem, same answer, different verbosity. Word-count chip per step.</span></div>
+          <div class="flex gap-3 text-[10px] font-bold uppercase tracking-wide">
+            <span class="text-red-500">■ verbose</span><span class="text-emerald-600">■ terse draft (≤5 words)</span>
+          </div>
+        </div>
+        <div class="traces">
+          <div class="tracecol cot">
+            <div class="tracehead"><span class="ttl">🗣️ Chain-of-Thought</span><span class="sub">narrated · full sentences</span><span class="runtok" id="cotRun">0 tok</span></div>
+            <div id="cotSteps" class="flex flex-col gap-2"></div>
+          </div>
+          <div class="tracecol cod">
+            <div class="tracehead"><span class="ttl">✏️ Chain-of-Draft</span><span class="sub">minimal draft · a few words/step</span><span class="runtok" id="codRun">0 tok</span></div>
+            <div id="codSteps" class="flex flex-col gap-2"></div>
+          </div>
+        </div>
+        <div class="mt-3" id="accCallout"></div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Chain-of-Draft keeps the reasoning, drops the narration.</strong> Chain-of-Thought works because it externalises the intermediate steps — writing them down gives the model a scratchpad to compute against instead of guessing an answer in one leap. But CoT writes those steps as <em>fluent prose for a human reader</em>, and that prose is where most of the tokens go: on the problems above, the numbers and the single key equation that actually decide the answer are only a handful of tokens; the rest is connective tissue (&ldquo;To find how many he gave away, we need to calculate the difference between&hellip;&rdquo;). Chain-of-Draft caps each step to a few words, so it keeps the <strong>same intermediate state</strong> — the same scratchpad that makes CoT reliable — while cutting the narration. The result is the same answer at a fraction of the output tokens, which directly lowers cost and latency (fewer tokens to generate). The trade-off is real but narrow: if a step is squeezed so hard it drops the signal, or the model is very small and can't hold the state implicitly, accuracy can dip — which is why CoD is prompted with a clear terse-format instruction (and often a one-shot example) rather than left to chance. Distinct from context management (D52, the <em>input</em> side) — CoD is about making the model's <em>output</em> reasoning lean.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Chain-of-Draft = Chain-of-Thought with each step capped to a terse draft — same reasoning signal, ~80% fewer output tokens, lower latency.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Chain-of-Draft works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Chain-of-Draft is a <em>prompt-only</em> technique — no fine-tune, no extra model call. You keep everything about a Chain-of-Thought pipeline and change one thing: the instruction that tells the model to reason in terse drafts and mark the final answer after a delimiter. Here it is end to end, provider-portable (Vercel AI SDK's <span class="mono">system</span> + <span class="mono">messages</span>, which map to Anthropic and OpenAI alike), with the token measurement that proves the savings and the copy-paste system-prompt template.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — cap every step to a few words</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Chain-of-Thought says &ldquo;think step by step&rdquo;. Chain-of-Draft adds a hard verbosity budget: <em>still</em> think step by step, but each step is a minimal draft — an equation, a number, a fragment — five words at most. The reasoning structure is identical; only the prose is removed. That single constraint is the whole technique.</p>
+        <div class="relative"><pre>// CoT  →  narrated, one full sentence per step:
+//   "To find how many he gave away, we subtract the
+//    remaining lollipops from the starting amount, so..."
+//
+// CoD  →  minimal draft, a few words per step:
+//   "start 20"
+//   "left 12"
+//   "20 - 12 = 8"
+//   "#### 8"
+//
+// same steps, same answer — the narration is gone.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The CoD system prompt — the trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole behaviour lives in one instruction (the paper's exact prompt). It does two jobs: cap the draft length so the model stops narrating, and require a delimiter before the final answer so you can parse it cleanly. Keep it in the <span class="mono">system</span> channel so it applies to every turn.</p>
+        <div class="relative"><pre>// STEP 2 — the Chain-of-Draft instruction (verbatim from the paper).
+const COD_SYSTEM =
+  "Think step by step, but only keep a minimum draft for " +
+  "each thinking step, with 5 words at most. Return the " +
+  "answer at the end of the response after a separator ####.";
+
+// contrast — the Chain-of-Thought instruction it replaces:
+const COT_SYSTEM =
+  "Think step by step to answer the question. Return the " +
+  "answer at the end of the response after a separator ####.";</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Wire it up — one call, terse output</h3></div>
+        <p class="text-sm text-slate-600 mb-3">CoD is a drop-in swap for a CoT call — same SDK, same shape, only the system string changes. The model streams back a short draft trace plus the delimited answer. Because the output is smaller, both time-to-completion and cost drop with no pipeline change.</p>
+        <div class="relative"><pre>// STEP 3 — same call as CoT; only the system prompt differs.
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+async function askCoD(question) {
+  const r = await generateText({
+    model: openai("gpt-4o"),
+    system: COD_SYSTEM,                                // ← the only change
+    messages: [{ role: "user", content: question }],
+  });
+  return r.text;                                       // terse draft + #### answer
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Parse the answer after the delimiter</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The <span class="mono">####</span> separator is why CoD stays machine-usable despite the terse trace: split on it and take what follows. This is the same extraction you'd use for CoT — the delimiter, not the prose, is what your code depends on, so shrinking the reasoning changes nothing downstream.</p>
+        <div class="relative"><pre>// STEP 4 — pull the final answer out from behind the separator.
+function extractAnswer(text) {
+  const i = text.lastIndexOf("####");
+  const tail = i >= 0 ? text.slice(i + 4) : text;
+  return tail.trim();                                  // "8"
+}
+
+const raw = await askCoD("Jason had 20 lollipops...");
+const answer = extractAnswer(raw);                     // robust to terse traces</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Measure the savings — count the reasoning tokens</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Prove it, don't assume it. Run the same questions through CoT and CoD, count output tokens with the real tokenizer, and compare. Output tokens are what you pay for and what drives latency, so the CoD/CoT ratio is the number that matters — the paper sees CoD land near ~8% of CoT's reasoning tokens on GSM8K at comparable accuracy.</p>
+        <div class="relative"><pre>// STEP 5 — quantify the reduction on your own tasks.
+import { getEncoding } from "js-tiktoken";
+const enc = getEncoding("cl100k_base");
+const countTokens = (s) => enc.encode(s).length;
+
+async function compare(question) {
+  const cot = await askWith(COT_SYSTEM, question);
+  const cod = await askWith(COD_SYSTEM, question);
+  const tc = countTokens(cot), td = countTokens(cod);
+  return {
+    cotTokens: tc, codTokens: td,
+    saved: `${Math.round((1 - td / tc) * 100)}%`,       // e.g. "80%"
+  };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Guard the edges — one-shot the format, fall back on hard cases</h3></div>
+        <p class="text-sm text-slate-600 mb-3">CoD can dip when a step is squeezed below the signal it needs to carry, or on very small models that can't hold state implicitly, or in strict zero-shot where the model ignores the terse instruction. The fixes are cheap: show one terse example so the format sticks, and route genuinely hard problems back to full CoT. Verbosity becomes a dial, not a fixed setting.</p>
+        <div class="relative"><pre>// STEP 6 — anchor the terse format, and keep a CoT escape hatch.
+const COD_ONESHOT = COD_SYSTEM + "\n\nExample —\n" +
+  "Q: Jason had 20 lollipops, gave some, now has 12. How many?\n" +
+  "A: start 20\n   left 12\n   20 - 12 = 8\n   #### 8";
+
+async function solve(question, { hard = false } = {}) {
+  const system = hard ? COT_SYSTEM : COD_ONESHOT;      // dial verbosity
+  return extractAnswer(await askWith(system, question));
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Compose — cheap self-consistency, and where it sits</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Because each CoD sample is ~5–10× cheaper than a CoT sample, you can afford to draw <em>more</em> of them and majority-vote (self-consistency, D3) for the accuracy of CoT at a fraction of the tokens. CoD is a reasoning-<em>format</em> technique — it swaps in under CoT (D2) and composes above voting. It's distinct from context management (D52, shrinking the <em>input</em>); CoD shrinks the <em>output</em> reasoning. <strong>Next: evaluation — regression-testing outputs with promptfoo so a format change like CoD can't silently drop accuracy.</strong></p>
+        <div class="relative"><pre>// STEP 7 — terse drafts are cheap, so vote over many of them.
+async function codSelfConsistency(question, n = 7) {
+  const draws = await Promise.all(
+    Array.from({ length: n }, () =>
+      askWith(COD_SYSTEM, question).then(extractAnswer))
+  );
+  const tally = {};
+  for (const a of draws) tally[a] = (tally[a] || 0) + 1;  // majority vote
+  return Object.entries(tally).sort((x, y) => y[1] - x[1])[0][0];
+}
+// n CoD samples can cost less than ONE CoT sample — accuracy, cheaply.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the CoD system-prompt template</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Drop this straight into your <span class="mono">system</span> field. The first line is the paper's canonical trigger; the rest hardens the format and keeps it parseable.</p>
+        <div class="relative"><pre>You are a careful reasoner. Think step by step, but only keep a
+MINIMUM DRAFT for each thinking step — 5 words at most per step.
+Do not write full sentences or explanations; use fragments,
+numbers, and equations only. One draft step per line.
+After the final step, output a line with the separator #### followed
+by the final answer only (no units, no extra words).
+
+Example —
+Q: A shirt costs $40 after a 20% discount. Original price?
+A: 0.8*x = 40
+   x = 40 / 0.8
+   x = 50
+   #### 50</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 53 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Chain-of-Draft</strong>: keep Chain-of-Thought's step-by-step reasoning but cap each step to a terse <strong>draft</strong> — a few words, an equation, a fragment — so the model still externalises the intermediate state that makes reasoning reliable, but stops writing narration for a human reader. The payoff is the same answer at roughly <strong>80% fewer output tokens</strong>, which cuts both cost and latency, and because each draft is so cheap you can vote over many for self-consistency at CoT-level accuracy. It's prompt-only — one system instruction that caps draft length and delimits the answer with <span class="mono">####</span> — with a one-shot example to lock the format and a CoT fallback for the hardest problems. Distinct from context management (D52, the <em>input</em> side); CoD trims the <em>output</em> reasoning. <strong>👉 Next up — Evaluation: regression-testing outputs with promptfoo so a format change like CoD can't silently break quality.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK — a REAL, deterministic Chain-of-Draft demo (no API, no network).
+//  - EXAMPLES holds baked-in problems, each with a VERBOSE Chain-of-Thought
+//    trace and a TERSE Chain-of-Draft trace that reach the SAME answer.
+//  - tok() is a deterministic token estimate (chars/4) standing in for a
+//    real tokenizer; the meter, savings % and latency proxy are all computed
+//    LIVE from the trace text — nothing is hard-coded, so switching examples
+//    or stepping through the reveal recomputes every number.
+// ============================================================
+
+function tok(s){ return Math.max(1, Math.round(s.length / 4)); }
+function words(s){ return s.trim().split(/\s+/).filter(Boolean).length; }
+
+// each example: verbose CoT steps vs terse CoD steps → identical answer.
+const EXAMPLES = [
+  {
+    id:"lollipops", label:"🍭 Arithmetic", sub:"subtraction word problem",
+    q:"Jason had 20 lollipops. He gave Denny some. Now Jason has 12. How many did he give to Denny?",
+    answer:"8",
+    cot:[
+      "Let's think step by step to solve this carefully.",
+      "Initially, Jason had 20 lollipops in total.",
+      "After giving some away to Denny, Jason now has 12 lollipops left.",
+      "To find how many he gave away, we subtract what remains from what he started with.",
+      "Set up the subtraction: 20 (start) minus 12 (left) equals the lollipops given away.",
+      "Computing the difference: 20 - 12 = 8.",
+      "Therefore, Jason gave Denny 8 lollipops. The answer is 8."
+    ],
+    cod:[ "start 20", "left 12", "20 - 12 = 8", "#### 8" ]
+  },
+  {
+    id:"days", label:"📅 Modular", sub:"day-of-week counting",
+    q:"Today is Tuesday. What day of the week will it be 100 days from now?",
+    answer:"Thursday",
+    cot:[
+      "Let's work through this one step at a time.",
+      "A week has 7 days, so day names repeat in a cycle of 7.",
+      "We only need the remainder of 100 divided by 7 to know the real shift.",
+      "100 divided by 7 is 14 with a remainder of 2, since 14 times 7 is 98.",
+      "So 100 days from now lands on the same weekday as just 2 days from now.",
+      "Starting from Tuesday and adding 2 days: Wednesday, then Thursday.",
+      "Therefore, 100 days from Tuesday is a Thursday. The answer is Thursday."
+    ],
+    cod:[ "100 mod 7 = 2", "Tue + 2", "Wed, Thu", "#### Thursday" ]
+  },
+  {
+    id:"discount", label:"🏷️ Algebra", sub:"reverse a percentage",
+    q:"A shirt costs $40 after a 20% discount. What was the original price?",
+    answer:"$50",
+    cot:[
+      "Let's reason about this problem step by step.",
+      "A 20% discount means the customer pays 80% of the original price.",
+      "So 80% of the original price is equal to the sale price of $40.",
+      "We can write this as an equation: 0.8 times the original price equals 40.",
+      "Solve for the original price by dividing both sides: original = 40 divided by 0.8.",
+      "Computing the division: 40 / 0.8 = 50.",
+      "Therefore, the original price was $50. The answer is $50."
+    ],
+    cod:[ "0.8*x = 40", "x = 40 / 0.8", "x = 50", "#### $50" ]
+  }
+];
+
+// ---- live state ----
+let curEx = 0;      // selected example index
+let revealed = 99;  // how many step-pairs are shown (99 = all)
+let playTimer = null;
+
+// ---- DOM ----
+const examplesEl = document.getElementById("examples");
+const qTextEl    = document.getElementById("qText");
+const cotStepsEl = document.getElementById("cotSteps");
+const codStepsEl = document.getElementById("codSteps");
+const accCallout = document.getElementById("accCallout");
+
+// example chips
+EXAMPLES.forEach((ex, i) => {
+  const btn = document.createElement("button");
+  btn.className = "exchip" + (i === curEx ? " active" : "");
+  btn.innerHTML = `<span>${ex.label}</span><small>${ex.sub}</small>`;
+  btn.onclick = () => {
+    curEx = i;
+    examplesEl.querySelectorAll(".exchip").forEach((x, j) => x.classList.toggle("active", j === curEx));
+    stopPlay();
+    revealed = 99;      // toggling an example shows the full trace → totals recompute
+    update();
+  };
+  examplesEl.appendChild(btn);
+});
+
+function maxSteps(ex){ return Math.max(ex.cot.length, ex.cod.length); }
+function tokensUpto(arr, upto){ let n = 0; for(let i = 0; i < Math.min(upto, arr.length); i++) n += tok(arr[i]); return n; }
+function totalTokens(arr){ return tokensUpto(arr, arr.length); }
+
+// ---- play / reveal ----
+const playBtn = document.getElementById("play");
+const showAllBtn = document.getElementById("showAll");
+function stopPlay(){ if(playTimer){ clearInterval(playTimer); playTimer = null; playBtn.textContent = "▶ Play reasoning"; } }
+playBtn.onclick = function(){
+  if(playTimer){ stopPlay(); return; }
+  const ex = EXAMPLES[curEx];
+  const total = maxSteps(ex);
+  revealed = 0; update();
+  playBtn.textContent = "⏸ Pause";
+  playTimer = setInterval(() => {
+    revealed++;
+    update();
+    if(revealed >= total){ stopPlay(); playBtn.textContent = "▶ Replay"; }
+  }, 750);
+};
+showAllBtn.onclick = () => { stopPlay(); revealed = 99; update(); };
+
+// ---- renderers ----
+function meterFill(fill, valEl, value, scale, suffix){
+  fill.style.width = Math.min(100, (value / scale) * 100) + "%";
+  valEl.textContent = value + (suffix || "");
+}
+
+function renderMeter(ex){
+  const cotR = tokensUpto(ex.cot, revealed);
+  const codR = tokensUpto(ex.cod, revealed);
+  const cotFull = totalTokens(ex.cot);
+  const scale = Math.max(cotFull, 1);                       // stable scale = full CoT
+  meterFill(document.getElementById("cotFill"), document.getElementById("cotVal"), cotR, scale, " tok");
+  meterFill(document.getElementById("codFill"), document.getElementById("codVal"), codR, scale, " tok");
+
+  // latency proxy: output tokens dominate generation time (illustrative ms).
+  const latCot = cotR * 6, latCod = codR * 6;
+  const latScale = Math.max(cotFull * 6, 1);
+  meterFill(document.getElementById("latFill"), document.getElementById("latVal"), latCod, latScale, "ms");
+  document.getElementById("latVal").textContent = latCod + "ms vs " + latCot + "ms";
+
+  const sav = cotR > 0 ? Math.round((1 - codR / cotR) * 100) : 0;
+  document.getElementById("savBig").textContent = "−" + sav + "%";
+  document.getElementById("savSub").textContent = codR + " vs " + cotR + " tok";
+
+  const fit = document.getElementById("fitBadge");
+  fit.textContent = "CoD " + codR + " tok · CoT " + cotR + " tok";
+  fit.style.color = "#15803d";
+
+  const note = document.getElementById("meterNote");
+  const full = revealed >= maxSteps(ex);
+  note.innerHTML = full
+    ? `Full traces: Chain-of-Draft produced <b>${codR}</b> reasoning tokens vs Chain-of-Thought's <b>${cotR}</b> — a <b class="text-emerald-600">${sav}% cut</b> for the <b>same answer</b>. Fewer output tokens means lower cost and lower latency.`
+    : `Revealing step-by-step: CoD <b>${codR}</b> tok vs CoT <b>${cotR}</b> tok so far. Watch the gap widen as the verbose trace narrates and the draft stays lean.`;
+}
+
+function renderTrace(el, steps, kind, revealCount){
+  let html = "";
+  steps.forEach((s, i) => {
+    const shown = i < revealCount;
+    const isAns = /^####/.test(s) || /answer is/i.test(s);
+    const w = words(s);
+    let wcCls = "wc", wcTxt = w + "w";
+    if(kind === "cod"){ wcCls += (w > 5 ? " over" : ""); wcTxt = w + "w" + (w <= 5 ? " ✓" : " ⚠"); }
+    else { wcCls += (w <= 6 ? " lean" : ""); }
+    html += `<div class="step ${kind}step ${isAns ? "answer" : ""} ${shown ? "" : "pending"}">
+        <div class="sbody">${escapeHtml(s)}</div>
+        <div class="smeta"><span class="${wcCls}">${wcTxt}</span><span class="tok">${tok(s)} tok</span></div>
+      </div>`;
+  });
+  el.innerHTML = html;
+}
+
+function renderTraces(ex){
+  renderTrace(cotStepsEl, ex.cot, "cot", revealed);
+  renderTrace(codStepsEl, ex.cod, "cod", revealed);
+  document.getElementById("cotRun").textContent = tokensUpto(ex.cot, revealed) + " tok";
+  document.getElementById("codRun").textContent = tokensUpto(ex.cod, revealed) + " tok";
+}
+
+function renderAcc(ex){
+  const full = revealed >= maxSteps(ex);
+  if(full)
+    accCallout.innerHTML = `<div class="callout good"><b>Same answer, fewer tokens.</b> Both traces conclude <b>${escapeHtml(ex.answer)}</b> — Chain-of-Draft preserved the exact reasoning steps (the numbers and the key equation) and dropped only the narration. That's the whole bet: the terse draft still carries the signal that makes the reasoning correct.</div>`;
+  else
+    accCallout.innerHTML = `<div class="callout warn">Stepping through… reveal all steps to compare the final answers and the total token savings.</div>`;
+}
+
+function update(){
+  const ex = EXAMPLES[curEx];
+  qTextEl.textContent = ex.q;
+  renderTraces(ex);
+  renderMeter(ex);
+  renderAcc(ex);
+}
+
+// ---- init ----
+update();
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. Chain-of-Thought works — but it's verbose", why:"Chain-of-Thought (D2) reliably lifts reasoning accuracy by making the model write its intermediate steps down instead of leaping to an answer — the written steps become a scratchpad it can compute against. The catch is HOW it writes them: as fluent, complete sentences aimed at a human reader. On a simple arithmetic problem the model emits a paragraph where the actual work is one subtraction. Those extra tokens are pure output you generate and pay for, and every one of them adds latency, because generation time scales with tokens produced.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT: "To find how many he gave, we<br>subtract the remaining from the start,<br>so 20 minus 12 which gives us 8."<br>1 subtraction → a whole paragraph</div>`,
+   code:`// CoT prompt — accurate, but narrated in full sentences.
+system = "Think step by step. Return the answer after ####.";
+// output: many tokens of prose wrapping a tiny amount of real work.` },
+ { title:"2. The insight — most CoT tokens are narration, not signal", why:"Look at a CoT trace and split it in two: the ANSWER-BEARING tokens (the intermediate numbers, the one key transformation) and the CONNECTIVE tokens (the prose that explains the work to a reader). The answer-bearing tokens are a tiny fraction; the rest is narration. But the model doesn't NEED the narration to reason — it needs the intermediate state written down. That is the gap Chain-of-Draft exploits: keep the state, drop the prose.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">signal:  20 · 12 · 20-12=8 · 8<br>narration: "to find … we subtract …<br>which gives us … therefore …"<br>↑ most of the tokens, little of the value</div>`,
+   code:`// the reasoning that MATTERS is short:
+//   start 20 · left 12 · 20-12=8 · answer 8
+// everything else in a CoT trace is prose for a human.` },
+ { title:"3. Chain-of-Draft — cap each step to a terse draft", why:"CoD keeps the step-by-step structure of CoT but imposes a hard budget on each step: a minimum draft, roughly five words at most — an equation, a number, a fragment. The model still externalises every intermediate result (so the scratchpad is intact) but is forbidden from narrating it. One instruction does it: 'think step by step, but only keep a minimum draft for each step, 5 words at most, then give the answer after ####'. Same reasoning path, a fraction of the tokens.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">start 20<br>left 12<br>20 - 12 = 8<br>#### 8&nbsp;&nbsp;← same steps, ~5 words each</div>`,
+   code:`// CoD prompt — the whole technique is this instruction.
+system = "Think step by step, but only keep a minimum draft " +
+         "for each step, with 5 words at most. Return the " +
+         "answer after a separator ####.";` },
+ { title:"4. Why terse still works — state, not prose, is what helps", why:"The reason CoT beats direct-answering isn't the eloquence — it's that writing the intermediate state gives the model something concrete to condition its next token on, turning an implicit multi-step leap into a chain of easy single steps. That mechanism survives compression: '20 - 12 = 8' pins the same state as a sentence explaining the subtraction. So a terse draft keeps the reasoning benefit while removing the tokens that were only ever there for a human. Compression works precisely because the narration was never load-bearing.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">what makes CoT work:<br>writing intermediate STATE down<br>"20-12=8" pins the same state<br>as a full explanatory sentence</div>`,
+   code:`// direct:   guess the answer in one leap        → brittle
+// CoT:      narrate every step (state + prose)    → accurate, costly
+// CoD:      write the STATE only, skip the prose  → accurate, cheap` },
+ { title:"5. The payoff — fewer tokens, lower cost, lower latency", why:"Output tokens are the expensive, slow part of a generation: you pay per output token and the model produces them one at a time, so latency scales with how many it writes. By cutting the reasoning trace ~80%, CoD cuts output cost and time-to-completion by roughly the same, with accuracy that stays close to CoT on arithmetic, commonsense and symbolic benchmarks (Xu et al., 2025). The paper reports CoD using as little as ~8% of CoT's reasoning tokens on GSM8K at comparable accuracy — a large, free-ish win for anything latency- or cost-sensitive.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">CoT ▓▓▓▓▓▓▓▓▓▓ 200 tok<br>CoD ▓ 20 tok&nbsp;&nbsp;(~80-90% less)<br>same answer · lower cost · lower latency</div>`,
+   code:`const saved = 1 - codTokens / cotTokens;   // ≈ 0.8
+// output tokens drive BOTH price and latency,
+// so an 80% token cut is an ~80% cut in each.` },
+ { title:"6. The trade-off — where terse drafts can dip", why:"CoD is not free everywhere. Squeeze a step below the information it must carry and you drop signal — some multi-step problems genuinely need a wider draft. Very small models can't reliably hold state implicitly, so they lean on the prose CoD removes and lose more accuracy. And in strict zero-shot a model may ignore the terse instruction or, conversely, over-compress. The craft is matching the draft budget to the task: enough words to carry the state, no more — and measuring accuracy, not assuming it holds.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">too terse → drops the signal ✗<br>tiny model → can't hold state ✗<br>right budget → keeps signal, cuts prose ✓</div>`,
+   code:`// dial verbosity to the task; measure, don't assume.
+const system = hard || tinyModel
+  ? COT_SYSTEM              // give it room on hard cases
+  : COD_SYSTEM;             // terse for the rest` },
+ { title:"7. Prompt the format — one-shot the drafts, delimit the answer", why:"Two prompt details make CoD reliable. First, a one-shot example: show a single terse trace and the model locks onto the 'few words per line' shape far better than from instruction alone — the format is easier to demonstrate than describe. Second, the #### separator before the final answer: it keeps the output machine-parseable no matter how terse the trace gets, so your extraction code is identical to CoT's. The technique is entirely prompt-construction — no fine-tune, no extra call.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">[instruction] 5 words/step<br>[one-shot] show one terse trace<br>[delimiter] #### &lt;answer&gt; → parseable</div>`,
+   code:`const COD = COD_SYSTEM + "\\n\\nExample —\\n" +
+  "Q: 20 lollipops, gave some, 12 left. How many?\\n" +
+  "A: start 20 / left 12 / 20-12=8 / #### 8";
+const answer = text.split("####").pop().trim();` },
+ { title:"8. CoD on the spectrum — direct vs CoT vs CoD", why:"Three points on one axis of 'how much reasoning does the model write'. DIRECT answering writes none — fastest and cheapest, but brittle the moment a problem needs more than one step. CHAIN-OF-THOUGHT writes maximal narrated reasoning — most accurate on hard multi-step tasks, most expensive. CHAIN-OF-DRAFT sits in between: it writes the reasoning STATE but not the narration, capturing most of CoT's accuracy at close to direct-answer cost. For a huge class of everyday reasoning tasks, that middle point is the best trade you can make.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">direct ── CoD ──────── CoT<br>cheap/brittle · sweet spot · costly/thorough<br>tokens →&nbsp;&nbsp;&nbsp;accuracy →</div>`,
+   code:`// verbosity dial (tokens ↑, latency ↑ left→right):
+//   direct   : "#### 8"                     (no steps)
+//   CoD      : "20-12=8 / #### 8"            (state only)
+//   CoT      : "To find how many... = 8."    (state + prose)` },
+ { title:"9. Compose it — cheap self-consistency and friends", why:"Because a CoD sample costs a fraction of a CoT sample, you can afford to draw MANY and majority-vote (self-consistency, D3) — often n CoD samples cost less than a single CoT sample, buying CoT-level robustness cheaply. CoD is a reasoning-FORMAT technique, so it slots in wherever CoT does: under voting, inside an agent's think step, ahead of tool calls. It stacks with anything that consumes a reasoning trace, because all it changes is how verbose that trace is.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">draw 7 terse drafts → vote<br>cost &lt; one CoT sample<br>CoT-level accuracy, CoD price</div>`,
+   code:`// self-consistency gets cheap when each sample is terse:
+const answers = await Promise.all(
+  Array.from({length: 7}, () => askCoD(q).then(extractAnswer)));
+return majorityVote(answers);   // robust, still cheaper than 1 CoT` },
+ { title:"10. When to use it — and where it sits", why:"Reach for Chain-of-Draft on cost- or latency-sensitive reasoning at scale — arithmetic, structured/symbolic tasks, tool-use planning, high-QPS assistants — anywhere you'd use CoT but can't afford the verbose trace. Keep full CoT for the genuinely hard, exploratory problems where a wider scratchpad earns its tokens, and use a one-shot to hold the format. It's distinct from context management (D52), which shrinks the INPUT history to fit the window; CoD shrinks the OUTPUT reasoning to cut cost and latency — the two compose cleanly. Next: evaluation — regression-testing outputs with promptfoo so switching CoT→CoD can't silently drop accuracy.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: cost/latency-sensitive reasoning<br>keep CoT for the hardest problems<br>vs D52 (shrink input) · next → eval</div>`,
+   code:`// CoD = shrink the model's OUTPUT reasoning (cost + latency).
+// vs D52 context mgmt = shrink the INPUT history (fit window).
+// they compose. next → promptfoo eval (guard the accuracy).` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
