@@ -55,6 +55,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 51 — System Prompt](https://dev48v.infy.uk/prompt/day51-system-prompt.html) — `day51-system-prompt.html`
 - [PromptFromZero · Day 52 — Context Management](https://dev48v.infy.uk/prompt/day52-context-management.html) — `day52-context-management.html`
 - [PromptFromZero · Day 53 — Chain-of-Draft](https://dev48v.infy.uk/prompt/day53-chain-of-draft.html) — `day53-chain-of-draft.html`
+- [PromptFromZero · Day 54 — Verbalized Confidence](https://dev48v.infy.uk/prompt/day54-verbalized-confidence.html) — `day54-verbalized-confidence.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

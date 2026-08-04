@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 54 — Verbalized Confidence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== profile toggle ===== */
+  .ptog { display:flex; gap:10px; flex-wrap:wrap; }
+  .pchip { flex:1; min-width:220px; text-align:left; font-size:13px; font-weight:800; padding:11px 15px; border-radius:14px; border:2px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:2px; }
+  .pchip small { font-weight:600; color:#94a3b8; font-size:10.5px; }
+  .pchip:hover { border-color:#c4b5fd; }
+  .pchip.active.over { background:#fef2f2; border-color:#ef4444; color:#991b1b; }
+  .pchip.active.over small { color:#dc2626; }
+  .pchip.active.cal  { background:#f0fdf4; border-color:#22c55e; color:#166534; }
+  .pchip.active.cal small { color:#16a34a; }
+
+  /* ===== stat boxes ===== */
+  .statrow { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .statbox { border:1px solid #e2e8f0; border-radius:14px; padding:11px 12px; text-align:center; background:#fff; }
+  .statbox .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; }
+  .statbox .v { font-size:26px; font-weight:900; line-height:1.05; margin-top:3px; }
+  .ecebig { font-size:44px; font-weight:900; line-height:1; }
+
+  /* ===== reliability table ===== */
+  .btable { width:100%; border-collapse:collapse; font-size:11.5px; }
+  .btable th { text-align:right; font-weight:800; color:#64748b; padding:5px 8px; border-bottom:2px solid #e2e8f0; font-size:10px; text-transform:uppercase; letter-spacing:.03em; }
+  .btable th:first-child, .btable td:first-child { text-align:left; }
+  .btable td { padding:5px 8px; border-bottom:1px solid #f1f5f9; text-align:right; font-variant-numeric:tabular-nums; }
+  .btable tr.over td { color:#b91c1c; }
+  .btable tr.under td { color:#1d4ed8; }
+  .gapbadge { display:inline-block; font-size:10px; font-weight:800; border-radius:999px; padding:1px 7px; }
+  .gapbadge.over { background:#fee2e2; color:#b91c1c; }
+  .gapbadge.under { background:#dbeafe; color:#1d4ed8; }
+  .gapbadge.tight { background:#dcfce7; color:#15803d; }
+
+  /* ===== item chips ===== */
+  .qgrid { display:flex; flex-wrap:wrap; gap:7px; }
+  .qchip { border:1px solid #e2e8f0; border-radius:10px; padding:6px 9px; font-size:11px; display:flex; align-items:center; gap:8px; background:#fff; min-width:0; }
+  .qchip .qq { color:#475569; font-weight:600; max-width:210px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .qchip .cf { font-weight:900; font-variant-numeric:tabular-nums; }
+  .qchip .mk { font-size:12px; font-weight:900; }
+  .qchip.ok  { background:#f0fdf4; border-color:#bbf7d0; } .qchip.ok .cf, .qchip.ok .mk { color:#15803d; }
+  .qchip.no  { background:#fef2f2; border-color:#fecaca; } .qchip.no .cf, .qchip.no .mk { color:#b91c1c; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 54</div>
+      <h1 class="text-xl font-bold">🎯 Verbalized Confidence — ask a model to state, in plain words, how sure it is (&ldquo;Answer: Canberra &mdash; <strong>Confidence: 90%</strong>&rdquo;), then check whether those stated numbers actually track how often it's right. A confidence is only worth anything if it's <strong>calibrated</strong>: of all the answers a model tags 90%, close to 90% should turn out correct. Language models are frequently <strong>over-confident</strong> — RLHF rewards replies that <em>sound</em> assured, so a raw model will happily stamp 95% on a coin-flip. This page makes that measurable: bin a labelled eval set by stated confidence, plot each bin's <strong>empirical accuracy</strong> against the <span class="mono">y=x</span> ideal (a <strong>reliability diagram</strong>), and read off the <strong>Expected Calibration Error (ECE)</strong> — the average gap between what the model <em>says</em> and what's <em>true</em>. Toggle between an <span class="text-red-500 font-semibold">over-confident</span> model (curve sagging <em>below</em> the diagonal, high ECE) and a <span class="text-emerald-600 font-semibold">well-calibrated</span> one (curve hugging the diagonal, low ECE) and watch the bend. Everything is baked-in and deterministic — no API key, no network. Distinct from Chain-of-Draft (D53, trimming the model's reasoning trace); verbalized confidence is about making its <strong>uncertainty explicit and honest</strong>.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Two models answer the <em>same 20-question</em> quiz and each <span class="text-violet-600">states a confidence</span> per answer. Bin those stated confidences, measure the real accuracy in each bin, and see how far the model's words drift from the truth.</h2>
+        <p class="text-slate-500 mb-5">Everything below is deterministic (no API key, no network): the answers, their stated confidences and their correct/incorrect flags are baked in, and the <span class="text-slate-600 font-semibold">reliability diagram</span>, the <span class="text-slate-600 font-semibold">ECE</span> and the per-bin table are all computed <em>live</em> from that data. A perfectly calibrated model would land every bin on the dashed <span class="mono">y=x</span> line — of the answers it tags 80%, exactly 80% are right. <b>Toggle the model profile</b> and watch the curve bend: the over-confident model's points sag <span class="text-red-500 font-semibold">below</span> the diagonal (it claims far more certainty than it earns), the calibrated model's points hug it.</p>
+      </div>
+
+      <!-- profile toggle -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧪 Pick a model profile — same quiz, different honesty about uncertainty</div>
+        <div class="ptog" id="profileToggle"></div>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-3 mb-3">
+        <!-- reliability diagram -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 md:col-span-3">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-1">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">📈 Reliability diagram</div>
+            <div class="flex gap-3 text-[10px] font-bold uppercase tracking-wide items-center">
+              <span class="text-blue-500">▮ accuracy</span><span class="text-red-500">▮ gap</span><span class="text-slate-400">┈ y=x ideal</span>
+            </div>
+          </div>
+          <div id="relDiagram"></div>
+          <div class="text-[11px] text-slate-400 mt-1 text-center">x = stated confidence · y = empirical accuracy · a bar's distance from the diagonal is its calibration gap</div>
+        </div>
+        <!-- ECE + stats -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 md:col-span-2 flex flex-col">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📊 Calibration score</div>
+          <div class="text-center border border-slate-100 rounded-xl py-3 mb-3">
+            <div class="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Expected Calibration Error</div>
+            <div class="ecebig" id="eceBig">—</div>
+            <div class="text-xs font-bold text-slate-500" id="eceSub">lower is better · 0 = perfect</div>
+          </div>
+          <div class="statrow mb-3">
+            <div class="statbox"><div class="k">Accuracy</div><div class="v text-slate-800" id="accStat">—</div></div>
+            <div class="statbox"><div class="k">Avg conf.</div><div class="v text-slate-800" id="confStat">—</div></div>
+            <div class="statbox"><div class="k">Skew</div><div class="v" id="skewStat">—</div></div>
+          </div>
+          <div id="verdictBox" class="mt-auto"></div>
+        </div>
+      </div>
+
+      <!-- per-bin table -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🔢 Per-bin breakdown <span class="text-slate-400 normal-case font-normal">— stated confidence binned in 10-point buckets vs the accuracy actually observed in each bucket. ECE is the count-weighted average of the gap column.</span></div>
+        <table class="btable">
+          <thead><tr><th>Confidence bin</th><th>n</th><th>mean stated</th><th>accuracy</th><th>gap</th><th>direction</th></tr></thead>
+          <tbody id="binTable"></tbody>
+        </table>
+      </div>
+
+      <!-- item chips -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📝 The 20 answers <span class="text-slate-400 normal-case font-normal">— each shows the model's stated confidence and whether it was actually right (✓) or wrong (✗).</span></div>
+        <div class="qgrid" id="itemGrid"></div>
+      </div>
+
+      <div id="calloutBox" class="mb-3"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 A stated confidence is a promise the model doesn't always keep.</strong> Verbalized confidence is trivial to <em>elicit</em> — you just ask &ldquo;how sure are you, 0–100%?&rdquo; and parse the number — but the number is only useful if it's <strong>calibrated</strong>, i.e. the answers tagged 90% are right about 90% of the time. The <strong>reliability diagram</strong> tests exactly that: bin the predictions by stated confidence, plot each bin's real accuracy, and compare to the <span class="mono">y=x</span> line where confidence equals accuracy. The <strong>ECE</strong> collapses the whole diagram into one number — the count-weighted average distance from the diagonal. LLMs, especially raw or RLHF-tuned ones, skew <strong>over-confident</strong>: the curve sinks below the diagonal because the model says 95% when it's right 60% of the time — sounding sure is rewarded during training, being <em>right</em> about being unsure is not. The fix is partly prompt-craft (ask for a probability of being correct, give it permission to say low numbers, reserve 90%+ for bet-worthy answers) and partly measurement — you can't trust a confidence you've never scored against labels. Once calibrated, that number is gold: gate low-confidence answers to a human, route them to a bigger model, or abstain with an honest &ldquo;I'm not sure.&rdquo;
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Verbalized confidence = the model states how sure it is; calibration = whether those numbers are true; ECE = one number for how far off they are.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How verbalized confidence &amp; calibration work</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Verbalized confidence is a <em>prompt-only</em> technique to elicit the number, plus a small <em>measurement</em> harness to check it. You ask the model to append a confidence, parse it, and then — the part everyone skips — score it against labels with a reliability diagram and ECE so you know whether to trust it. Here it is end to end, provider-portable (Vercel AI SDK's <span class="mono">system</span> + <span class="mono">messages</span>, which map to Anthropic and OpenAI alike), with the exact calibration math the demo above runs and a copy-paste elicitation template.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — ask for the answer AND a confidence</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Instead of just an answer, you ask the model to attach an explicit self-estimate of how likely that answer is to be correct, as a percentage. That single extra line turns an opaque guess into a signal you can act on — <em>if</em> the number is honest. The whole rest of the technique is about verifying that &ldquo;if&rdquo;.</p>
+        <div class="relative"><pre>// Plain answer  →  no signal about certainty:
+//   "Canberra"
+//
+// Verbalized confidence  →  answer + self-estimate:
+//   Answer: Canberra
+//   Confidence: 90%
+//
+// now you can gate, route, or abstain on the 90%.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The elicitation prompt — the trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The behaviour lives in one system instruction. It does three jobs: ask for a probability <em>of being correct</em> (not vibes), give the model explicit permission to say low numbers so it isn't pushed to sound sure, and fix a rigid output shape so you can parse it. Keep it in the <span class="mono">system</span> channel so it applies every turn.</p>
+        <div class="relative"><pre>// STEP 2 — the confidence-elicitation instruction.
+const CONF_SYSTEM =
+  "Answer the question, then state how confident you are that " +
+  "your answer is CORRECT, as a percentage from 0 to 100. " +
+  "Base it on how likely you are to be right, not on how sure " +
+  "you want to sound; if you are guessing, use a low number. " +
+  "Reserve 90-100% for answers you would bet on; use 50% for a " +
+  "coin-flip. Output exactly:\n" +
+  "Answer: &lt;answer&gt;\nConfidence: &lt;0-100&gt;%";</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Wire it up &amp; parse — pull out answer + confidence</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Same call shape as any other prompt; only the system string changes. Because the format is fixed, a couple of regexes recover the answer and the number. Clamp to 0–100 and default sensibly if the model forgets the line, so a stray format never crashes the pipeline.</p>
+        <div class="relative"><pre>// STEP 3 — one call, then parse the two fields.
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+async function askWithConfidence(question) {
+  const r = await generateText({
+    model: openai("gpt-4o"),
+    system: CONF_SYSTEM,
+    messages: [{ role: "user", content: question }],
+  });
+  return parseConfidence(r.text);
+}
+
+function parseConfidence(text) {
+  const ans  = (text.match(/Answer:\s*(.+)/i)     || [,""])[1].trim();
+  const confM =  text.match(/Confidence:\s*(\d+(?:\.\d+)?)\s*%?/i);
+  let conf = confM ? parseFloat(confM[1]) : 50;   // default: coin-flip
+  conf = Math.max(0, Math.min(100, conf));         // clamp
+  return { answer: ans, confidence: conf };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Bin the predictions by stated confidence</h3></div>
+        <p class="text-sm text-slate-600 mb-3">To test calibration you need a <em>labelled</em> eval set — questions where you know the true answer. Score each prediction correct/incorrect, then drop it into a confidence bucket (here 10-point bins). Each bin will give you two numbers: the mean confidence the model stated, and the accuracy it actually achieved.</p>
+        <div class="relative"><pre>// STEP 4 — group predictions into confidence bins.
+// preds: [{ confidence: 0-100, correct: boolean }, ...]
+function binByConfidence(preds, width = 10) {
+  const nb = Math.round(100 / width);
+  const bins = Array.from({ length: nb }, (_, i) => (
+    { lo: i * width, hi: (i + 1) * width, confs: [], correct: 0, n: 0 }));
+  for (const p of preds) {
+    let idx = Math.floor(p.confidence / width);
+    if (idx >= nb) idx = nb - 1;                   // 100% → last bin
+    const b = bins[idx];
+    b.n++; b.confs.push(p.confidence);
+    if (p.correct) b.correct++;
+  }
+  for (const b of bins) {
+    b.acc      = b.n ? b.correct / b.n : 0;                     // y
+    b.meanConf = b.n ? b.confs.reduce((s, c) => s + c, 0) / b.n / 100 : 0; // x
+    b.gap      = Math.abs(b.acc - b.meanConf);
+  }
+  return bins;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Compute ECE — one number for the whole diagram</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Expected Calibration Error is the count-weighted average of every bin's gap between stated confidence and accuracy. It's exactly the reliability diagram collapsed to a scalar: 0 means every bin sits on the diagonal (perfect), and bigger means the model's words drift further from reality. This is the identical math the demo's readout runs.</p>
+        <div class="relative"><pre>// STEP 5 — ECE = Σ (n_bin / N) · |accuracy − confidence|.
+function expectedCalibrationError(preds, width = 10) {
+  const N = preds.length;
+  const bins = binByConfidence(preds, width);
+  return bins.reduce((ece, b) =>
+    ece + (b.n ? (b.n / N) * Math.abs(b.acc - b.meanConf) : 0), 0);
+}
+
+// overconfident model  → ECE ≈ 0.40  (claims ~85%, right ~50%)
+// well-calibrated model → ECE ≈ 0.06  (claims ~75%, right ~75%)
+const ece = expectedCalibrationError(myPreds);   // 0 = perfect</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Read the direction — over- vs under-confident</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The <em>sign</em> of the gap tells you which way the model is wrong, and the fix differs. Accuracy below stated confidence (points below the diagonal) is <strong>over-confidence</strong> — the common LLM failure; accuracy above is <strong>under-confidence</strong>. A cheap post-hoc correction is a global scale (a verbalized cousin of temperature scaling) fit on a validation split.</p>
+        <div class="relative"><pre>// STEP 6 — diagnose direction, then optionally rescale.
+function diagnose(preds) {
+  const acc  = preds.filter(p => p.correct).length / preds.length;
+  const conf = preds.reduce((s, p) => s + p.confidence, 0) / preds.length / 100;
+  const skew = conf - acc;                         // + = overconfident
+  return skew > 0.05 ? "overconfident"
+       : skew < -0.05 ? "underconfident"
+       : "calibrated";
+}
+
+// post-hoc: shrink stated confidences toward accuracy on a val set.
+const scaled = p => ({ ...p,
+  confidence: 100 * (acc + k * (p.confidence / 100 - acc)) }); // fit k≤1</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Elicit better numbers — and act on them</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Two levers improve raw calibration before any rescaling. Prompt-side: ask for a probability of being <em>correct</em>, permit low numbers, and optionally have the model list the top-2 answers with probabilities that sum to 1. Sampling-side: draw N samples and use <em>answer agreement</em> as an empirical confidence (self-consistency, D3) — often better calibrated than the model's own words. Then the payoff: threshold on confidence to abstain, escalate, or route.</p>
+        <div class="relative"><pre>// STEP 7 — agreement-based confidence, then act on the number.
+async function sampledConfidence(question, n = 8) {
+  const outs = await Promise.all(Array.from({ length: n },
+    () => askWithConfidence(question)));
+  const tally = {};
+  for (const o of outs) tally[o.answer] = (tally[o.answer] || 0) + 1;
+  const [answer, votes] = Object.entries(tally).sort((a, b) => b[1] - a[1])[0];
+  return { answer, confidence: 100 * votes / n };  // empirical agreement
+}
+
+async function answerOrAbstain(q, floor = 70) {
+  const { answer, confidence } = await sampledConfidence(q);
+  if (confidence < floor) return { action: "escalate", answer, confidence };
+  return { action: "answer", answer, confidence };  // trust the calibrated %
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the confidence-elicitation template</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Drop this straight into your <span class="mono">system</span> field. It asks for a probability of being right, gives explicit permission to be unsure, anchors the scale, and fixes a parseable format.</p>
+        <div class="relative"><pre>You are a careful assistant. Answer the question, then state how
+confident you are that your answer is correct, as a percentage
+from 0 to 100.
+
+Rules:
+- Base the number on how likely you are to be RIGHT, not on how
+  sure you want to sound. If you are guessing, say so with a low
+  number — being honestly unsure is correct behaviour, not a failure.
+- Reserve 90-100% for answers you would bet money on. Use 50% for a
+  true coin-flip. Spread the rest in between.
+- Do not default to a round, confident-sounding number.
+- Output EXACTLY this and nothing else:
+
+Answer: &lt;your answer&gt;
+Confidence: &lt;0-100&gt;%</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 54 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>verbalized confidence</strong>: prompt the model to attach an explicit confidence to its answer, then measure whether that number is <strong>calibrated</strong> — do the 90%-tagged answers come true 90% of the time? You bin predictions by stated confidence, plot each bin's real accuracy on a <strong>reliability diagram</strong> against the <span class="mono">y=x</span> ideal, and collapse the whole picture into <strong>ECE</strong>, the count-weighted average gap. LLMs tend to be <strong>over-confident</strong> (curve below the diagonal, high ECE) because training rewards assured-sounding answers; you push back with prompt-craft (ask for a probability of being correct, permit low numbers, anchor the scale), agreement-based sampling, and post-hoc rescaling — and you can't trust any of it until you've scored it against labels. A calibrated confidence is a lever: abstain, escalate, or route on it. Distinct from Chain-of-Draft (D53, the reasoning trace); this is the model's <em>honesty about its own uncertainty</em>. <strong>👉 Next up — Evaluation: regression-testing outputs with promptfoo so a prompt change can't silently drop quality.</strong></p></div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.onclick = () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+});
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// LOOK — a REAL, deterministic verbalized-confidence / calibration demo.
+//  - QUESTIONS is one shared 20-item quiz (a labelled eval set).
+//  - PROFILES.over / PROFILES.cal give, per question, the STATED confidence
+//    and whether the model was actually CORRECT. Two models, same quiz.
+//  - Everything (reliability diagram, ECE, per-bin table, skew) is computed
+//    LIVE from that baked data — nothing is hard-coded, so toggling the
+//    profile recomputes and re-bends the curve.
+// ============================================================
+
+const QUESTIONS = [
+  "Capital of Australia?", "Chemical symbol for gold?", "Bones in the adult human body?",
+  "Year World War II ended?", "Largest planet in the solar system?", "Author of \"1984\"?",
+  "Speed of light in km/s (approx)?", "Square root of 144?", "Currency of Japan?",
+  "Tallest mountain on Earth?", "How many continents are there?", "Element with atomic number 1?",
+  "Who painted the Mona Lisa?", "Freezing point of water in °C?", "Largest ocean on Earth?",
+  "How many sides does a hexagon have?", "Capital of Canada?", "Fastest land animal?",
+  "Who wrote Romeo and Juliet?", "Boiling point of water at sea level (°C)?"
+];
+
+// Each profile: array aligned to QUESTIONS → { conf: stated %, correct: bool }.
+const PROFILES = {
+  over: {
+    key:"over", cls:"over", label:"😤 Over-confident model",
+    sub:"sounds sure about everything — states ~85%, right ~50%",
+    items:[
+      {conf:63,correct:true },{conf:67,correct:false},{conf:72,correct:true },{conf:74,correct:false},
+      {conf:76,correct:false},{conf:78,correct:true },{conf:82,correct:true },{conf:83,correct:false},
+      {conf:85,correct:true },{conf:86,correct:false},{conf:87,correct:true },{conf:88,correct:false},
+      {conf:91,correct:true },{conf:92,correct:false},{conf:94,correct:true },{conf:95,correct:false},
+      {conf:96,correct:true },{conf:97,correct:false},{conf:98,correct:true },{conf:99,correct:false}
+    ]
+  },
+  cal: {
+    key:"cal", cls:"cal", label:"🎯 Well-calibrated model",
+    sub:"honest about uncertainty — states ~75%, right ~75%",
+    items:[
+      {conf:53,correct:false},{conf:55,correct:true },{conf:57,correct:false},{conf:58,correct:true },
+      {conf:62,correct:false},{conf:64,correct:true },{conf:66,correct:true },{conf:68,correct:true },
+      {conf:72,correct:true },{conf:74,correct:false},{conf:76,correct:true },{conf:78,correct:true },
+      {conf:82,correct:true },{conf:84,correct:true },{conf:86,correct:false},{conf:88,correct:true },
+      {conf:92,correct:true },{conf:94,correct:true },{conf:96,correct:true },{conf:98,correct:true }
+    ]
+  }
+};
+
+let curProfile = "over";
+
+// ---- calibration math (identical to the BUILD tab) ----
+function computeBins(items, width){
+  width = width || 10;
+  const nb = Math.round(100 / width);
+  const bins = Array.from({length:nb}, (_,i) => (
+    { idx:i, lo:i*width, hi:(i+1)*width, confs:[], correct:0, n:0 }));
+  items.forEach(p => {
+    let idx = Math.floor(p.conf / width);
+    if (idx >= nb) idx = nb - 1;
+    const b = bins[idx];
+    b.n++; b.confs.push(p.conf); if (p.correct) b.correct++;
+  });
+  bins.forEach(b => {
+    b.acc      = b.n ? b.correct / b.n : 0;                                  // fraction
+    b.meanConf = b.n ? b.confs.reduce((s,c)=>s+c,0) / b.n / 100 : 0;         // fraction
+    b.gap      = Math.abs(b.acc - b.meanConf);
+    b.signed   = b.meanConf - b.acc;                                         // + = overconfident
+    b.weight   = items.length ? b.n / items.length : 0;
+  });
+  return bins;
+}
+function computeECE(bins, N){
+  return bins.reduce((s,b) => s + (b.n>0 ? (b.n/N)*Math.abs(b.acc-b.meanConf) : 0), 0);
+}
+function overallAcc(items){ return items.length ? items.filter(p=>p.correct).length / items.length : 0; }
+function overallConf(items){ return items.length ? items.reduce((s,p)=>s+p.conf,0) / items.length / 100 : 0; }
+
+// ---- reliability diagram (SVG) ----
+function relDiagram(bins){
+  const S = 300, P = 34;                          // canvas + padding
+  const X = c => P + (c/100) * (S - 2*P);         // c in 0..100 → px
+  const Y = a => (S - P) - (a/100) * (S - 2*P);   // a in 0..100 → px (inverted)
+  let g = `<svg viewBox="0 0 ${S} ${S}" width="100%" style="max-width:360px;display:block;margin:2px auto;">`;
+  // plot background
+  g += `<rect x="${P}" y="${P}" width="${S-2*P}" height="${S-2*P}" fill="#f8fafc" stroke="#e2e8f0"/>`;
+  // gridlines every 20
+  for (let v=0; v<=100; v+=20){
+    g += `<line x1="${X(v)}" y1="${P}" x2="${X(v)}" y2="${S-P}" stroke="#eef2f7"/>`;
+    g += `<line x1="${P}" y1="${Y(v)}" x2="${S-P}" y2="${Y(v)}" stroke="#eef2f7"/>`;
+  }
+  // y=x ideal
+  g += `<line x1="${X(0)}" y1="${Y(0)}" x2="${X(100)}" y2="${Y(100)}" stroke="#94a3b8" stroke-width="1.6" stroke-dasharray="5 4"/>`;
+  g += `<text x="${X(100)-2}" y="${Y(100)-6}" font-size="8.5" fill="#94a3b8" text-anchor="end" font-weight="700">ideal y=x</text>`;
+
+  const pop = bins.filter(b => b.n>0);
+  // bars: accuracy, with the gap up to stated confidence in red
+  pop.forEach(b => {
+    const xl = X(b.lo) + 2, xr = X(b.hi) - 2, bw = xr - xl;
+    const accPx = Y(b.acc*100), confPx = Y(b.meanConf*100), base = Y(0);
+    // accuracy bar (blue)
+    g += `<rect x="${xl.toFixed(1)}" y="${accPx.toFixed(1)}" width="${bw.toFixed(1)}" height="${(base-accPx).toFixed(1)}" fill="#3b82f6" opacity="0.82"/>`;
+    // gap region (red) between accuracy and stated confidence
+    const gTop = Math.min(accPx, confPx), gH = Math.abs(confPx - accPx);
+    g += `<rect x="${xl.toFixed(1)}" y="${gTop.toFixed(1)}" width="${bw.toFixed(1)}" height="${gH.toFixed(1)}" fill="#ef4444" opacity="0.30"/>`;
+  });
+  // calibration curve through (meanConf, acc)
+  const pts = pop.map(b => `${X(b.meanConf*100).toFixed(1)},${Y(b.acc*100).toFixed(1)}`).join(" ");
+  if (pop.length > 1)
+    g += `<polyline points="${pts}" fill="none" stroke="#7c3aed" stroke-width="2"/>`;
+  pop.forEach(b => {
+    g += `<circle cx="${X(b.meanConf*100).toFixed(1)}" cy="${Y(b.acc*100).toFixed(1)}" r="3.4" fill="#7c3aed" stroke="#fff" stroke-width="1"/>`;
+  });
+  // axes labels
+  g += `<text x="${(S/2).toFixed(0)}" y="${S-8}" font-size="9.5" fill="#475569" text-anchor="middle" font-weight="800">stated confidence →</text>`;
+  g += `<text x="12" y="${(S/2).toFixed(0)}" font-size="9.5" fill="#475569" text-anchor="middle" font-weight="800" transform="rotate(-90 12 ${(S/2).toFixed(0)})">empirical accuracy →</text>`;
+  for (let v=0; v<=100; v+=50){
+    g += `<text x="${X(v)}" y="${S-P+12}" font-size="8" fill="#94a3b8" text-anchor="middle">${v}</text>`;
+    g += `<text x="${P-5}" y="${Y(v)+3}" font-size="8" fill="#94a3b8" text-anchor="end">${v}</text>`;
+  }
+  g += `</svg>`;
+  return g;
+}
+
+// ---- DOM ----
+const profileToggle = document.getElementById("profileToggle");
+
+function buildToggle(){
+  profileToggle.innerHTML = "";
+  Object.values(PROFILES).forEach(p => {
+    const btn = document.createElement("button");
+    btn.className = "pchip " + p.cls + (p.key===curProfile ? " active" : "");
+    btn.innerHTML = `<span>${p.label}</span><small>${p.sub}</small>`;
+    btn.onclick = () => { curProfile = p.key; buildToggle(); render(); };
+    profileToggle.appendChild(btn);
+  });
+}
+
+function fmtPct(x){ return Math.round(x*100) + "%"; }
+
+function render(){
+  const prof = PROFILES[curProfile];
+  const items = prof.items;
+  const N = items.length;
+  const bins = computeBins(items, 10);
+  const ece = computeECE(bins, N);
+  const acc = overallAcc(items);
+  const conf = overallConf(items);
+  const skew = conf - acc;                        // + overconfident
+
+  // reliability diagram
+  document.getElementById("relDiagram").innerHTML = relDiagram(bins);
+
+  // ECE readout
+  const eceBig = document.getElementById("eceBig");
+  eceBig.textContent = ece.toFixed(3);
+  eceBig.style.color = ece > 0.15 ? "#dc2626" : (ece > 0.08 ? "#d97706" : "#16a34a");
+
+  // stats
+  document.getElementById("accStat").textContent  = fmtPct(acc);
+  document.getElementById("confStat").textContent = fmtPct(conf);
+  const skewEl = document.getElementById("skewStat");
+  const skewPts = Math.round(skew*100);
+  skewEl.textContent = (skewPts>0?"+":"") + skewPts;
+  skewEl.style.color = skewPts > 5 ? "#dc2626" : (skewPts < -5 ? "#1d4ed8" : "#16a34a");
+
+  // verdict
+  const vb = document.getElementById("verdictBox");
+  if (skewPts > 5)
+    vb.innerHTML = `<div class="callout bad"><b>Over-confident.</b> The model states <b>${fmtPct(conf)}</b> confidence on average but is right only <b>${fmtPct(acc)}</b> of the time — it claims <b>+${skewPts} points</b> more certainty than it earns, so the curve sags below the diagonal and ECE is high.</div>`;
+  else if (skewPts < -5)
+    vb.innerHTML = `<div class="callout warn"><b>Under-confident.</b> The model is right <b>${fmtPct(acc)}</b> of the time but only claims <b>${fmtPct(conf)}</b> — it hedges more than it should, so the curve rides above the diagonal.</div>`;
+  else
+    vb.innerHTML = `<div class="callout good"><b>Well-calibrated.</b> Stated confidence (<b>${fmtPct(conf)}</b>) tracks real accuracy (<b>${fmtPct(acc)}</b>) within a few points — the curve hugs the <span class="mono">y=x</span> line and ECE is low. A 90% here really does mean ~90%.</div>`;
+
+  // per-bin table
+  const tb = document.getElementById("binTable");
+  tb.innerHTML = "";
+  bins.filter(b=>b.n>0).forEach(b => {
+    const dir = b.signed > 0.03 ? "over" : (b.signed < -0.03 ? "under" : "tight");
+    const dirTxt = dir==="over" ? "overconfident ↓" : (dir==="under" ? "underconfident ↑" : "on target ✓");
+    const rowCls = dir==="over" ? "over" : (dir==="under" ? "under" : "");
+    tb.insertAdjacentHTML("beforeend",
+      `<tr class="${rowCls}">
+        <td>${b.lo}–${b.hi}%</td>
+        <td>${b.n}</td>
+        <td>${fmtPct(b.meanConf)}</td>
+        <td>${fmtPct(b.acc)}</td>
+        <td>${(b.gap*100).toFixed(0)} pts</td>
+        <td><span class="gapbadge ${dir}">${dirTxt}</span></td>
+      </tr>`);
+  });
+
+  // item chips
+  const ig = document.getElementById("itemGrid");
+  ig.innerHTML = "";
+  items.forEach((p, i) => {
+    const ok = p.correct;
+    ig.insertAdjacentHTML("beforeend",
+      `<div class="qchip ${ok?"ok":"no"}" title="${escapeHtml(QUESTIONS[i])} — stated ${p.conf}%, ${ok?"correct":"wrong"}">
+        <span class="qq">${escapeHtml(QUESTIONS[i])}</span>
+        <span class="cf">${p.conf}%</span>
+        <span class="mk">${ok?"✓":"✗"}</span>
+      </div>`);
+  });
+
+  // callout
+  const cb = document.getElementById("calloutBox");
+  if (curProfile === "over")
+    cb.innerHTML = `<div class="callout bad"><b>Read the diagram:</b> every populated bar's blue accuracy top falls well below the dashed diagonal — the red band is the calibration gap. The model piles its confidence into the 80–100% bins yet is right only about half the time there. That's the classic LLM failure mode: <b>ECE ${ece.toFixed(3)}</b>. A downstream system that trusted these numbers would ship a stream of confidently-wrong answers.</div>`;
+  else
+    cb.innerHTML = `<div class="callout good"><b>Read the diagram:</b> the blue bars rise and fall <em>with</em> the diagonal and the red gaps are thin — accuracy in each bin roughly matches the confidence stated there. <b>ECE ${ece.toFixed(3)}</b>, a fraction of the over-confident model's. Now the number means something: you can safely abstain or escalate whenever the stated confidence is low.</div>`;
+}
+
+// ---- init ----
+buildToggle();
+render();
+
+// ============================================================
+// UNDERSTAND — step engine
+// ============================================================
+const STEPS = [
+ { title:"1. Verbalized confidence — ask the model how sure it is", why:"By default a model answers and stops — you get a claim with no sense of how much to trust it. Verbalized confidence adds one instruction: after the answer, state how likely it is to be correct as a percentage. It's the cheapest form of uncertainty estimation — no logits, no extra model, no fine-tune, just words the model already knows how to produce. The catch, which the rest of this tab is about, is that a number is easy to ELICIT but only useful if it's HONEST.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q: Capital of Australia?<br>Answer: Canberra<br><span style="color:#7c3aed;font-weight:800;">Confidence: 90%</span><br>↑ a self-estimate you can act on</div>`,
+   code:`// one instruction turns an answer into an answer + a signal.
+system = "Answer, then state how confident you are that your " +
+         "answer is correct, 0-100%.";
+// output:  "Answer: Canberra\\nConfidence: 90%"` },
+ { title:"2. A number is only useful if it's calibrated", why:"A stated 90% is a PREDICTION about the world: 'if you asked me a hundred questions I felt this sure about, I'd get about ninety right.' Calibration is whether that prediction holds. An uncalibrated 90% is worse than no number, because it invites false trust — you'd wave through answers that are actually coin-flips. So verbalized confidence is really two problems: eliciting the number (trivial) and validating it against reality (the whole game). You cannot know which you have without labelled data.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">of all answers tagged 90% …<br>calibrated → ~90 of 100 correct ✓<br>over-confident → ~55 of 100 correct ✗<br>the WORD is the same; the truth isn't</div>`,
+   code:`// the number is a claim; calibration is whether it's true.
+// tag 100 answers "90%":
+//   ~90 correct → calibrated
+//   ~55 correct → overconfident (number is a lie)` },
+ { title:"3. Calibration, precisely — 90% should mean 90%", why:"Formally, a model is calibrated if, across all predictions it stamps with confidence p, the fraction that are correct is also p — for every p. Plot accuracy against stated confidence and a perfectly calibrated model traces the identity line y=x. Reality never sits exactly on it; the QUESTION is how far off, and in which direction. That single line — 'confidence equals accuracy' — is the reference everything else measures against.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">calibrated: P(correct | conf = p) = p<br>for every p in 0..100%<br>→ accuracy = confidence → the line y = x</div>`,
+   code:`// perfect calibration is one equation:
+//   accuracy(bin) === meanConfidence(bin)   for every bin
+// → all points land on the diagonal y = x.` },
+ { title:"4. Bin the predictions by stated confidence", why:"You can't check 'P(correct | conf=90%)' from a single answer — you need a GROUP of answers the model tagged near 90% and the fraction of them that were right. So you bucket predictions into confidence bins (e.g. 10-point bins). Each bin yields two numbers: the mean confidence the model stated in it (the x) and the accuracy it actually achieved (the y). Binning is what turns individual claims into a testable curve; wider bins are smoother but coarser, narrower bins are sharper but noisier.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">bin 80-90%:  n=6<br>stated (mean) = 85%  ← x<br>correct = 3/6 = 50%  ← y<br>one bin → one point on the diagram</div>`,
+   code:`let idx = Math.floor(conf / 10);      // 10-pt bins
+bins[idx].n++;
+bins[idx].confs.push(conf);           // → mean stated = x
+if (correct) bins[idx].correct++;     // → accuracy   = y` },
+ { title:"5. The reliability diagram — accuracy vs the y=x ideal", why:"Plot each bin as a point (mean stated confidence, empirical accuracy) and overlay the diagonal. Now calibration is VISIBLE. Points ON the line are honest. Points BELOW the line (accuracy < confidence) are over-confident — the model claimed more certainty than it delivered. Points ABOVE are under-confident. The vertical distance from each point to the diagonal is that bin's calibration gap, and the whole shape tells you not just how wrong but WHERE — often fine at low confidence, sagging badly in the 90s.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">acc<br>100|&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;/ ideal<br>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;&nbsp;&nbsp;/&nbsp;&nbsp;• under (above)<br>&nbsp;&nbsp;&nbsp;|&nbsp;&nbsp;/&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;• over (below)<br>&nbsp;&nbsp;&nbsp;|/________ stated conf</div>`,
+   code:`// point per bin: (meanConf, accuracy)
+// below y=x → overconfident   (accuracy < stated)
+// above y=x → underconfident  (accuracy > stated)
+// on   y=x → calibrated` },
+ { title:"6. ECE — one number for the whole gap", why:"A diagram is great for humans; you also want a scalar to track and compare. Expected Calibration Error is the COUNT-WEIGHTED average of every bin's |accuracy − confidence| gap — bins with more predictions count more. ECE = 0 means every bin sits on the diagonal (perfect); larger means the model's words drift further from reality. It's the reliability diagram collapsed to a single number, which is exactly what the demo's readout shows: ~0.06 for the calibrated model, ~0.40 for the over-confident one.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ECE = &Sigma; (n_bin / N) &middot; | acc &minus; conf |<br>calibrated ≈ 0.06&nbsp;&nbsp;·&nbsp;&nbsp;overconfident ≈ 0.40<br>0 = every bin on the diagonal</div>`,
+   code:`const ece = bins.reduce((s, b) =>
+  s + (b.n / N) * Math.abs(b.acc - b.meanConf), 0);
+// weighted mean distance from the diagonal. 0 = perfect.` },
+ { title:"7. Over- vs under-confidence — which side of the line", why:"The SIGN of the gap matters as much as the size, because the fixes differ. Over-confidence (accuracy below stated, points under the diagonal) is dangerous: the system trusts answers it shouldn't and ships confident errors — the dominant LLM failure. Under-confidence (points above) is wasteful: you escalate or double-check answers that were fine, burning budget. A model can even be over-confident in some bins and under in others. Naming the direction per bin is the first step to correcting it.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">overconfident: says 95%, right 60% → risky<br>underconfident: says 60%, right 95% → wasteful<br>skew = avg_conf &minus; accuracy (sign = direction)</div>`,
+   code:`const skew = avgConf - accuracy;   // fraction
+// skew > 0  → overconfident (curve below y=x)
+// skew < 0  → underconfident (curve above y=x)
+// |skew| ~ 0 → calibrated` },
+ { title:"8. Why LLMs skew over-confident", why:"It's baked in by training. Next-token pretraining rewards fluent, assured continuations; hedging ('I'm not sure') is rarer in the data. RLHF then rewards answers humans LIKE, and humans reward confident, decisive replies — so the model learns that sounding sure scores, while honestly saying 'maybe 55%' does not. The result: verbalized confidence clusters high and flat, with a big gap in the top bins. This is why raw verbalized numbers usually need help — better prompting, sampling, or a post-hoc rescale — before you trust them.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pretrain: fluent = assured, hedging is rare<br>RLHF: humans reward confident replies<br>→ model learns "sound sure" → overconfident</div>`,
+   code:`// training rewards confident-sounding text, not honesty
+// about uncertainty → default verbalized numbers cluster
+// high & flat. Measure before you trust them.` },
+ { title:"9. Eliciting better numbers — prompt & sampling tricks", why:"Two levers improve raw calibration. PROMPT: ask for a probability of being CORRECT (not a vibe), explicitly permit low numbers so the model isn't pushed to sound sure, anchor the scale ('50% = coin-flip, reserve 90%+ for bet-worthy'), or ask for a top-2 with probabilities summing to 1. SAMPLING: draw N answers and use their AGREEMENT as the confidence (self-consistency, D3) — empirical agreement is often better calibrated than the model's self-report. Then a POST-HOC scale fit on a validation split can shrink the residual gap.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prompt: "prob of being RIGHT; low is ok; 50=coin-flip"<br>sample: 8 draws → 5 agree → conf = 62%<br>post-hoc: rescale toward accuracy on a val set</div>`,
+   code:`// agreement as confidence (often > self-report):
+const outs = await sampleN(q, 8);
+const votes = majorityCount(outs);
+const conf = 100 * votes / 8;   // empirical, calibratable` },
+ { title:"10. Where it sits — gate, route, abstain · next: evaluation", why:"A calibrated confidence is a control signal. Threshold on it: answer directly when high, ABSTAIN with an honest 'I'm not sure' when low, ESCALATE the low-confidence cases to a human or a bigger model, or ROUTE (D36) by certainty. It composes cleanly — sits on top of any answer, pairs with self-consistency (D3) for the number, and with abstention/RAG to decide when to retrieve. It's distinct from Chain-of-Draft (D53, which trims the reasoning TRACE); this is about the model's honesty over its own uncertainty. Next: evaluation — regression-testing outputs with promptfoo so a prompt change can't silently drop quality.",
+   concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">conf ≥ 70 → answer<br>conf &lt; 70 → abstain / escalate / route<br>calibrated % = a real decision lever</div>`,
+   code:`if (confidence >= floor) return answer;    // trust it
+else return escalateToHuman(question);     // honest abstain
+// next → promptfoo eval: guard quality across prompt changes.` }
+];
+const stepsEl = document.getElementById("steps");
+const prevB = document.getElementById("prev"), nextB = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+let curStep = 0;
+STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+function show(i){ curStep=i; const s=STEPS[i];
+  document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+  document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+  document.getElementById("code").textContent=s.code;
+  stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+}
+prevB.onclick=()=>show(Math.max(0,curStep-1)); nextB.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+show(0);
+
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+</script>
+</body>
+</html>
