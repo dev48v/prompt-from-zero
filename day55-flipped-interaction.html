@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 55 — Flipped Interaction</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== goal toggle ===== */
+  .goaltog { display:flex; gap:10px; flex-wrap:wrap; }
+  .gchip { flex:1; min-width:210px; text-align:left; font-size:13px; font-weight:800; padding:11px 15px; border-radius:14px; border:2px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:2px; }
+  .gchip small { font-weight:600; color:#94a3b8; font-size:10.5px; }
+  .gchip:hover { border-color:#c4b5fd; }
+  .gchip.active { background:#f5f3ff; border-color:#8b5cf6; color:#5b21b6; }
+  .gchip.active small { color:#7c3aed; }
+
+  /* ===== conversation ===== */
+  .convo { display:flex; flex-direction:column; gap:10px; }
+  .brow { display:flex; }
+  .brow.user { justify-content:flex-end; }
+  .bubble { max-width:86%; font-size:13px; line-height:1.5; padding:9px 13px; border-radius:14px; }
+  .bubble.agent { background:#f1f5f9; color:#0f172a; border:1px solid #e2e8f0; border-top-left-radius:4px; }
+  .bubble.user  { background:#8b5cf6; color:#fff; border-top-right-radius:4px; font-weight:600; }
+  .bubble.ask   { background:#faf5ff; border:1px solid #c4b5fd; color:#4c1d95; max-width:100%; }
+  .bubble .qn   { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#8b5cf6; margin-bottom:3px; }
+  .opts { display:flex; flex-wrap:wrap; gap:7px; margin-top:10px; }
+  .opt  { font-size:12px; font-weight:700; padding:7px 12px; border-radius:10px; border:1px solid #ddd6fe; background:#fff; color:#5b21b6; cursor:pointer; transition:all .12s; }
+  .opt:hover { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+
+  /* ===== slot checklist ===== */
+  .slotlist { display:flex; flex-direction:column; gap:7px; }
+  .slot { display:flex; align-items:center; gap:9px; padding:9px 11px; border-radius:11px; border:1px solid #e2e8f0; background:#fff; font-size:12px; transition:.15s; }
+  .slot .ic { width:19px; height:19px; flex:none; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; }
+  .slot .nm { font-weight:700; color:#475569; }
+  .slot .vl { margin-left:auto; font-weight:800; font-size:11px; text-align:right; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .slot.pending { opacity:.6; }
+  .slot.pending .ic { background:#e2e8f0; color:#94a3b8; }
+  .slot.current { border-color:#c4b5fd; background:#faf5ff; }
+  .slot.current .ic { background:#8b5cf6; color:#fff; }
+  .slot.current .vl { color:#7c3aed; }
+  .slot.filled .ic { background:#dcfce7; color:#15803d; }
+  .slot.filled .nm { color:#0f172a; }
+  .slot.filled .vl { color:#15803d; }
+
+  .progwrap { height:10px; border-radius:999px; background:#eef2f7; overflow:hidden; border:1px solid #e2e8f0; }
+  .progwrap .fill { height:100%; background:linear-gradient(90deg,#8b5cf6,#d946ef); transition:width .3s; }
+
+  .stopbadge { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; }
+  .stopbadge.wait { background:#eff6ff; color:#1d4ed8; }
+  .stopbadge.met  { background:#dcfce7; color:#15803d; }
+
+  .result { border:1px solid #bbf7d0; background:#f0fdf4; border-radius:14px; padding:14px; }
+  .result pre { margin-top:8px; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 55</div>
+      <h1 class="text-xl font-bold">🔄 Flipped Interaction — a prompt <em>pattern</em> from White et al.'s <strong>Prompt Pattern Catalog</strong> that inverts who is driving the conversation. Normally <em>you</em> prompt the model: you carry the burden of knowing everything it needs and packing it into one message, and any gap you didn't think to mention is silently guessed. Flipped Interaction hands the model the wheel — you instruct it to <strong>ask you questions</strong>, one at a time, until it has gathered enough to accomplish a goal, and only <em>then</em> to produce the result. The pattern has a precise skeleton, expressed as <span class="mono">(P)</span> contextual statements: a <strong>role/goal</strong> (&ldquo;ask me questions to achieve X&rdquo;), a <strong>question cadence</strong> (&ldquo;one at a time&rdquo;), and a <strong>stop condition</strong> (&ldquo;until you have enough to do X&rdquo;). Under the hood it is <strong>slot-filling</strong>: the model keeps a mental checklist of the facts it still needs, asks the next missing one, and stops asking the moment the checklist is full. It shines wherever the <em>human</em> is the source of truth and doesn't know what's relevant up front — <strong>requirement gathering</strong>, onboarding wizards, intake forms, debugging interviews. This page is genuinely interactive with <strong>no API and no network</strong>: a self-contained, deterministic question-tree agent picks a goal (plan a trip · spec a schema · debug an error), asks you targeted questions one-by-one, tracks the slots live, and synthesizes a result only once every slot is filled. Distinct from Day&nbsp;54 (Verbalized Confidence — making the model's <em>uncertainty</em> explicit); this is about making the model <strong>drive the requirement-gathering</strong> instead of you.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Pick a goal, then let the agent <span class="text-violet-600">interview you</span> — one question at a time — filling a <span class="text-emerald-600">slot checklist</span> as you answer, and producing the result only once every slot is filled.</h2>
+        <p class="text-slate-500 mb-5">This is a <b>real, interactive</b> flipped-interaction session — but everything is deterministic (no API key, no network): the question tree, the slots and the synthesized output are all baked in, and the checklist, the progress bar and the <span class="text-slate-600 font-semibold">stop condition</span> are computed <em>live</em> from what you've answered. Notice the shape: <b>the model asks, you answer</b> — the reverse of normal prompting. Click an option to answer the current question; the agent immediately asks the next <em>missing</em> one and never jumps ahead. It <b>cannot finish early</b>: the result is synthesized only when the stop condition — <em>all slots filled</em> — is met. Hit <b>▶ Auto-answer</b> to watch a full session play out.</p>
+      </div>
+
+      <!-- goal toggle -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎯 Pick a goal — the thing the agent interviews you toward</div>
+        <div class="goaltog" id="goalToggle"></div>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <button class="btn btn-p" id="autoBtn">▶ Auto-answer</button>
+          <button class="btn" id="resetBtn">↺ Restart interview</button>
+          <span class="text-xs text-slate-400 ml-1">— answer by clicking options, or let it auto-play through the slots.</span>
+        </div>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-3 mb-3">
+        <!-- conversation -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 md:col-span-3 flex flex-col">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">💬 The interview <span class="text-slate-400 normal-case font-normal">— the agent drives; it asks, you answer.</span></div>
+          <div id="convo" class="convo"></div>
+        </div>
+        <!-- slot checklist + stop condition -->
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 md:col-span-2 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">✅ Slot checklist</div>
+            <span id="stopBadge" class="stopbadge wait">…</span>
+          </div>
+          <div class="mb-3">
+            <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1"><span>Slots filled</span><span id="progLabel">0 / 0</span></div>
+            <div class="progwrap"><div class="fill" id="progFill" style="width:0%"></div></div>
+          </div>
+          <div id="slotList" class="slotlist"></div>
+          <div class="mt-3 text-[11px] text-slate-400 leading-relaxed">
+            <b>Stop condition:</b> keep asking until every slot above is filled — <em>then</em> synthesize. The agent asks the next <b>pending</b> slot only, so it can never skip a question or finish with a blank.
+          </div>
+        </div>
+      </div>
+
+      <div id="calloutBox" class="mb-3"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Flipped Interaction moves the burden of knowing-what-to-ask from you to the model.</strong> In ordinary prompting you must anticipate everything the model needs and cram it into one message; whatever you forget, it quietly assumes — and a confident answer built on a wrong assumption is worse than no answer. Flipping the interaction turns that one-shot guess into a short interview: you tell the model its <em>goal</em>, that it should <em>ask one question at a time</em>, and <em>when to stop</em>, and it takes over the elicitation. Mechanically it's <strong>slot-filling</strong> — it keeps a running checklist of the facts it still needs, asks the next missing one, and only produces the deliverable once the checklist is complete, which is exactly the stop condition this demo enforces. That's why the pattern is a natural fit for <strong>requirement gathering, onboarding, intake and debugging interviews</strong>: the human is the source of truth but rarely knows up front which details matter, so letting the model pull them out one at a time yields a far more complete, grounded result than any single prompt could. The craft is in the three <span class="mono">(P)</span> contextual statements — role/goal, cadence, stop condition — plus giving it the slot list so it knows what &ldquo;enough&rdquo; means.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Flipped Interaction = you instruct the model to ask <em>you</em> questions one at a time until it has enough (slot-filling), then it produces the result — the inverse of normal prompting.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How Flipped Interaction works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Flipped Interaction is a <em>prompt pattern</em>, not a model feature — you assemble it from three <span class="mono">(P)</span> contextual statements (role/goal, cadence, stop condition) plus a slot list, then run it as a <em>stateful, multi-turn</em> loop instead of a single call. Here it is end to end, provider-portable (Vercel AI SDK's <span class="mono">system</span> + <span class="mono">messages</span>, which map to Anthropic and OpenAI alike), with the same slot-filling state machine the demo above runs and a copy-paste template.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — flip who does the asking</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In normal prompting <em>you</em> ask and the model answers — so you carry the burden of knowing everything it needs. Flipped Interaction inverts that: you instruct the model to <em>ask you</em> questions until it has enough, then produce the result. The elicitation becomes the model's job, which is exactly what you want when the human is the source of truth but doesn't know what's relevant.</p>
+        <div class="relative"><pre>// Normal prompting  →  you must know everything up front:
+//   You:   "Plan me a 7-day mid-range beach trip for a
+//           couple, relaxed pace."   (one dense message)
+//   Model: &lt;plan built on whatever you remembered to say&gt;
+//
+// Flipped interaction  →  the model gathers it from you:
+//   Model: "Where do you want to go?"      You: "Beach"
+//   Model: "How long is the trip?"         You: "One week"
+//   ...one question at a time... then → the plan.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The pattern skeleton — the three (P) contextual statements</h3></div>
+        <p class="text-sm text-slate-600 mb-3">White et al.'s catalog describes each pattern as a set of fundamental <span class="mono">(P)</span> contextual statements. Flipped Interaction needs three: the <b>role/goal</b> (what it's interviewing you toward), the <b>cadence</b> (one question at a time), and the <b>stop condition</b> (when it has enough). Get those three right and the behaviour is reliable.</p>
+        <div class="relative"><pre>// STEP 2 — the (P) contextual statements of Flipped Interaction.
+// (P1) role + goal:
+//   "I would like you to ask me questions to achieve GOAL."
+// (P2) cadence:
+//   "Ask me the questions one at a time and wait for my answer."
+// (P3) stop condition:
+//   "Keep asking until you have enough to GOAL, then produce OUTPUT."
+//
+// Optional (P4): scope the slots so 'enough' is unambiguous.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The system prompt — the trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole behaviour lives in one system instruction that encodes the three statements and, crucially, names the slots so &ldquo;enough&rdquo; is concrete. Keep it in the <span class="mono">system</span> channel so the model stays in interviewer mode every turn instead of drifting back to answering.</p>
+        <div class="relative"><pre>// STEP 3 — encode the pattern as a reusable system prompt.
+const FLIPPED_SYSTEM =
+  "You are gathering requirements to PLAN A TRIP. " +
+  "Ask me questions ONE AT A TIME and wait for my answer before " +
+  "asking the next. Do not make assumptions or answer for me. " +
+  "You still need: destination type, trip length, budget, who is " +
+  "travelling, and pace. Ask about the first thing you are still " +
+  "missing. When you have ALL of them, stop asking and output the " +
+  "final plan prefixed with 'PLAN:'. Ask your first question now.";</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Wire it up — a stateful, multi-turn loop</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Unlike a one-shot prompt, Flipped Interaction is a <em>conversation</em>: you keep appending the model's question and the user's answer to a growing <span class="mono">messages</span> array and call again. The loop runs until the model emits the finish marker instead of another question.</p>
+        <div class="relative"><pre>// STEP 4 — drive the interview turn by turn.
+import { generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+async function runFlipped(promptUser) {          // promptUser: ask the human
+  const messages = [];
+  while (true) {
+    const r = await generateText({
+      model: openai("gpt-4o"),
+      system: FLIPPED_SYSTEM,
+      messages,
+    });
+    messages.push({ role: "assistant", content: r.text });
+    if (r.text.startsWith("PLAN:")) return r.text;   // stop condition met
+    const answer = await promptUser(r.text);         // model asked → human answers
+    messages.push({ role: "user", content: answer });
+  }
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Track the slots — the checklist of what it still needs</h3></div>
+        <p class="text-sm text-slate-600 mb-3">&ldquo;Enough&rdquo; has to be defined. Model-side you name the slots in the prompt; but for a robust product you also track them in <em>your own code</em> so you control the flow, render a progress UI, and never depend on the model to remember. This is the exact state machine the demo runs: pick the next unfilled slot, ask it, record the answer.</p>
+        <div class="relative"><pre>// STEP 5 — slot-filling state machine (deterministic, DOM-free).
+const SLOTS = ["destination", "duration", "budget", "company", "pace"];
+
+function nextSlot(filled) {                 // first slot not yet answered
+  for (const s of SLOTS) if (!(s in filled)) return s;
+  return null;                             // null → all filled
+}
+function isComplete(filled) { return nextSlot(filled) === null; }
+
+// each turn: ask nextSlot(filled); on answer → filled[slot] = answer.
+// the checklist IS the source of truth for what to ask next.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The stop condition — detect &ldquo;enough&rdquo;, then synthesize</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The stop condition is what keeps the pattern from either looping forever or firing early. When (and only when) every slot is filled do you switch the model out of interviewer mode and ask it to produce the deliverable from the collected answers. This is the guarantee the demo enforces: no complete checklist, no output.</p>
+        <div class="relative"><pre>// STEP 6 — gate the synthesis on the stop condition.
+async function step(filled, userAnswer, slot) {
+  if (slot) filled[slot] = userAnswer;         // record the answer
+
+  const missing = nextSlot(filled);
+  if (missing) {
+    return { kind: "ask", slot: missing };     // keep interviewing
+  }
+  // stop condition met → produce the result from filled slots
+  const plan = await synthesize(filled);       // one final generation
+  return { kind: "done", output: plan };
+}
+// can't reach "done" while nextSlot(filled) is non-null → no early finish.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Guard the edges — one at a time, no skipping, resumable</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Three failure modes to close off. Models love to batch questions — pin the cadence in the prompt <em>and</em> only render one at a time. They also skip ahead or re-ask — driving the flow from <span class="mono">nextSlot()</span> in your code prevents both. And because it's a conversation, persist <span class="mono">filled</span> so a dropped session resumes mid-interview instead of restarting.</p>
+        <div class="relative"><pre>// STEP 7 — enforce order, and make sessions resumable.
+function answer(filled, slot, value) {
+  if (nextSlot(filled) !== slot) return filled;   // reject out-of-order
+  return { ...filled, [slot]: value };            // only the current slot
+}
+
+// resumability: filled is plain data — save &amp; reload it.
+await store.put(sessionId, filled);               // persist after each turn
+const filled = (await store.get(sessionId)) ?? {}; // resume where it left off</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the Flipped-Interaction template (with the (P) statements)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Drop this straight into your <span class="mono">system</span> field and fill the brackets. The three <span class="mono">(P)</span> contextual statements are labelled so you can see the skeleton; the slot list is what makes &ldquo;enough&rdquo; unambiguous.</p>
+        <div class="relative"><pre>From now on, I would like you to ask me questions to
+[GOAL — e.g. plan a trip / spec a database schema / debug an error].
+
+(P1 · role & goal) You are gathering requirements to [GOAL].
+(P2 · cadence) Ask me the questions ONE AT A TIME and wait for my
+answer before asking the next. Do not make assumptions or answer
+for me; if something is unclear, ask.
+(P3 · stop condition) Keep asking until you have enough to [GOAL].
+You have enough once you know: [SLOT 1], [SLOT 2], [SLOT 3],
+[SLOT 4], [SLOT 5]. Ask about the first thing you are still missing.
+
+When — and only when — every item above is known, stop asking and
+produce [OUTPUT], clearly prefixed with "RESULT:".
+
+Ask me your first question now.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 55 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Flipped Interaction</strong>: instead of prompting the model, you instruct it to <strong>ask you</strong> — one question at a time — until it has gathered enough to hit a goal, then produce the result. The pattern is three <span class="mono">(P)</span> contextual statements (role/goal, cadence, stop condition) over a <strong>slot-filling</strong> state machine: keep a checklist of what's still missing, ask the next gap, and synthesize only when the checklist is full — the stop condition that stops it looping forever <em>and</em> stops it finishing early. It runs as a stateful multi-turn loop (not a single call), and driving the order from your own <span class="mono">nextSlot()</span> keeps it one-at-a-time, skip-proof and resumable. It's the go-to pattern when the human is the source of truth but doesn't know what's relevant up front — <strong>requirement gathering, onboarding, intake, debugging interviews</strong>. Distinct from Day&nbsp;54 (Verbalized Confidence, the model's honesty about its own uncertainty); this is the model <em>driving</em> the conversation. <strong>👉 Next up — Evaluation: regression-testing outputs with promptfoo so a prompt change can't silently drop quality.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// Pure, DOM-free logic (node-testable). Nothing here touches the
+// DOM, so `node --check` parses it and the slot-filling state
+// machine can be driven headlessly.
+// ============================================================
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// --- synthesizers: build a deliverable from the FILLED slots only ---
+function synthTrip(f){
+  const dest = {
+    "Beach / coast":      ["Lisbon & the Algarve coast", "sun-and-sea days broken up with a clifftop coastal walk and a seafood-market lunch"],
+    "City break":         ["Barcelona", "Gaudí architecture, a tapas crawl through Gràcia, and one slow museum afternoon"],
+    "Mountains / nature": ["Interlaken, Swiss Alps", "a cable-car summit, a half-day lakeside hike, and unhurried valley evenings"],
+    "Cultural / history": ["Rome", "the Forum & Colosseum, a Vatican-museums morning, and long piazza dinners"]
+  }[f.destination_type];
+  const days = { "Weekend (2–3 days)":3, "One week":7, "Two weeks+":14 }[f.duration];
+  const paceLine = {
+    "Packed itinerary":"two-to-three anchored activities a day, pre-booked to avoid queues",
+    "Balanced":"one morning highlight and a free afternoon each day",
+    "Slow & relaxed":"a single gentle plan per day with plenty of downtime"
+  }[f.pace];
+  const budgetLine = {
+    "Shoestring":"hostels/guesthouses, public transport, and market food",
+    "Mid-range":"3-star hotels, the occasional taxi, and a mix of casual and sit-down meals",
+    "Luxury":"boutique hotels, private transfers, and standout restaurants"
+  }[f.budget];
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">${escapeHtml(dest[0])} — ${days} days</div>
+    <div class="text-sm text-slate-700">A <b>${escapeHtml(f.pace.toLowerCase())}</b> ${days}-day trip for <b>${escapeHtml(f.company.toLowerCase())}</b> on a <b>${escapeHtml(f.budget.toLowerCase())}</b> budget: ${escapeHtml(dest[1])}.</div>
+    <ul class="mt-2 text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>Where:</b> ${escapeHtml(dest[0])} — matched to your &ldquo;${escapeHtml(f.destination_type.toLowerCase())}&rdquo; pick.</li>
+      <li><b>Rhythm:</b> ${escapeHtml(paceLine)}.</li>
+      <li><b>Stay & spend:</b> ${escapeHtml(budgetLine)}.</li>
+      <li><b>Tuned for:</b> ${escapeHtml(f.company.toLowerCase())} — activity choices scaled accordingly.</li>
+    </ul>`;
+}
+function synthSchema(f){
+  const table = { "Users / accounts":"users", "Products / catalog":"products", "Orders / transactions":"orders", "Content / posts":"posts" }[f.entity];
+  const pkCol = { "Auto-increment int":"id BIGINT PRIMARY KEY AUTO_INCREMENT", "UUID":"id UUID PRIMARY KEY DEFAULT gen_random_uuid()", "Composite key":"tenant_id BIGINT, id BIGINT, PRIMARY KEY (tenant_id, id)" }[f.key_type];
+  const related = { users:"sessions", products:"variants", orders:"order_items", posts:"comments" }[table];
+  const engine = f.db_engine;
+  let ddl;
+  if (engine === "MongoDB"){
+    ddl = `// ${engine} — document sketch for "${table}"\n{\n  _id: ${f.key_type === "UUID" ? "UUID()" : "ObjectId()"},\n  // ...core fields...\n  ${related}: [ /* embedded or referenced (${f.relations}) */ ]\n}`;
+  } else {
+    ddl = `-- ${engine} — scale: ${f.scale}\nCREATE TABLE ${table} (\n  ${pkCol},\n  created_at TIMESTAMP NOT NULL DEFAULT now()\n  -- ...core fields...\n);\n\n-- ${f.relations} → related table\nCREATE TABLE ${related} (\n  id BIGINT PRIMARY KEY,\n  ${table.slice(0,-1)}_id BIGINT REFERENCES ${table}(id)\n);`;
+  }
+  const scaleNote = { "Small (<10k rows)":"no special indexing needed beyond the PK", "Medium (10k–1M)":"add indexes on foreign keys and common filters", "Large (>1M)":"index hot paths, consider partitioning and read replicas" }[f.scale];
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">Schema for ${escapeHtml(table)} · ${escapeHtml(engine)}</div>
+    <div class="text-sm text-slate-700">A <b>${escapeHtml(f.relations.toLowerCase())}</b> design keyed by <b>${escapeHtml(f.key_type.toLowerCase())}</b>, sized for <b>${escapeHtml(f.scale.toLowerCase())}</b>.</div>
+    <pre>${escapeHtml(ddl)}</pre>
+    <div class="text-xs text-slate-500 mt-1"><b>Scale note:</b> ${escapeHtml(scaleNote)}.</div>`;
+}
+function synthDebug(f){
+  const hyp = {
+    "Crash / exception":"an unhandled exception on a specific code path",
+    "Wrong output":"a logic error — bad branch, off-by-one, or a wrong assumption about the data",
+    "Hangs / times out":"a blocking call, deadlock, or an unbounded loop/query",
+    "Intermittent / flaky":"a race condition, timing dependency, or shared mutable state"
+  }[f.error_type];
+  const firstStep = {
+    "After a code change":`bisect: diff the change that introduced it (git bisect / revert to confirm)`,
+    "After a deploy":`compare deployed config & env vars against the last good release`,
+    "After a dependency bump":`pin the dependency back one version to confirm it's the cause`,
+    "Always been there":`add instrumentation around the ${f.layer.toLowerCase()} to locate where it diverges`
+  }[f.when_started];
+  const logStep = {
+    "Stack trace":"read the top frame of the stack trace — it usually names the exact line",
+    "Timeout / connection":"check the downstream service / DB connection pool and network path",
+    "Nothing useful":"raise log verbosity around the failure and reproduce with tracing on",
+    "Haven't checked":"pull the logs first — cheapest signal you have"
+  }[f.logs];
+  const repro = { "Always":"you can reproduce at will — capture a minimal repro and step through it", "Sometimes":"intermittent — add logging and run it in a loop to catch a failing case", "Only in prod":"prod-only — likely an environment/data/scale difference from local", "Can't reproduce":"can't reproduce — instrument production and wait for the next occurrence" }[f.reproducible];
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">Likely cause: ${escapeHtml(hyp)}</div>
+    <div class="text-sm text-slate-700">A <b>${escapeHtml(f.error_type.toLowerCase())}</b> in the <b>${escapeHtml(f.layer.toLowerCase())}</b>, appearing <b>${escapeHtml(f.when_started.toLowerCase())}</b>.</div>
+    <div class="text-xs font-bold text-slate-500 uppercase tracking-wider mt-2 mb-1">Ranked next steps</div>
+    <ol class="text-sm text-slate-700 list-decimal pl-5 space-y-1">
+      <li>${escapeHtml(firstStep)}.</li>
+      <li>${escapeHtml(logStep)}.</li>
+      <li>Reproduction: ${escapeHtml(repro)}.</li>
+    </ol>`;
+}
+
+// --- the goals: each is a role + intro + ordered slots + a synthesizer ---
+const GOALS = [
+  {
+    id:"trip", label:"✈️ Plan a trip", sub:"turn a vague 'I want a holiday' into a concrete plan",
+    intro:"I can plan a trip for you — but first I need to understand what you're after. I'll ask a few quick questions, one at a time.",
+    finish:"Great — that's everything I need. Here's the plan built from your answers:",
+    synth: synthTrip,
+    slots:[
+      { key:"destination_type", name:"Destination type", q:"What kind of place do you want to go?", options:["Beach / coast","City break","Mountains / nature","Cultural / history"] },
+      { key:"duration",         name:"Trip length",      q:"How long is the trip?",                 options:["Weekend (2–3 days)","One week","Two weeks+"] },
+      { key:"budget",           name:"Budget",           q:"What's the budget style?",              options:["Shoestring","Mid-range","Luxury"] },
+      { key:"company",          name:"Who's travelling", q:"Who's coming on the trip?",             options:["Solo","A couple","Family with kids","Friends group"] },
+      { key:"pace",             name:"Pace",             q:"What pace do you want?",                options:["Packed itinerary","Balanced","Slow & relaxed"] }
+    ]
+  },
+  {
+    id:"schema", label:"🗄️ Spec a database schema", sub:"interview toward a concrete DDL sketch",
+    intro:"Let's design a schema. I need a few decisions from you before I can sketch the tables — one question at a time.",
+    finish:"Perfect — I have every decision I need. Here's the schema:",
+    synth: synthSchema,
+    slots:[
+      { key:"entity",    name:"Core entity",    q:"What's the core entity this schema is built around?", options:["Users / accounts","Products / catalog","Orders / transactions","Content / posts"] },
+      { key:"scale",     name:"Expected scale", q:"Roughly what scale are we designing for?",             options:["Small (<10k rows)","Medium (10k–1M)","Large (>1M)"] },
+      { key:"db_engine", name:"Engine",         q:"Which database engine?",                               options:["PostgreSQL","MySQL","SQLite","MongoDB"] },
+      { key:"relations", name:"Relationships",  q:"What's the main relationship style?",                  options:["One-to-many","Many-to-many","Mostly flat / few relations"] },
+      { key:"key_type",  name:"Primary key",    q:"Primary-key strategy?",                                options:["Auto-increment int","UUID","Composite key"] }
+    ]
+  },
+  {
+    id:"debug", label:"🐛 Debug an error", sub:"a structured interview that narrows the cause",
+    intro:"I'll help you debug this. To narrow it down I need to ask a few things — one at a time.",
+    finish:"Thanks — that's enough to form a hypothesis. Here's the diagnosis:",
+    synth: synthDebug,
+    slots:[
+      { key:"error_type",   name:"Error kind",   q:"What kind of error are you seeing?", options:["Crash / exception","Wrong output","Hangs / times out","Intermittent / flaky"] },
+      { key:"layer",        name:"Where",        q:"Where does it surface?",             options:["Frontend / UI","Backend / API","Database","Build / deploy"] },
+      { key:"when_started", name:"Onset",        q:"When did it start?",                 options:["After a code change","After a deploy","After a dependency bump","Always been there"] },
+      { key:"reproducible", name:"Reproducible", q:"Can you reproduce it?",              options:["Always","Sometimes","Only in prod","Can't reproduce"] },
+      { key:"logs",         name:"Logs",         q:"What do the logs show?",             options:["Stack trace","Timeout / connection","Nothing useful","Haven't checked"] }
+    ]
+  }
+];
+
+// --- slot-filling state machine (the core of Flipped Interaction) ---
+function nextSlot(goal, filled){
+  for (const s of goal.slots){ if (!(s.key in filled)) return s; }
+  return null;                              // null → every slot filled
+}
+function isComplete(goal, filled){ return nextSlot(goal, filled) === null; }
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+
+// ============================================================
+// Browser mount — all DOM wiring lives here so the pure logic
+// above stays headless-testable. Only runs in a browser.
+// ============================================================
+function mount(){
+  // ---- tabs ----
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(p => p.classList.add("hidden"));
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+
+  // ============================================================
+  // LOOK — a REAL, deterministic flipped-interaction session.
+  //  - GOALS is the baked question tree (role + ordered slots + synth).
+  //  - `filled` is the live slot map; nextSlot() decides what to ask.
+  //  - The result is synthesized ONLY when isComplete() is true, so the
+  //    agent can never finish early with an unfilled slot.
+  // ============================================================
+  let curGoal = 0;
+  let filled = {};
+  let autoTimer = null;
+
+  const goalToggle = document.getElementById("goalToggle");
+  const convo      = document.getElementById("convo");
+  const slotList   = document.getElementById("slotList");
+  const stopBadge  = document.getElementById("stopBadge");
+  const progFill   = document.getElementById("progFill");
+  const progLabel  = document.getElementById("progLabel");
+  const calloutBox = document.getElementById("calloutBox");
+  const autoBtn    = document.getElementById("autoBtn");
+  const resetBtn   = document.getElementById("resetBtn");
+
+  function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } autoBtn.textContent="▶ Auto-answer"; }
+
+  function buildToggle(){
+    goalToggle.innerHTML = "";
+    GOALS.forEach((g, i) => {
+      const btn = document.createElement("button");
+      btn.className = "gchip" + (i===curGoal ? " active" : "");
+      btn.innerHTML = `<span>${g.label}</span><small>${g.sub}</small>`;
+      btn.onclick = () => { curGoal = i; filled = {}; stopAuto(); buildToggle(); render(); };
+      goalToggle.appendChild(btn);
+    });
+  }
+
+  // record an answer for a slot — enforces one-at-a-time / no skipping.
+  function answer(slotKey, value){
+    const goal = GOALS[curGoal];
+    const next = nextSlot(goal, filled);
+    if (!next || next.key !== slotKey) return;   // reject: complete, or out-of-order
+    filled[slotKey] = value;
+    render();
+  }
+
+  function render(){
+    const goal = GOALS[curGoal];
+    const next = nextSlot(goal, filled);
+    const total = goal.slots.length;
+    const done  = Object.keys(filled).length;
+
+    // ---- conversation ----
+    let html = `<div class="brow"><div class="bubble agent">${escapeHtml(goal.intro)}</div></div>`;
+    goal.slots.forEach(s => {
+      if (s.key in filled){
+        html += `<div class="brow"><div class="bubble agent">${escapeHtml(s.q)}</div></div>`;
+        html += `<div class="brow user"><div class="bubble user">${escapeHtml(filled[s.key])}</div></div>`;
+      }
+    });
+    if (next){
+      const opts = next.options.map(o =>
+        `<button class="opt" data-slot="${next.key}" data-val="${escapeHtml(o)}">${escapeHtml(o)}</button>`).join("");
+      html += `<div class="brow"><div class="bubble ask">
+          <div class="qn">Question ${done+1} of ${total} · asking about “${escapeHtml(next.name)}”</div>
+          ${escapeHtml(next.q)}
+          <div class="opts">${opts}</div>
+        </div></div>`;
+    } else {
+      html += `<div class="brow"><div class="bubble agent">✅ ${escapeHtml(goal.finish)}</div></div>`;
+      html += `<div class="brow"><div class="result w-full">${goal.synth(filled)}</div></div>`;
+    }
+    convo.innerHTML = html;
+    // wire the current question's option buttons
+    convo.querySelectorAll(".opt").forEach(b =>
+      b.addEventListener("click", () => answer(b.dataset.slot, b.dataset.val)));
+
+    // ---- slot checklist ----
+    slotList.innerHTML = "";
+    goal.slots.forEach(s => {
+      const isFilled = s.key in filled;
+      const isCurrent = !isFilled && next && next.key === s.key;
+      const cls = isFilled ? "filled" : (isCurrent ? "current" : "pending");
+      const ic  = isFilled ? "✓" : (isCurrent ? "?" : "•");
+      const vl  = isFilled ? escapeHtml(filled[s.key]) : (isCurrent ? "asking…" : "pending");
+      slotList.insertAdjacentHTML("beforeend",
+        `<div class="slot ${cls}"><span class="ic">${ic}</span><span class="nm">${escapeHtml(s.name)}</span><span class="vl">${vl}</span></div>`);
+    });
+
+    // ---- progress + stop condition ----
+    progFill.style.width = Math.round((done/total)*100) + "%";
+    progLabel.textContent = `${done} / ${total}`;
+    if (next){
+      stopBadge.className = "stopbadge wait";
+      stopBadge.innerHTML = `⏳ still asking · ${total-done} left`;
+    } else {
+      stopBadge.className = "stopbadge met";
+      stopBadge.innerHTML = `✓ stop condition met`;
+    }
+
+    // ---- callout ----
+    if (next){
+      calloutBox.innerHTML = `<div class="callout warn"><b>Interview in progress.</b> The agent is driving: it asked about <b>${escapeHtml(next.name)}</b> — the first slot it's still missing — and is waiting on you. It won't ask two things at once, won't skip ahead, and <b>won't produce anything</b> while <b>${total-done}</b> slot${total-done===1?" is":"s are"} still empty.</div>`;
+    } else {
+      calloutBox.innerHTML = `<div class="callout good"><b>Stop condition met — synthesized.</b> Every one of the <b>${total}</b> slots is filled, so the agent switched out of interviewer mode and produced the result <em>from your answers</em>. That's the whole pattern: ask one-at-a-time until the checklist is full, then — and only then — deliver.</div>`;
+    }
+  }
+
+  autoBtn.onclick = () => {
+    if (autoTimer){ stopAuto(); return; }
+    const goal = GOALS[curGoal];
+    if (isComplete(goal, filled)){ filled = {}; render(); }   // restart if already done
+    autoBtn.textContent = "⏸ Pause";
+    autoTimer = setInterval(() => {
+      const g = GOALS[curGoal];
+      const next = nextSlot(g, filled);
+      if (!next){ stopAuto(); return; }
+      answer(next.key, next.options[0]);        // deterministic: pick the first option
+      if (isComplete(g, filled)) stopAuto();
+    }, 850);
+  };
+  resetBtn.onclick = () => { stopAuto(); filled = {}; render(); };
+
+  buildToggle();
+  render();
+
+  // ============================================================
+  // UNDERSTAND — step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. Normal prompting — you drive, and you carry the burden", why:"In the default interaction you ask, the model answers. That means YOU are responsible for knowing everything the model needs and packing it into one message. On a well-scoped question that's fine. On an open, underspecified task — 'plan me a trip', 'design a schema', 'why is this broken' — it's a trap: you can't enumerate up front every detail that matters, and every detail you leave out, the model silently GUESSES. A fluent answer built on an unspoken wrong assumption is worse than no answer, because it looks right.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">YOU ──ask──► MODEL<br>you must know everything up front<br>gaps → the model quietly assumes<br>one dense prompt, one shot</div>`,
+     code:`// normal prompting: the human holds the wheel.
+//   user  → one message with ALL the context you remembered
+//   model → answer (assumes anything you forgot)` },
+   { title:"2. Flipped Interaction — hand the model the wheel", why:"Flipped Interaction is a prompt PATTERN (White et al., 'A Prompt Pattern Catalog') that inverts the roles: you instruct the model to ASK YOU questions until it has gathered what it needs, then produce the result. The model becomes the interviewer and you become the source of truth it queries. Because it pulls the requirements out of you one at a time, nothing important gets silently assumed — if it needs to know your budget, it asks, rather than picking one. The elicitation, which was your job, becomes the model's job.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">MODEL ──asks──► YOU<br>you answer one question at a time<br>the model gathers what IT needs<br>then → produces the result</div>`,
+     code:`// flipped: the MODEL holds the wheel.
+system = "Ask me questions, one at a time, until you have " +
+         "enough to plan the trip; then give me the plan.";` },
+   { title:"3. The pattern skeleton — three (P) contextual statements", why:"The catalog describes every pattern as a set of fundamental CONTEXTUAL STATEMENTS, written (P). Flipped Interaction needs exactly three. (P1) ROLE + GOAL: what is it interviewing you toward? (P2) CADENCE: ask one question at a time and wait — otherwise models dump a wall of questions. (P3) STOP CONDITION: when does it have enough, and what should it do then? These three are the whole pattern; get them explicit and the behaviour is reliable, leave one implicit and it drifts (batches questions, or never stops, or answers for you).",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">(P1) role+goal: "ask me to achieve X"<br>(P2) cadence: "one question at a time"<br>(P3) stop: "until you have enough → do X"</div>`,
+     code:`// (P1) "I would like you to ask me questions to plan a trip."
+// (P2) "Ask them one at a time; wait for my answer."
+// (P3) "When you have enough, output the plan."` },
+   { title:"4. (P1) Role & goal — anchor what it's gathering toward", why:"The first statement gives the model its job and its target. Without a concrete goal, 'ask me questions' produces aimless small-talk. With one — 'you are gathering requirements to plan a trip' — every question the model chooses is instrumental: it asks things that actually move it toward the deliverable. The goal is also what makes the stop condition meaningful later: 'enough' only means something relative to a goal. Name the role (interviewer / requirements-gatherer) and the goal (the artifact you want) in the system prompt.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">goal = "plan a trip"<br>→ every question serves the goal<br>(no goal → aimless questions)</div>`,
+     code:`system = "You are gathering requirements to PLAN A TRIP. " +
+         "Ask only questions that help you plan it.";` },
+   { title:"5. (P2) Cadence — one question at a time", why:"Left to their own devices, models batch: they emit a numbered list of eight questions at once, which recreates the very problem flipping was meant to solve — now YOU have to parse and answer a wall. The cadence statement forces a real back-and-forth: ask ONE question, wait for the answer, then ask the next. This is what makes it an interview rather than a form. In a product you enforce it twice — say it in the prompt AND only render one question at a time — so a chatty model can't slip a batch past your UI.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">✗ "here are 8 questions: 1)... 2)..."<br>✓ ask Q1 → wait → ask Q2 → wait<br>a conversation, not a questionnaire</div>`,
+     code:`system += " Ask the questions ONE AT A TIME and wait " +
+          "for my answer before asking the next.";
+// belt-and-braces: your UI renders only the current question.` },
+   { title:"6. Slot tracking — the checklist of what it still needs", why:"Under the hood, 'until it has enough' is SLOT-FILLING: there's a set of facts the goal requires (destination, duration, budget, who, pace), and the model keeps a running checklist of which are still missing. Each turn it asks the next unfilled slot and records your answer into it. Naming the slots in the prompt makes 'enough' unambiguous; tracking them in YOUR code (nextSlot(filled)) makes the flow deterministic, drives a progress UI, and means you never depend on the model to remember what it already asked.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">need: [dest, days, budget, who, pace]<br>filled: {dest, days} → ask 'budget' next<br>the checklist IS the state</div>`,
+     code:`const SLOTS = ["dest","days","budget","who","pace"];
+function nextSlot(filled){
+  for (const s of SLOTS) if (!(s in filled)) return s;
+  return null;   // null → all filled → done
+}` },
+   { title:"7. (P3) The stop condition — when to stop asking", why:"The stop condition does double duty. It stops the interview from running FOREVER (without it, 'keep asking' has no exit), and it stops the model from finishing EARLY on a half-empty checklist. Concretely: keep asking while nextSlot(filled) is non-null; the moment it returns null, every slot is filled and the model switches out of interviewer mode. This is precisely the guarantee the demo enforces — you cannot reach the synthesis branch while any slot is still empty, so there is no confidently-wrong output built on missing facts.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">while nextSlot(filled) !== null → ask<br>nextSlot(filled) === null → STOP<br>no full checklist ⇒ no output</div>`,
+     code:`if (nextSlot(filled)) askNext();   // still gathering
+else synthesize(filled);           // enough → produce result
+// early finish is impossible: the else needs a full checklist.` },
+   { title:"8. Synthesize — produce the result once the slots are full", why:"The payoff turn. When the stop condition fires, you flip the model's mode a final time: from 'ask me the next thing' to 'produce the deliverable from everything gathered'. Because the answers were pulled out one at a time and recorded in slots, the synthesis is grounded in real, complete requirements instead of guesses — the plan, the schema, the diagnosis all reflect what YOU actually said. In the demo this is the single generation that runs only in the all-slots-filled branch, building the output from the filled map.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">filled = {dest, days, budget, who, pace}<br>→ synthesize(filled)<br>→ a plan grounded in YOUR answers</div>`,
+     code:`// final turn: one generation from the collected slots.
+const result = await synthesize(filled);   // uses every answer
+return { done: true, output: result };` },
+   { title:"9. Why it beats a one-shot prompt — no wall of assumptions", why:"Contrast the two. A single dense prompt forces you to front-load every relevant fact, and whatever you miss becomes an invisible assumption baked into a confident answer. Flipped Interaction replaces that with a short interview: the model surfaces each needed fact and you supply it, so the assumptions become explicit questions you get to answer. It's especially powerful when you DON'T KNOW what's relevant — the model's questions teach you what matters. The cost is more turns; the benefit is a far more complete, grounded result with the guesswork removed.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one-shot: forget a fact → silent wrong guess<br>flipped: missing fact → an explicit question<br>assumptions become answerable, not hidden</div>`,
+     code:`// one-shot  : quality capped by what YOU remembered
+// flipped   : model pulls each fact out of you
+//   → complete requirements, no hidden assumptions` },
+   { title:"10. When to use it — requirement gathering, onboarding, intake · next: eval", why:"Reach for Flipped Interaction whenever the HUMAN is the source of truth but doesn't know up front what's relevant: requirement gathering, onboarding wizards, intake/triage forms, debugging interviews, config generators, tutoring. It composes cleanly — the questions can drive tool calls or RAG lookups, and the final synthesis can itself use CoT or structured output. It's distinct from Day 54 (Verbalized Confidence, the model's honesty about its own uncertainty); here the model DRIVES the conversation to gather requirements. Next: evaluation — regression-testing outputs with promptfoo so a prompt change can't silently drop quality.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: requirements · onboarding · intake<br>· debugging interviews · wizards<br>vs D54 (confidence) · next → eval</div>`,
+     code:`// pattern fit: human is source-of-truth, scope is fuzzy.
+//   let the model interview to fill the slots,
+//   then synthesize. next → promptfoo eval (guard quality).` }
+  ];
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+  function show(i){ curStep=i; const s=STEPS[i];
+    document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+    document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+    document.getElementById("code").textContent=s.code;
+    stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+  }
+  prevB.onclick=()=>show(Math.max(0,curStep-1)); nextBtn.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+  let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = { GOALS, nextSlot, isComplete };
+</script>
+</body>
+</html>
