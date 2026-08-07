@@ -1,0 +1,637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 56 — Cognitive Verifier</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== topic toggle ===== */
+  .goaltog { display:flex; gap:10px; flex-wrap:wrap; }
+  .gchip { flex:1; min-width:210px; text-align:left; font-size:13px; font-weight:800; padding:11px 15px; border-radius:14px; border:2px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; display:flex; flex-direction:column; gap:2px; }
+  .gchip small { font-weight:600; color:#94a3b8; font-size:10.5px; }
+  .gchip:hover { border-color:#c4b5fd; }
+  .gchip.active { background:#f5f3ff; border-color:#8b5cf6; color:#5b21b6; }
+  .gchip.active small { color:#7c3aed; }
+
+  /* ===== the high-level question bubble ===== */
+  .qbubble { font-size:14px; font-weight:800; color:#0f172a; background:#f5f3ff; border:1px solid #ddd6fe; border-radius:12px; padding:10px 13px; }
+
+  /* ===== sub-question list ===== */
+  .subqlist { display:flex; flex-direction:column; gap:8px; }
+  .subq { border:1px solid #e2e8f0; border-radius:12px; padding:9px 11px; background:#fff; transition:.15s; }
+  .subq-head { display:flex; align-items:flex-start; gap:9px; }
+  .subq .ic { width:20px; height:20px; flex:none; border-radius:999px; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:900; margin-top:1px; }
+  .subq .q { font-size:12.5px; font-weight:700; color:#475569; line-height:1.4; }
+  .subq .a { font-size:12px; line-height:1.5; color:#334155; margin-top:7px; padding-left:29px; }
+  .subq.pending { opacity:.55; }
+  .subq.pending .ic { background:#e2e8f0; color:#94a3b8; }
+  .subq.current { border-color:#c4b5fd; background:#faf5ff; }
+  .subq.current .ic { background:#8b5cf6; color:#fff; }
+  .subq.current .q { color:#5b21b6; }
+  .subq.answered .ic { background:#dcfce7; color:#15803d; }
+  .subq.answered .q { color:#0f172a; }
+
+  .progwrap { height:10px; border-radius:999px; background:#eef2f7; overflow:hidden; border:1px solid #e2e8f0; }
+  .progwrap .fill { height:100%; background:linear-gradient(90deg,#8b5cf6,#d946ef); transition:width .3s; }
+
+  .stopbadge { display:inline-flex; align-items:center; gap:6px; font-size:11px; font-weight:800; padding:4px 10px; border-radius:999px; }
+  .stopbadge.wait { background:#eff6ff; color:#1d4ed8; }
+  .stopbadge.mid  { background:#faf5ff; color:#7c3aed; }
+  .stopbadge.met  { background:#dcfce7; color:#15803d; }
+
+  .result { border:1px solid #bbf7d0; background:#f0fdf4; border-radius:14px; padding:14px; }
+  .result pre { margin-top:8px; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 56</div>
+      <h1 class="text-xl font-bold">🔬 Cognitive Verifier — a prompt <em>pattern</em> from White et al.'s <strong>Prompt Pattern Catalog</strong> that stops the model from firing a shallow, one-shot answer at a big, open question. Instead of answering the question you asked, the model first <strong>generates a handful of sub-questions</strong> whose answers it would need to answer well, <strong>answers each one independently</strong>, and only then <strong>combines those sub-answers</strong> into a single, better-reasoned final answer. It's a decomposition pattern with a precise two-part skeleton, expressed as <span class="mono">(P)</span> contextual statements: <strong>&ldquo;when asked a question, generate additional questions that would help answer it more accurately&rdquo;</strong> and <strong>&ldquo;combine the answers to those questions to produce the overall answer.&rdquo;</strong> The payoff is twofold — accuracy goes up because the model is forced to <em>cover</em> the sub-issues a snap answer skips, and the reasoning becomes <strong>legible</strong>: you can read the scaffolding (each sub-question and its answer) and check the work instead of trusting a single confident paragraph. It shines on broad, under-specified questions — <em>&ldquo;is this startup idea viable?&rdquo;</em>, <em>&ldquo;what killed the dinosaurs?&rdquo;</em>, <em>&ldquo;should I index this column?&rdquo;</em> — where the hard part is knowing <em>which questions to ask</em>. This page is genuinely interactive with <strong>no API and no network</strong>: a self-contained, deterministic verifier decomposes a canned high-level question into 3&ndash;5 sub-questions, reveals each sub-answer, then synthesizes the combined answer — shown side by side against the shallow one-shot answer so you can watch the gap. Distinct from Day&nbsp;55 (Flipped Interaction — the model asks <em>you</em> questions to gather requirements); here the model asks <em>itself</em> questions and answers them to reason better.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Pick a big question, then watch the model <span class="text-violet-600">decompose</span> it into sub-questions, <span class="text-violet-600">answer each</span>, and <span class="text-emerald-600">combine</span> them into a better-reasoned answer — right next to the shallow <span class="text-rose-500">one-shot</span> answer.</h2>
+        <p class="text-slate-500 mb-5">Everything below is deterministic (no API key, no network): the one-shot answer, the sub-questions, their sub-answers and the synthesized result are all baked in, and the pipeline runs <em>live</em> as you step it. Watch the shape: rather than answer <b>🅐 the question directly</b> (left), the verifier first asks <b>🅑 what would I need to know to answer this well?</b> — generating 3&ndash;5 sub-questions, answering each on its own, then folding those answers into one final response (right). Hit <b>⏭ Next step</b> to advance one stage — <em>decompose → answer → answer → … → combine</em> — or <b>▶ Run verifier</b> to play the whole pipeline.</p>
+      </div>
+
+      <!-- topic toggle -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧠 Pick a high-level question — the thing the verifier reasons about</div>
+        <div class="goaltog" id="topicToggle"></div>
+        <div class="flex flex-wrap items-center gap-2 mt-3">
+          <button class="btn btn-p" id="runBtn">▶ Run verifier</button>
+          <button class="btn" id="stepBtn">⏭ Next step</button>
+          <button class="btn" id="resetBtn">↺ Restart</button>
+          <span class="text-xs text-slate-400 ml-1">— step through <b>decompose → answer each → combine</b>, or run it all.</span>
+        </div>
+      </div>
+
+      <!-- pipeline / progress -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">⏱ Pipeline stage</div>
+          <span id="stageBadge" class="stopbadge wait">…</span>
+        </div>
+        <div class="flex justify-between text-[11px] font-bold text-slate-500 mb-1"><span id="stageLabel">…</span><span id="progLabel">0 / 0</span></div>
+        <div class="progwrap"><div class="fill" id="progFill" style="width:0%"></div></div>
+      </div>
+
+      <div class="grid md:grid-cols-5 gap-3 mb-3">
+        <!-- direct one-shot -->
+        <div class="bg-white rounded-2xl border border-rose-200 p-4 md:col-span-2 flex flex-col">
+          <div class="text-xs uppercase font-bold text-rose-600 tracking-wider mb-2">🅐 Direct one-shot <span class="text-slate-400 normal-case font-normal">— a single pass</span></div>
+          <div id="directPanel"></div>
+        </div>
+        <!-- cognitive verifier -->
+        <div class="bg-white rounded-2xl border border-violet-200 p-4 md:col-span-3 flex flex-col">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🅑 Cognitive verifier <span class="text-slate-400 normal-case font-normal">— decompose → answer → combine</span></div>
+          <div id="verifierPanel"></div>
+        </div>
+      </div>
+
+      <div id="calloutBox" class="mb-3"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The Cognitive Verifier turns one hard question into several easy ones, then reassembles the answer.</strong> A single-pass answer to a broad question is capped by whatever the model happens to surface in one go — so it reaches for the headline and quietly skips the sub-issues that actually decide the answer (who pays? how selective is the column? what was the mechanism?). The pattern forces coverage: it makes the model first enumerate the sub-questions a good answer <em>depends on</em>, answer each in isolation where it's far less likely to slip, and only then <strong>combine</strong> those grounded sub-answers into the final response. That buys two things at once — <strong>accuracy</strong>, because each sub-answer is a smaller, more tractable problem than the whole, and <strong>legibility</strong>, because the scaffolding is right there to inspect: you can see which questions it asked, check each answer, and catch a wrong step instead of trusting one confident paragraph. The whole pattern is two <span class="mono">(P)</span> contextual statements — <em>generate the sub-questions</em>, then <em>combine their answers</em> — and it's the go-to move whenever the hard part of a question is knowing <strong>what to ask</strong>.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Cognitive Verifier = the model generates sub-questions, answers each, then combines the sub-answers into a better-reasoned final answer — decomposition for accuracy and legible reasoning.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How the Cognitive Verifier works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Cognitive Verifier is a <em>prompt pattern</em>, not a model feature — you assemble it from two <span class="mono">(P)</span> contextual statements (generate sub-questions, then combine their answers). You can run it as a single self-contained prompt, or — for control, parallelism and inspectable intermediates — orchestrate it as three explicit stages. Here it is both ways, provider-portable (Vercel AI SDK's <span class="mono">system</span> + <span class="mono">messages</span>, which map to Anthropic and OpenAI alike), with the same decompose → answer → combine flow the demo above runs and a copy-paste template.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — don't answer, first ask what you'd need to know</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A one-shot answer to a broad question is only as good as whatever the model surfaces in a single pass — so it grabs the headline and skips the sub-issues. The Cognitive Verifier inserts a beat: generate the sub-questions a good answer depends on, answer each, then combine. The reasoning becomes both more accurate and inspectable.</p>
+        <div class="relative"><pre>// One-shot  →  capped by one pass, skips the sub-issues:
+//   Q: "Is this startup idea viable?"
+//   A: "Sure, sounds great — go for it!"   (no market / cost / moat)
+//
+// Cognitive verifier  →  decompose, answer, combine:
+//   1) Who pays, and how many are there?
+//   2) Willingness to pay vs free alternatives?
+//   3) Cost to build & run?   4) What's the moat?
+//   → combine the four answers → a reasoned verdict.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The pattern skeleton — the two (P) contextual statements</h3></div>
+        <p class="text-sm text-slate-600 mb-3">White et al.'s catalog describes each pattern as a set of fundamental <span class="mono">(P)</span> contextual statements. Cognitive Verifier needs just two: <b>generate</b> the sub-questions that would help answer more accurately, and <b>combine</b> their answers into the overall answer. Get those two right and the decompose-then-recombine behaviour is reliable.</p>
+        <div class="relative"><pre>// STEP 2 — the (P) contextual statements of the Cognitive Verifier.
+// (P1) generate sub-questions:
+//   "When you are asked a question, generate a number of additional
+//    questions that would help answer it more accurately."
+// (P2) combine the answers:
+//   "Combine the answers to the individual questions to produce
+//    the final answer to the overall question."
+//
+// Optional (P3): bound the count (3-5) and answer each independently.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The single-prompt version — the trigger</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The simplest deployment is one system instruction that encodes both statements and pins a parseable shape. The model does all three moves in one turn: it lists the sub-questions with answers, then a combined final answer. Cheap, one call, and the scaffolding is visible in the output.</p>
+        <div class="relative"><pre>// STEP 3 — encode the pattern as a reusable system prompt.
+const VERIFIER_SYSTEM =
+  "When I ask a question, do NOT answer it directly first. " +
+  "Generate 3-5 additional sub-questions whose answers would help " +
+  "you answer my question more accurately and completely. Answer " +
+  "each sub-question independently and concisely. THEN combine " +
+  "those answers into a single, well-reasoned final answer, noting " +
+  "any caveats the sub-answers surfaced. Format:\n" +
+  "Sub-questions:\n1. &lt;q&gt; — &lt;answer&gt;\n...\nFinal answer: &lt;combined&gt;";</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Stage 1 — generate the sub-questions (decompose)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">For control, parallelism and inspectable intermediates, orchestrate it as three explicit stages instead of one prompt. Stage 1 asks <em>only</em> for the sub-questions as structured data — nothing else — so you can render them, cap the count, and fan the next stage out. This is the exact decomposition the demo's step ① performs.</p>
+        <div class="relative"><pre>// STEP 4 — stage 1: decompose into sub-questions (JSON out).
+import { generateText, generateObject } from "ai";
+import { openai } from "@ai-sdk/openai";
+import { z } from "zod";
+
+async function decompose(question) {
+  const { object } = await generateObject({
+    model: openai("gpt-4o"),
+    schema: z.object({ subQuestions: z.array(z.string()).min(3).max(5) }),
+    prompt: `Question: ${question}\n\nList 3-5 sub-questions whose ` +
+            `answers you would need to answer this well. Questions only.`,
+  });
+  return object.subQuestions;               // ["Who pays?", "Moat?", ...]
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Stage 2 — answer each sub-question independently</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Answer every sub-question <em>on its own</em>. Because each is a smaller, better-scoped problem than the original, the model is far less likely to slip — and because the calls are independent, you can run them in parallel. Keep each answer with its question so the combine stage (and your UI) has the full scaffolding.</p>
+        <div class="relative"><pre>// STEP 5 — stage 2: answer each sub-question in isolation (parallel).
+async function answerEach(subQuestions) {
+  return Promise.all(subQuestions.map(async (q) => {
+    const r = await generateText({
+      model: openai("gpt-4o"),
+      prompt: `Answer concisely and factually: ${q}`,
+    });
+    return { q, a: r.text.trim() };          // keep q paired with its answer
+  }));
+}
+// smaller scope per call → fewer slips than one giant answer.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Stage 3 — combine the sub-answers into the final answer</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The payoff turn. Feed the paired sub-questions and answers back in and ask for one combined answer to the <em>original</em> question, grounded in those sub-answers. This is (P2), and it's the demo's step ③ — the final response reflects every sub-answer instead of a single first-pass guess.</p>
+        <div class="relative"><pre>// STEP 6 — stage 3: combine the grounded sub-answers.
+async function combine(question, answered) {
+  const notes = answered
+    .map((x, i) => `${i + 1}. ${x.q}\n   ${x.a}`).join("\n");
+  const r = await generateText({
+    model: openai("gpt-4o"),
+    prompt: `Original question: ${question}\n\n` +
+            `Sub-questions & answers:\n${notes}\n\n` +
+            `Using ONLY the reasoning above, give a single well-reasoned ` +
+            `answer to the original question, noting any caveats.`,
+  });
+  return r.text.trim();
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Wire the three stages together — the verifier pipeline</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Chain the stages into one function that returns both the final answer <em>and</em> the scaffolding, so callers can render the sub-questions and audit the reasoning. This is precisely the decompose → answer → combine flow the demo drives — and returning the intermediates is what makes the reasoning legible.</p>
+        <div class="relative"><pre>// STEP 7 — the full Cognitive-Verifier pipeline.
+async function cognitiveVerifier(question) {
+  const subQuestions = await decompose(question);      // ① generate
+  const answered     = await answerEach(subQuestions); // ② answer each
+  const finalAnswer  = await combine(question, answered); // ③ combine
+  return { question, answered, finalAnswer };          // + scaffolding
+}
+
+// const out = await cognitiveVerifier("Is this startup idea viable?");
+// out.answered   → [{q, a}, ...]   (inspect the reasoning)
+// out.finalAnswer → the combined, better-reasoned answer</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the Cognitive-Verifier template (with the (P) statements)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Drop this straight into your <span class="mono">system</span> field and add your question. The two <span class="mono">(P)</span> contextual statements are labelled so you can see the skeleton; capping the count and answering each independently is what keeps the decomposition useful.</p>
+        <div class="relative"><pre>When I ask you a question, do not answer it directly. Instead:
+
+(P1 · generate) First generate 3-5 additional sub-questions whose
+answers would help you answer my question more accurately and
+completely. Answer each sub-question independently and concisely —
+do not let one answer contaminate another.
+
+(P2 · combine) Then combine those answers into a single, well-reasoned
+final answer to my original question. Note any caveats or
+disagreements the sub-answers surfaced; do not paper over them.
+
+Format:
+Sub-questions & answers:
+1. [sub-question] — [answer]
+2. ...
+Final answer: [combined answer to the original question]
+
+My question: [YOUR QUESTION]</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 56 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned the <strong>Cognitive Verifier</strong>: instead of firing a one-shot answer at a broad question, the model first <strong>generates the sub-questions</strong> a good answer depends on, <strong>answers each independently</strong>, then <strong>combines</strong> those sub-answers into a single better-reasoned response. It's two <span class="mono">(P)</span> contextual statements — generate, then combine — and it buys accuracy (each sub-answer is a smaller, more tractable problem) plus legibility (the scaffolding is right there to inspect). You can ship it as one self-contained prompt or orchestrate it as three explicit stages (decompose → answer each → combine) when you want parallelism and inspectable intermediates. Reach for it on open, under-specified questions where the hard part is knowing <em>what to ask</em> — viability calls, research questions, engineering decisions, diagnosis. It's a cousin of least-to-most (D18, dependent sub-problems solved in order) and self-ask (D19, follow-ups for multi-hop lookups); the Cognitive Verifier's sub-questions are <em>independent coverage</em> checks folded back together. Distinct from Day&nbsp;55 (Flipped Interaction, where the model asks <em>you</em>); here it asks <em>itself</em>. <strong>👉 Next up — Evaluation: regression-testing outputs with promptfoo so a prompt change can't silently drop quality.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// Pure, DOM-free logic (node-testable). Nothing here touches the
+// DOM, so `node --check` parses it and the decompose → answer →
+// combine flow can be driven headlessly.
+// ============================================================
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// --- synthesizers: COMBINE the sub-answers into a final answer ---
+// Each reads the sub-answers (subs[i].a) so the result is genuinely a
+// combination of the parts, not an independent paragraph.
+function synthStartup(subs){
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">Viable as a side-project — not as a venture-scale business.</div>
+    <div class="text-sm text-slate-700">Combining the sub-answers: the market is <b>small and low-spend</b> (Q1) and <b>willingness-to-pay is weak against free poetry</b> (Q2), while <b>per-SMS cost eats the margin</b> at any low price (Q3) and there is <b>no moat</b> — anyone, or any LLM, can copy it (Q4). Folded together, those cap revenue well below venture scale (Q5).</div>
+    <ul class="mt-2 text-sm text-slate-700 list-disc pl-5 space-y-1">
+      <li><b>Do it</b> if you want a cheap, delightful product that covers its own costs and serves a niche.</li>
+      <li><b>Don't</b> pitch it as a high-growth startup: small TAM × low price × SMS cost × zero defensibility don't support it.</li>
+      <li><b>De-risk first</b> — test willingness-to-pay with a real-priced waitlist before writing any code.</li>
+    </ul>`;
+}
+function synthDino(subs){
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">A Chicxulub asteroid impact ~66 Mya — killing mainly via an “impact winter” — on top of Deccan volcanism; and the birds survived.</div>
+    <div class="text-sm text-slate-700">The one-shot “an asteroid hit” is right but shallow. Combining the sub-answers: the impact is <b>physically evidenced</b> by the global iridium layer and the Chicxulub crater (Q1); the <b>immediate</b> kill was fire, tsunami and a thermal pulse (Q2), but what wiped out most species was the <b>years-long impact winter</b> that collapsed photosynthesis and the food chain (Q3); the <b>Deccan Traps</b> eruptions had already stressed the biosphere, so the impact was the knockout blow rather than the sole cause (Q4); and crucially <b>not all dinosaurs died</b> — one theropod lineage became today's birds (Q5).</div>
+    <div class="callout good mt-2">The verified answer keeps the headline but adds the mechanism, the co-factor and the key exception — the parts a one-shot answer silently drops.</div>`;
+}
+function synthIndex(subs){
+  const ddl = `-- not this (skipped for the common value; taxes every write):
+CREATE INDEX ON orders (status);
+
+-- this — target only the rare, selective values you actually search:
+CREATE INDEX ON orders (created_at)
+  WHERE status IN ('pending','processing');   -- partial
+-- or serve filter + sort together:
+CREATE INDEX ON orders (status, created_at);  -- composite`;
+  return `<div class="text-[15px] font-extrabold text-emerald-800 mb-1">Don't add a plain index on <span class="mono">status</span> — add a PARTIAL (or composite) index instead.</div>
+    <div class="text-sm text-slate-700">The one-shot “it's in a WHERE clause, so index it” ignores four things the sub-questions surface. It's a filter, sometimes with a sort (Q1), but <b>low-cardinality and skewed</b> — 90% <span class="mono">'completed'</span> — so the planner skips a plain index for the common value (Q2); the table is <b>millions of rows and append-heavy</b> (Q3), so a mostly-useless index still costs storage and a <b>write tax on every insert/update</b> (Q4). The shape that fits the real query is a <b>partial index</b> on the selective values, or a <b>composite <span class="mono">(status, created_at)</span></b> for filter-plus-sort (Q5).</div>
+    <pre>${escapeHtml(ddl)}</pre>`;
+}
+
+// --- the topics: each is a high-level question + a weak one-shot answer
+//     + 3-5 independent sub-questions with answers + a combiner. ---
+const TOPICS = [
+  {
+    id:"startup", label:"🚀 Is this startup idea viable?", sub:"idea: an app that texts you a daily poem",
+    question:"Is this startup idea viable: a subscription app that texts you a daily poem?",
+    direct:{
+      text:"Sure — poetry is timeless and subscriptions are a proven model, so it sounds viable. People love a little daily inspiration. Go for it!",
+      flaw:"It's generic cheerleading. It never asks who pays, how big the market is, what it costs to run, or what stops anyone from copying it — the questions that actually decide viability."
+    },
+    synth: synthStartup,
+    subs:[
+      { q:"Who is the target customer, and how many are there?", a:"A niche: hobbyist poetry readers and students. The addressable market is small — tens of thousands, not millions — and skews low-spend." },
+      { q:"Are people willing to PAY for it, and how much?", a:"Free poetry is everywhere (public-domain archives, Instagram accounts). Willingness-to-pay for a daily text is low, and 'daily content' subscriptions churn hard once the novelty fades." },
+      { q:"What does it cost to build and to run?", a:"Cheap to build — a scheduler plus an SMS API — but SMS has a per-message cost that scales with every user, squeezing margin at a low price point." },
+      { q:"What stops a competitor (or an LLM) from copying it?", a:"Almost nothing. No data moat, no network effect. Anyone can prompt an LLM for a daily poem, so defensibility is near zero." },
+      { q:"Is there a credible path to meaningful revenue?", a:"At roughly $2/mo across a small, high-churn niche, revenue caps low; the unit economics don't clearly clear SMS cost plus customer acquisition." }
+    ]
+  },
+  {
+    id:"dino", label:"🦕 What killed the dinosaurs?", sub:"a broad question with a deceptively simple answer",
+    question:"What killed the dinosaurs?",
+    direct:{
+      text:"A giant asteroid struck Earth about 66 million years ago and wiped them out.",
+      flaw:"Right headline, but it skips HOW the impact killed them, that volcanism was also in play, and that birds are surviving dinosaurs — so it sounds complete while leaving out the real mechanism and the nuance."
+    },
+    synth: synthDino,
+    subs:[
+      { q:"When exactly, and what's the direct physical evidence?", a:"~66 Mya, at the Cretaceous–Paleogene (K–Pg) boundary. Evidence: a worldwide iridium-rich clay layer (rare in Earth's crust, common in asteroids) and the 180 km Chicxulub crater off Yucatán, dated to the same instant." },
+      { q:"What was the immediate kill mechanism after impact?", a:"The impact flung molten ejecta worldwide; re-entry heating sparked wildfires and a thermal pulse, and the blast drove tsunamis and quakes — lethal over the first hours to days." },
+      { q:"What was the longer-term mechanism?", a:"Soot and sulfate aerosols blocked sunlight for years — an 'impact winter'. Photosynthesis collapsed, so food chains failed from the plants up. This, not the blast, killed most species." },
+      { q:"Was the asteroid the ONLY cause?", a:"Probably not solely. The Deccan Traps eruptions were already stressing the climate; the impact was the knockout blow to a biosphere under pressure. How much each contributed is still debated." },
+      { q:"Did ALL dinosaurs die out?", a:"No — one lineage of small feathered theropods survived and became birds. So the non-avian dinosaurs died out; avian dinosaurs (birds) are still with us." }
+    ]
+  },
+  {
+    id:"index", label:"🗄️ Should I index this DB column?", sub:"a status column on a big orders table",
+    question:"Should I add an index on the `status` column of my orders table?",
+    direct:{
+      text:"Yes — it's used in WHERE clauses and indexes make queries faster, so add it.",
+      flaw:"It reasons straight from a rule of thumb. It ignores the column's low, skewed cardinality, the table's size and write rate, and whether a plain index even helps the common query — the factors that flip the answer."
+    },
+    synth: synthIndex,
+    subs:[
+      { q:"How is the column actually used in queries?", a:"It appears in WHERE status = 'X' on a hot read path, sometimes with ORDER BY created_at. So it's a filter column, occasionally combined with a sort." },
+      { q:"What's the cardinality / selectivity?", a:"status has ~5 distinct values and is heavily skewed (≈90% 'completed'). For that common value the planner will usually ignore a plain index — a full scan is cheaper than index + row lookups for most of the table." },
+      { q:"How big is the table, and how does it grow?", a:"Millions of rows and append-heavy. Index size and maintenance matter here: even a rarely-used index still has to be stored and kept in sync." },
+      { q:"What's the write cost of the index?", a:"Every INSERT/UPDATE that touches status must also update the index. On a high-write orders table that's a constant, measurable tax for little read benefit." },
+      { q:"Is there a better index shape for this workload?", a:"Yes — a PARTIAL index WHERE status IN ('pending','processing') targets just the rare, selective values you actually query; or a COMPOSITE (status, created_at) to serve the filter and the sort together." }
+    ]
+  }
+];
+
+// --- the verifier state machine (the core of the pattern) ---
+// progress p:  0 = idle (only the one-shot shown)
+//              1 = decomposed (sub-questions generated, none answered)
+//              1+k = k sub-answers revealed  (k = 1..N)
+//              N+2 = synthesized (combined answer produced)
+function maxProgress(topic){ return topic.subs.length + 2; }
+function answeredCount(topic, p){ return Math.max(0, Math.min(topic.subs.length, p - 1)); }
+function isDecomposed(topic, p){ return p >= 1; }
+function isSynthesized(topic, p){ return p >= maxProgress(topic); }
+function stageOf(topic, p){
+  if (p <= 0) return "idle";
+  if (isSynthesized(topic, p)) return "synthesized";
+  if (answeredCount(topic, p) >= topic.subs.length) return "ready-to-combine";
+  return "answering";
+}
+function synthesize(topic){ return topic.synth(topic.subs); }
+
+// Drive the whole decompose → answer → combine flow headlessly.
+// Returns a transcript; the final step proves synthesis completed.
+function runVerifier(topic){
+  const steps = [];
+  steps.push({ phase:"question", text: topic.question });
+  steps.push({ phase:"decompose", subQuestions: topic.subs.map(s => s.q) });
+  topic.subs.forEach((s, i) => steps.push({ phase:"answer", i, q:s.q, a:s.a }));
+  steps.push({ phase:"combine", combined: synthesize(topic) });
+  return steps;
+}
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+
+// ============================================================
+// Browser mount — all DOM wiring lives here so the pure logic
+// above stays headless-testable. Only runs in a browser.
+// ============================================================
+function mount(){
+  // ---- tabs ----
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(p => p.classList.add("hidden"));
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+
+  // ============================================================
+  // LOOK — a REAL, deterministic cognitive-verifier pipeline.
+  //  - TOPICS is the baked data (question + one-shot + sub-Q/A + combiner).
+  //  - `p` is the pipeline position; the render is derived purely from it.
+  //  - The combined answer is produced ONLY at p === maxProgress, so the
+  //    verifier can never "synthesize" before every sub-answer is in.
+  // ============================================================
+  let cur = 0;
+  let p = 0;
+  let autoTimer = null;
+
+  const topicToggle  = document.getElementById("topicToggle");
+  const directPanel  = document.getElementById("directPanel");
+  const verifierPanel= document.getElementById("verifierPanel");
+  const stageBadge   = document.getElementById("stageBadge");
+  const stageLabel   = document.getElementById("stageLabel");
+  const progFill     = document.getElementById("progFill");
+  const progLabel    = document.getElementById("progLabel");
+  const calloutBox   = document.getElementById("calloutBox");
+  const runBtn       = document.getElementById("runBtn");
+  const stepBtn      = document.getElementById("stepBtn");
+  const resetBtn     = document.getElementById("resetBtn");
+
+  function stopAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } runBtn.textContent="▶ Run verifier"; }
+
+  function buildToggle(){
+    topicToggle.innerHTML = "";
+    TOPICS.forEach((t, i) => {
+      const btn = document.createElement("button");
+      btn.className = "gchip" + (i===cur ? " active" : "");
+      btn.innerHTML = `<span>${t.label}</span><small>${t.sub}</small>`;
+      btn.onclick = () => { cur = i; p = 0; stopAuto(); buildToggle(); render(); };
+      topicToggle.appendChild(btn);
+    });
+  }
+
+  function render(){
+    const t = TOPICS[cur];
+    const N = t.subs.length;
+    const maxP = maxProgress(t);
+    const answered = answeredCount(t, p);
+    const decomposed = isDecomposed(t, p);
+    const synthesized = isSynthesized(t, p);
+
+    // ---- 🅐 direct one-shot (static once shown) ----
+    directPanel.innerHTML = `
+      <div class="qbubble">${escapeHtml(t.question)}</div>
+      <div class="text-sm text-slate-700 mt-3">${escapeHtml(t.direct.text)}</div>
+      <div class="callout bad mt-3"><b>What it misses:</b> ${escapeHtml(t.direct.flaw)}</div>`;
+
+    // ---- 🅑 cognitive verifier (builds through the pipeline) ----
+    let html = `<div class="qbubble">${escapeHtml(t.question)}</div>`;
+    if (!decomposed){
+      html += `<div class="text-sm text-slate-500 mt-3">Ready. Rather than answer directly, the verifier will generate <b>${N} sub-questions</b>, answer each on its own, then <b>combine</b> them. Hit <b>⏭ Next step</b> or <b>▶ Run verifier</b>.</div>`;
+    } else {
+      html += `<div class="text-[11px] font-bold uppercase tracking-wider text-violet-600 mt-3 mb-2">① Decomposed into ${N} sub-questions</div>`;
+      html += `<div class="subqlist">`;
+      t.subs.forEach((s, i) => {
+        const isAns = i < answered;
+        const isCur = !isAns && !synthesized && i === answered && answered < N;
+        const cls = isAns ? "answered" : (isCur ? "current" : "pending");
+        const ic  = isAns ? "✓" : (isCur ? "…" : (i+1));
+        html += `<div class="subq ${cls}">
+            <div class="subq-head"><span class="ic">${ic}</span><span class="q">Q${i+1}. ${escapeHtml(s.q)}</span></div>`;
+        if (isAns) html += `<div class="a">${escapeHtml(s.a)}</div>`;
+        html += `</div>`;
+      });
+      html += `</div>`;
+      if (synthesized){
+        html += `<div class="text-[11px] font-bold uppercase tracking-wider text-emerald-600 mt-4 mb-2">③ Combined into a verified answer</div>`;
+        html += `<div class="result">${synthesize(t)}</div>`;
+      } else if (answered >= N){
+        html += `<div class="callout warn mt-3"><b>② All sub-questions answered.</b> Hit <b>⏭ Next step</b> to <b>combine</b> the ${N} sub-answers into the final answer.</div>`;
+      } else {
+        html += `<div class="text-[11px] font-bold uppercase tracking-wider text-violet-600 mt-3 mb-1">② Answering each independently — ${answered} / ${N}</div>`;
+      }
+    }
+    verifierPanel.innerHTML = html;
+
+    // ---- progress + stage ----
+    progFill.style.width = Math.round((p/maxP)*100) + "%";
+    progLabel.textContent = `step ${p} / ${maxP}`;
+    const stage = stageOf(t, p);
+    if (stage === "idle"){
+      stageBadge.className = "stopbadge wait"; stageBadge.innerHTML = "○ ready — not decomposed";
+      stageLabel.textContent = "① decompose is the next step";
+    } else if (stage === "answering"){
+      stageBadge.className = "stopbadge mid"; stageBadge.innerHTML = `② answering · ${answered} / ${N}`;
+      stageLabel.textContent = "answering each sub-question independently";
+    } else if (stage === "ready-to-combine"){
+      stageBadge.className = "stopbadge mid"; stageBadge.innerHTML = "② answered — combine next";
+      stageLabel.textContent = "③ combine the sub-answers is the next step";
+    } else {
+      stageBadge.className = "stopbadge met"; stageBadge.innerHTML = "✓ synthesized";
+      stageLabel.textContent = "combined answer produced from the sub-answers";
+    }
+
+    // ---- callout ----
+    if (stage === "idle"){
+      calloutBox.innerHTML = `<div class="callout warn"><b>One-shot vs verifier.</b> On the left is the whole one-shot answer already. On the right, nothing yet — the verifier hasn't decomposed. Step it and watch the right side build a <em>reasoned</em> answer the one-shot skipped.</div>`;
+    } else if (stage === "answering"){
+      const s = t.subs[answered];
+      calloutBox.innerHTML = `<div class="callout warn"><b>Decompose → answer.</b> The verifier turned the big question into <b>${N}</b> smaller ones and is answering them one at a time — currently <b>Q${answered+1}: ${escapeHtml(s.q)}</b>. Each is a smaller, more tractable problem than the whole, so it's far less likely to slip.</div>`;
+    } else if (stage === "ready-to-combine"){
+      calloutBox.innerHTML = `<div class="callout warn"><b>Every sub-question answered.</b> The scaffolding is complete and inspectable — ${N} independent sub-answers. The last step folds them into one final answer to the original question.</div>`;
+    } else {
+      calloutBox.innerHTML = `<div class="callout good"><b>Combined — the verified answer.</b> The final answer is built <em>from</em> the ${N} sub-answers (see the Q-references), so it covers the sub-issues the one-shot on the left dropped. That's the whole pattern: generate the sub-questions, answer each, then combine — more accurate, and legible because the reasoning is right there to check.</div>`;
+    }
+  }
+
+  runBtn.onclick = () => {
+    if (autoTimer){ stopAuto(); return; }
+    const t = TOPICS[cur];
+    if (isSynthesized(t, p)){ p = 0; render(); }   // restart if already done
+    runBtn.textContent = "⏸ Pause";
+    autoTimer = setInterval(() => {
+      const tt = TOPICS[cur];
+      if (isSynthesized(tt, p)){ stopAuto(); return; }
+      p = Math.min(maxProgress(tt), p + 1);
+      render();
+      if (isSynthesized(tt, p)) stopAuto();
+    }, 900);
+  };
+  stepBtn.onclick = () => { stopAuto(); const t = TOPICS[cur]; p = Math.min(maxProgress(t), p + 1); render(); };
+  resetBtn.onclick = () => { stopAuto(); p = 0; render(); };
+
+  buildToggle();
+  render();
+
+  // ============================================================
+  // UNDERSTAND — step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. One-shot answers to big questions are shallow", why:"Ask a model a broad, open question — 'is this idea viable?', 'what killed the dinosaurs?', 'should I index this column?' — and a single pass reaches for the headline. It answers with whatever it surfaces first and skips the sub-issues that actually decide the answer: who pays, what the mechanism was, how selective the column is. The reply sounds complete because it's fluent, but its quality is capped by one pass over a question that really needed several. Worse, you can't see what it left out — there's no scaffolding to inspect.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q: big, open question<br>one pass ──► headline answer<br>skips the deciding sub-issues<br>fluent, but shallow &amp; opaque</div>`,
+     code:`// one-shot: quality capped by a single pass.
+//   Q "Is this idea viable?" → "Sure, go for it!"
+//   (never asked: who pays? cost? moat?)` },
+   { title:"2. Cognitive Verifier — ask sub-questions first, then combine", why:"The Cognitive Verifier is a prompt PATTERN (White et al., 'A Prompt Pattern Catalog') that inserts a beat before the answer. When asked a question, the model first GENERATES a set of sub-questions whose answers it would need to answer well, ANSWERS each of them, and then COMBINES those answers into the final response. It decomposes one hard question into several easier ones and reassembles the result — so coverage of the sub-issues is forced, and the reasoning is laid out for inspection instead of hidden in one paragraph.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q ─► generate sub-questions<br>answer each independently<br>combine the answers ─► final<br>decompose, then reassemble</div>`,
+     code:`// verifier: decompose → answer each → combine.
+system = "When asked a question, first generate sub-questions " +
+         "that would help answer it, answer each, then combine.";` },
+   { title:"3. The pattern skeleton — two (P) contextual statements", why:"The catalog describes every pattern as fundamental CONTEXTUAL STATEMENTS, written (P). The Cognitive Verifier needs exactly two. (P1) GENERATE: 'when you are asked a question, generate a number of additional questions that would help answer it more accurately.' (P2) COMBINE: 'combine the answers to the individual questions to produce the final answer to the overall question.' That's the whole pattern — the first statement creates the scaffolding, the second collapses it back into an answer.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">(P1) generate: "make sub-questions<br>that help answer more accurately"<br>(P2) combine: "merge their answers<br>into the overall answer"</div>`,
+     code:`// (P1) "Generate additional questions that would help
+//       answer the question more accurately."
+// (P2) "Combine the answers to those questions to produce
+//       the final answer to the overall question."` },
+   { title:"4. (P1) Generate — decompose into the right sub-questions", why:"The first statement is the hard, valuable part: the model has to figure out WHICH questions a good answer depends on. For 'is this idea viable?' that's market size, willingness-to-pay, cost, moat, revenue path — the very things a one-shot skips. Good sub-questions are INDEPENDENT (each probes a different facet) and BOUNDED (cap at 3–5, or the model sprays vague questions). This is the step that surfaces the hidden structure of the problem; getting it right is most of the pattern's value.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"Is this idea viable?"<br>→ who pays? · market size?<br>· cost to run? · moat?<br>3-5 independent facets</div>`,
+     code:`const subs = await decompose(question);  // 3-5 sub-questions
+// each probes a different facet the answer depends on
+// bound the count so it doesn't spray vague questions` },
+   { title:"5. Answer each sub-question independently", why:"Now answer every sub-question ON ITS OWN. This is where the accuracy comes from: each sub-question is a smaller, better-scoped problem than the original, so the model is far less likely to slip than when juggling the whole thing in one shot. Independence matters — answering them separately keeps one shaky answer from contaminating the others, and because the calls don't depend on each other you can run them in parallel. Keep each answer paired with its question so the combine step has the full scaffolding.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">Q1 → a1 · Q2 → a2 · Q3 → a3<br>each small &amp; independent<br>(parallelizable, fewer slips)<br>keep (q, a) pairs</div>`,
+     code:`const answered = await Promise.all(
+  subs.map(async q => ({ q, a: await answer(q) })));
+// smaller scope per call → fewer mistakes; run in parallel` },
+   { title:"6. (P2) Combine — fold the sub-answers into the final answer", why:"The payoff turn. Feed the paired sub-questions and answers back and ask for ONE answer to the ORIGINAL question, grounded in those sub-answers. Because the final response is assembled FROM the parts, it inherits their coverage: the dinosaur answer keeps the asteroid headline but adds the impact-winter mechanism, the volcanic co-factor and the birds-survived nuance. A good combine step also surfaces disagreements between sub-answers rather than papering over them. This is the demo's step ③.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">a1 + a2 + a3 + a4 + a5<br>──► one combined answer<br>covers every sub-issue<br>caveats surfaced, not hidden</div>`,
+     code:`const finalAnswer = await combine(question, answered);
+// "Using ONLY the reasoning above, give one answer to the
+//  original question, noting any caveats." → grounded result` },
+   { title:"7. Why it beats a one-shot — coverage + legibility", why:"Two wins at once. ACCURACY: decomposing forces the model to cover the sub-issues it would otherwise skip, and each sub-answer is an easier problem than the whole — small correct pieces reassemble into a better whole. LEGIBILITY: the scaffolding is right there. You can read every sub-question and its answer, check the work, and catch a wrong step — instead of trusting one confident paragraph with no visible reasoning. The cost is more tokens and a little latency; the return is a more complete, auditable answer.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one-shot: 1 pass, hidden, capped<br>verifier: N easy pieces, visible<br>→ more accurate AND checkable<br>cost: more tokens / latency</div>`,
+     code:`// one-shot : answer = f(single pass)          (opaque)
+// verifier : answer = combine(answer each sub)  (auditable)
+//   coverage forced + each piece is easier` },
+   { title:"8. vs least-to-most & self-ask — independent coverage", why:"It's a decomposition pattern, so place it against its cousins. LEAST-TO-MOST (D18) decomposes into a chain of DEPENDENT sub-problems solved IN ORDER, each using the previous answer — for problems with sequential structure. SELF-ASK (D19) emits follow-up questions to chase a MULTI-HOP fact through intermediate lookups. The Cognitive Verifier's sub-questions are INDEPENDENT COVERAGE checks — different facets of one broad question, answerable in any order (even in parallel) — folded back together. Use least-to-most when steps depend on each other, self-ask for multi-hop retrieval, the verifier when the hard part is knowing what to ask.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">least-to-most: dependent, in ORDER<br>self-ask: multi-hop follow-ups<br>verifier: INDEPENDENT facets<br>→ answered in any order, combined</div>`,
+     code:`// least-to-most (D18): q1 → a1 → q2(a1) → ...  (dependent)
+// self-ask (D19): follow-ups to reach a multi-hop fact
+// cognitive verifier: independent facets → combine` },
+   { title:"9. When to use it — open questions where the hard part is what to ask", why:"Reach for the Cognitive Verifier on BROAD, UNDER-SPECIFIED questions where a single pass under-covers: viability and decision calls ('should we build X?'), research and explanation questions, engineering trade-offs ('index this? migrate to Y?'), diagnosis, and any 'analyze this' task. The tell is that the hard part isn't computing the answer, it's knowing WHICH questions the answer depends on. Skip it for narrow, factual, single-hop questions — decomposition just adds tokens and latency there with nothing to cover.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">use: viability · decisions · research<br>· trade-offs · diagnosis · "analyze X"<br>skip: narrow, single-hop facts<br>tell: hard part = what to ask</div>`,
+     code:`// good fit: "Should we migrate to microservices?"
+//   → decompose into the facets that decide it
+// bad fit: "What's the capital of France?"  (just answer)` },
+   { title:"10. Where it sits — compose it, then measure it · next: eval", why:"The Cognitive Verifier composes cleanly. Each sub-question can drive a tool call or a RAG lookup instead of the model's own knowledge; the combine step can itself use chain-of-thought or structured output; and you can pair it with self-consistency by sampling several decompositions and voting. It's distinct from Day 55 (Flipped Interaction), where the model asks YOU questions to gather requirements — here it asks ITSELF questions to reason better. Whatever you build, you then have to guard its quality across prompt changes. Next: evaluation — regression-testing outputs with promptfoo so a prompt change can't silently drop quality.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">sub-Q → tool call / RAG<br>combine → CoT / structured out<br>vs D55 (model asks YOU)<br>next → promptfoo eval</div>`,
+     code:`// compose: sub-questions → tools/RAG; combine → CoT.
+// vs D55 flipped interaction (model interviews YOU).
+// next → promptfoo eval: guard quality across changes.` }
+  ];
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+  function show(i){ curStep=i; const s=STEPS[i];
+    document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+    document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+    document.getElementById("code").textContent=s.code;
+    stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+  }
+  prevB.onclick=()=>show(Math.max(0,curStep-1)); nextBtn.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+  let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = { TOPICS, runVerifier, synthesize, maxProgress, answeredCount, isSynthesized, stageOf };
+</script>
+</body>
+</html>
