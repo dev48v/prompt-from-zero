@@ -1,0 +1,728 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 57 — Prompt Evals</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== variant cards ===== */
+  .vgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  .vcard { border:2px solid #e2e8f0; border-radius:14px; padding:11px 13px; background:#fff; display:flex; flex-direction:column; gap:4px; }
+  .vcard.win { border-color:#8b5cf6; background:#f5f3ff; }
+  .vcard .vn { font-size:12.5px; font-weight:900; color:#0f172a; }
+  .vcard .vt { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:#94a3b8; }
+  .vcard .vp { font-size:11px; line-height:1.45; color:#475569; white-space:pre-wrap; background:#f8fafc; border:1px solid #eef2f7; border-radius:9px; padding:7px 8px; margin-top:3px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ===== test/grader editor ===== */
+  .erow { display:grid; grid-template-columns:1fr 130px 1fr; gap:9px; align-items:center; padding:8px 0; border-bottom:1px dashed #e2e8f0; }
+  .erow:last-child { border-bottom:0; }
+  .einput .etxt { font-size:12px; font-weight:700; color:#0f172a; }
+  .einput .etruth { font-size:10.5px; font-weight:600; color:#94a3b8; }
+  .esel, .eassert { width:100%; font-size:12px; padding:7px 9px; border-radius:9px; border:1px solid #cbd5e1; background:#fff; color:#334155; }
+  .esel { font-weight:800; }
+  .eassert { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .eassert:disabled { background:#f1f5f9; color:#94a3b8; }
+
+  /* ===== results matrix ===== */
+  .matrix { border-collapse:separate; border-spacing:0; width:100%; font-size:12px; }
+  .matrix th, .matrix td { border:1px solid #e2e8f0; padding:8px 9px; text-align:center; vertical-align:middle; }
+  .matrix thead th { background:#0f172a; color:#fff; font-size:11.5px; }
+  .matrix th.rowh, .matrix td.rowh { text-align:left; }
+  .matrix td.rowh { background:#fbfbfe; }
+  .matrix .tinput { font-size:11.5px; font-weight:700; color:#0f172a; }
+  .matrix .tmeta { font-size:10px; font-weight:600; color:#94a3b8; margin-top:2px; }
+  .cell-pass { background:#f0fdf4; color:#15803d; font-weight:900; }
+  .cell-fail { background:#fef2f2; color:#b91c1c; font-weight:900; }
+  .cscore { font-size:10px; font-weight:700; color:#64748b; margin-top:2px; }
+  .winner-col { background:#f5f3ff !important; }
+  .winner-col.cell-pass { background:#ecfdf3 !important; }
+  .footrow td { background:#f8fafc; font-weight:800; }
+  .footrow .prate { font-size:15px; font-weight:900; color:#0f172a; }
+
+  /* ===== diff ===== */
+  .difflist { display:flex; flex-direction:column; gap:7px; }
+  .diffrow { display:flex; align-items:center; gap:9px; padding:8px 11px; border-radius:11px; border:1px solid #e2e8f0; background:#fff; font-size:12px; }
+  .diffrow .dtag { font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:999px; flex:none; }
+  .diffrow.improved { border-color:#bbf7d0; background:#f0fdf4; }
+  .diffrow.improved .dtag { background:#dcfce7; color:#15803d; }
+  .diffrow.regressed { border-color:#fecaca; background:#fef2f2; }
+  .diffrow.regressed .dtag { background:#fee2e2; color:#b91c1c; }
+  .diffrow.same .dtag { background:#eef2f7; color:#64748b; }
+  .diffrow .dtxt { font-weight:700; color:#334155; }
+  .diffrow .dmove { margin-left:auto; font-size:11px; font-weight:800; color:#64748b; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 57</div>
+      <h1 class="text-xl font-bold">🧪 Prompt Evals — the practice of treating a prompt like <strong>code you can test</strong> instead of a thing you eyeball. The moment a prompt matters, tweaking it and skimming one or two outputs to decide it &ldquo;feels better&rdquo; stops working: you can't see the case it quietly broke, and the next tweak silently un-fixes the last one. Eval-driven prompt development replaces the vibe check with a measurement. You pin down a small <strong>test set</strong> — inputs paired with an <em>expected answer</em> or an <strong>assertion</strong> — write two or three candidate prompt <strong>variants</strong>, run <em>every</em> variant against <em>every</em> test, and let deterministic <strong>graders</strong> (<span class="mono">exact-match</span>, <span class="mono">contains</span>, <span class="mono">regex</span>, <span class="mono">JSON-valid</span>, or a simple <span class="mono">rubric</span> score) turn each <span class="mono">(variant × test)</span> into a pass/fail and a number. The payoff is a <strong>results matrix</strong>: variants across the columns, tests down the rows, a per-variant <strong>pass-rate</strong> and <strong>average score</strong>, a highlighted <strong>winner</strong> — and, crucially, a <strong>regression</strong> view. Because a prompt change can lift the overall pass-rate while quietly breaking a case that used to pass, you diff the candidate against a baseline and catch the test it dropped <em>before</em> shipping. This is &ldquo;<strong>promptfoo-style</strong>&rdquo; eval, and this page is genuinely interactive with <strong>no API and no network</strong>: a self-contained JS harness with 3 variants, 5 tests, deterministic canned model outputs and real graders — toggle a grader type or edit an assertion and watch the matrix, the pass-rates, the winner and the regression diff recompute live. Distinct from Day&nbsp;56 (Cognitive Verifier — a reasoning <em>pattern</em>); this is the <em>discipline</em> that stops any prompt change from silently dropping quality.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Stop eyeballing prompt changes — <span class="text-violet-600">measure</span> them. Run 3 prompt <span class="text-violet-600">variants</span> against a <span class="text-violet-600">test set</span>, grade every cell, and read the <span class="text-emerald-600">winner</span> — then catch the <span class="text-rose-500">regression</span> a higher pass-rate is hiding.</h2>
+        <p class="text-slate-500 mb-5">Everything below is deterministic (no API key, no network): the three variants' &ldquo;model outputs&rdquo; are baked in, and the graders run <em>live</em> in your browser. The task is <b>classify a support email → <span class="mono">{category, urgent}</span></b>. <b>Toggle a grader type</b> or <b>edit an assertion</b> on any test row and watch the whole matrix, the pass-rates, the average scores, the 🏆 winner and the regression diff recompute. Notice the trap: <b>V3 has the best pass-rate but regressed a test V2 passed.</b></p>
+      </div>
+
+      <!-- variants -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧬 The candidate prompt variants — same task, three prompts</div>
+        <div class="vgrid" id="variantsCard"></div>
+      </div>
+
+      <!-- test set + graders (editable) -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🎛 The test set &amp; graders — <span class="normal-case font-normal text-slate-400">edit any assertion or swap the grader</span></div>
+          <button class="btn" id="resetBtn">↺ Reset test set</button>
+        </div>
+        <div class="erow" style="border-bottom:2px solid #e2e8f0;">
+          <div class="einput"><div class="etxt text-slate-400" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;">Input (support email)</div></div>
+          <div class="text-slate-400" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;">Grader</div>
+          <div class="text-slate-400" style="font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;font-weight:800;">Assertion</div>
+        </div>
+        <div id="testEditor"></div>
+      </div>
+
+      <!-- results matrix -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📊 Results matrix — <span class="normal-case font-normal text-slate-400">variants × tests · pass/fail + score · winner = highest pass-rate</span></div>
+        <div style="overflow-x:auto;" id="matrixCard"></div>
+      </div>
+
+      <!-- regression diff -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <div class="text-xs uppercase font-bold text-rose-600 tracking-wider">🚨 Regression diff</div>
+          <span class="text-xs text-slate-400">— did the candidate drop a test the baseline passed?</span>
+          <div class="ml-auto flex items-center gap-2 text-xs font-bold text-slate-500">
+            <span>baseline</span><select id="baseSel" class="esel" style="width:auto;"></select>
+            <span>→ candidate</span><select id="candSel" class="esel" style="width:auto;"></select>
+          </div>
+        </div>
+        <div id="diffCard"></div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 A prompt eval turns &ldquo;this feels better&rdquo; into a number you can defend — and defend <em>against</em>.</strong> The matrix does two jobs at once. First it <strong>ranks</strong>: run every variant against the same fixed test set, grade each cell deterministically, and the winner is simply the column with the highest pass-rate (tie-break on average score) — no vibes, no cherry-picked example. Second, and more important, it <strong>guards</strong>: a change almost never strictly dominates. V3 adds few-shot examples that finally catch the urgent cases V2 missed (pass-rate 60% → 80%) — but the same examples make it over-trigger <span class="mono">urgent</span> on a friendly thank-you, so it <em>regressed</em> a test V2 passed. A single headline number would have hidden that. The regression diff makes it impossible to miss: improved cells in green, the dropped cell in red. That's the whole discipline — <strong>measure every candidate on the same set, pick the winner by pass-rate, and diff against the baseline so a net-positive change can't silently ship a net-negative surprise.</strong>
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Prompt evals = a fixed test set + candidate variants + deterministic graders → a results matrix, a pass-rate winner, and a regression diff. Measure prompts; don't eyeball them.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How eval-driven prompt dev works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">A prompt eval is just a small harness: a <em>test set</em>, a list of <em>candidate prompts</em>, a set of <em>graders</em>, and a loop that fills a matrix. Below is the exact harness the demo runs — plain, dependency-free functions you can lift into any project — followed by the equivalent <span class="mono">promptfoo</span> YAML config so you can run the same thing from the CLI and gate it in CI. Same idea both ways: measure every candidate on the same set, pick the winner by pass-rate, and fail the build on a regression.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — stop eyeballing, start measuring</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Eyeballing a prompt change tests one input you happened to look at, and forgets it the moment you move on. An eval pins a fixed test set so every change is scored on the <em>same</em> cases — the winner is defensible and a regression is visible.</p>
+        <div class="relative"><pre>// Eyeballing  →  test one case, forget it, hope:
+//   tweak prompt → glance at ONE output → "yeah better" → ship
+//   (the case you broke is invisible)
+//
+// Eval-driven  →  measure every candidate on a fixed set:
+//   test set × variants → graders → matrix
+//   → pass-rate winner + regression diff  (defensible + safe)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Define the test set — inputs + an expected answer / assertion</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Each test is an input plus how to judge the output. Keep a fixed, versioned set (and a separate <em>holdout</em> you don't tune against, so you don't overfit the prompt to the tests). Cover the easy cases <em>and</em> the edge cases that bite.</p>
+        <div class="relative"><pre>// STEP 2 — the test set: input + grader + assertion.
+const tests = [
+  { input: "I was charged twice this month.",
+    grader: "json_valid" },                       // must return JSON
+  { input: "How do I reset my password?",
+    grader: "contains", assertion: "account" },
+  { input: "The whole site is down, nobody can log in!",
+    grader: "regex", assertion: '"urgent"\\s*:\\s*true' },
+  { input: "Just wanted to say thanks!",
+    grader: "exact_match",
+    assertion: '{"category":"feedback","urgent":false}' },
+  { input: "Payment failed and I can't access my account.",
+    grader: "rubric", assertion: 'billing, "urgent":true, access' },
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Define the candidate variants — the prompts you're comparing</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A variant is one prompt strategy for the task. Change <em>one</em> thing at a time (add a schema, add few-shot examples) so the matrix tells you <em>which</em> change moved the number. In the demo these three are V1 naive, V2 + JSON schema, V3 + few-shot.</p>
+        <div class="relative"><pre>// STEP 3 — the candidate prompts (one variable per step).
+const variants = [
+  { id: "v1", system: "Classify this support email." },
+  { id: "v2", system: "Classify the email. Return ONLY JSON " +
+                       '{"category": string, "urgent": boolean}.' },
+  { id: "v3", system: "Classify. Return ONLY JSON {category,urgent}. " +
+                       "Examples:\n" +
+                       '"site is down" → {"category":"technical","urgent":true}\n' +
+                       '"payment failed, locked out" → {"category":"billing","urgent":true}' },
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Deterministic graders — the ones that need no LLM</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Most assertions are cheap, fast and 100% repeatable: does the output match exactly, contain a string, match a regex, or parse as JSON? Each returns a <span class="mono">{pass, score}</span> — for binary graders the score is just 1 or 0. This is the exact grader the demo runs.</p>
+        <div class="relative"><pre>// STEP 4 — deterministic graders → {pass, score}.
+function grade(type, output, assertion) {
+  const out = String(output);
+  if (type === "exact_match") { const p = out.trim() === String(assertion).trim(); return { pass:p, score:p?1:0 }; }
+  if (type === "contains")    { const p = out.toLowerCase().includes(String(assertion).toLowerCase()); return { pass:p, score:p?1:0 }; }
+  if (type === "regex")       { let re; try { re = new RegExp(assertion); } catch { return { pass:false, score:0 }; } const p = re.test(out); return { pass:p, score:p?1:0 }; }
+  if (type === "json_valid")  { try { JSON.parse(out); return { pass:true, score:1 }; } catch { return { pass:false, score:0 }; } }
+  return rubric(out, assertion);   // ↓ step 5
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">A rubric grader — a graded score, not just pass/fail</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Some quality is partial. A rubric awards a fraction — here, how many required keywords the output hits — so <span class="mono">avg score</span> can separate two variants that have the <em>same</em> pass-rate. (In production this rubric is often an LLM-as-judge — that's Day&nbsp;58 — but a keyword rubric is deterministic and testable.)</p>
+        <div class="relative"><pre>// STEP 5 — rubric: fraction of required keywords present.
+function rubric(output, assertion, threshold = 0.5) {
+  const kws = String(assertion).split(",").map(s => s.trim()).filter(Boolean);
+  if (!kws.length) return { pass: false, score: 0 };
+  const hit = kws.filter(k => output.toLowerCase().includes(k.toLowerCase()));
+  const score = hit.length / kws.length;          // 0..1  (partial credit)
+  return { pass: score >= threshold, score };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Run the matrix — pass-rate + average score per variant</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The harness loop: for every variant, run the prompt on every test, grade the output, and reduce the column to a <span class="mono">passRate</span> (fraction of cells that pass) and an <span class="mono">avgScore</span> (mean cell score). In the demo the model call is a lookup into canned outputs; swap in a real <span class="mono">generateText</span> and nothing else changes.</p>
+        <div class="relative"><pre>// STEP 6 — fill the matrix, reduce each column to stats.
+async function runEval(variants, tests, callModel) {
+  return Promise.all(variants.map(async (v) => {
+    const cells = await Promise.all(tests.map(async (t) => {
+      const output = await callModel(v.system, t.input);   // ← real LLM here
+      return grade(t.grader, output, t.assertion);
+    }));
+    const passes = cells.filter(c => c.pass).length;
+    return {
+      id: v.id,
+      passRate: passes / tests.length,
+      avgScore: cells.reduce((a, c) => a + c.score, 0) / tests.length,
+      cells,
+    };
+  }));
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Pick the winner &amp; gate on regressions</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The winner is the highest pass-rate, tie-broken by avg score. But shipping needs one more check: diff the candidate against the baseline cell-by-cell and <strong>block</strong> if any test went pass → fail — even when the overall pass-rate went up. This is the guardrail that turns an eval into a CI gate.</p>
+        <div class="relative"><pre>// STEP 7 — winner by pass-rate; fail on ANY regression.
+function pickWinner(rows) {
+  return rows.slice().sort((a, b) =>
+    b.passRate - a.passRate || b.avgScore - a.avgScore)[0];
+}
+function regressions(base, cand, tests) {
+  return tests.filter((t, i) => base.cells[i].pass && !cand.cells[i].pass);
+}
+// in CI:
+const dropped = regressions(baseRow, candRow, tests);
+if (dropped.length) throw new Error(`${dropped.length} regression(s) — blocked`);
+// ↑ V3 beats V2 on pass-rate but drops the thank-you test → CI catches it.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the same eval as a promptfoo config</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In practice you rarely hand-roll the harness — you write a <span class="mono">promptfooconfig.yaml</span>, list your prompts and providers, attach assertions to each test, and run <span class="mono">npx promptfoo eval</span> for the matrix (and <span class="mono">promptfoo view</span> for the web UI). The same graders live under <span class="mono">assert.type</span>; wire it into CI so a regression fails the build.</p>
+        <div class="relative"><pre># promptfooconfig.yaml  —  run:  npx promptfoo@latest eval
+prompts:
+  - "Classify this support email: {{input}}"                        # V1
+  - "Classify. Return ONLY JSON {category,urgent}: {{input}}"       # V2
+  - file://prompts/v3_fewshot.txt                                   # V3
+providers:
+  - anthropic:messages:claude-sonnet-4-5
+  # (compare models side-by-side too — providers are columns as well)
+
+defaultTest:
+  assert:
+    - type: is-json          # every output must parse as JSON
+
+tests:
+  - vars: { input: "How do I reset my password?" }
+    assert:
+      - type: contains
+        value: account
+  - vars: { input: "The whole site is down, nobody can log in!" }
+    assert:
+      - type: regex
+        value: '"urgent"\s*:\s*true'
+  - vars: { input: "Just wanted to say thanks!" }
+    assert:
+      - type: equals
+        value: '{"category":"feedback","urgent":false}'
+      # - type: llm-rubric        # ← Day 58: grade with a model
+      #   value: "category is feedback and urgent is false"
+
+# CI:  promptfoo eval --no-cache && promptfoo eval --output out.json
+#      then fail the job if pass-rate drops vs the committed baseline.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 57 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>prompt evals</strong>: treat a prompt like code you can test. Pin a fixed <strong>test set</strong> (inputs + expected answers or assertions), write candidate <strong>variants</strong>, and grade every <span class="mono">(variant × test)</span> with deterministic <strong>graders</strong> — exact-match, contains, regex, JSON-valid and a rubric score — into a <strong>results matrix</strong>. Read the winner off the highest <strong>pass-rate</strong> (tie-broken by <strong>avg score</strong>, which captures partial quality a binary gate can't), keep a <strong>holdout</strong> so you don't overfit the prompt to the tests, and — the part that actually saves you — <strong>diff the candidate against a baseline</strong> so a change that lifts the average can't silently regress a case that used to pass. Run it locally with a tiny harness or from the CLI with <span class="mono">promptfoo</span>, and gate it in CI so quality can only go up. It's the discipline layer under everything in this series: every pattern from Days 1–56 becomes shippable once you can <em>measure</em> it. <strong>👉 Next up — LLM-as-judge: when the &ldquo;right answer&rdquo; is fuzzy (tone, helpfulness, faithfulness), grade outputs with a model against a rubric instead of an exact string.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// Pure, DOM-free logic (node-testable). Nothing here touches the
+// DOM, so `node --check` parses it and the eval harness — grade,
+// matrix, stats, winner, diff — can be driven headlessly.
+// ============================================================
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// --- the grader: (type, output, assertion) -> { pass, score, detail } ---
+// Deterministic, no network. Binary graders score 1/0; rubric is a fraction.
+function grade(type, output, assertion){
+  const out = String(output);
+  switch(type){
+    case "exact_match": {
+      const pass = out.trim() === String(assertion).trim();
+      return { pass, score: pass?1:0, detail: pass?"exact match":"differs from expected" };
+    }
+    case "contains": {
+      const pass = out.toLowerCase().includes(String(assertion).toLowerCase());
+      return { pass, score: pass?1:0, detail: pass?('contains "'+assertion+'"'):('missing "'+assertion+'"') };
+    }
+    case "regex": {
+      let re;
+      try { re = new RegExp(assertion); } catch(e){ return { pass:false, score:0, detail:"invalid regex" }; }
+      const pass = re.test(out);
+      return { pass, score: pass?1:0, detail: pass?"regex matched":"no regex match" };
+    }
+    case "json_valid": {
+      let pass=false; try { JSON.parse(out); pass=true; } catch(e){ pass=false; }
+      return { pass, score: pass?1:0, detail: pass?"valid JSON":"not parseable JSON" };
+    }
+    case "rubric": {
+      const kws = String(assertion).split(",").map(s=>s.trim()).filter(Boolean);
+      if(!kws.length) return { pass:false, score:0, detail:"no rubric keywords" };
+      const hit = kws.filter(k => out.toLowerCase().includes(k.toLowerCase()));
+      const score = hit.length / kws.length;
+      const pass = score >= 0.5;
+      return { pass, score, detail: hit.length+"/"+kws.length+" keywords (thr 0.5)" };
+    }
+    default: return { pass:false, score:0, detail:"unknown grader" };
+  }
+}
+
+// --- the eval harness: fill the matrix, reduce, rank, diff ---
+// cells[variantId][testId] = grade result.
+function evalMatrix(variants, tests, outputs, config){
+  const cells = {};
+  variants.forEach(v => {
+    cells[v.id] = {};
+    tests.forEach(t => {
+      const cfg = config[t.id];
+      const out = outputs[v.id][t.id];
+      cells[v.id][t.id] = grade(cfg.grader, out, cfg.assertion);
+    });
+  });
+  return cells;
+}
+function variantStats(variant, tests, cells){
+  const results = tests.map(t => cells[variant.id][t.id]);
+  const passes = results.filter(r => r.pass).length;
+  return {
+    passes, total: tests.length,
+    passRate: passes / tests.length,
+    avgScore: results.reduce((a,r) => a + r.score, 0) / tests.length
+  };
+}
+function pickWinner(variants, tests, cells){
+  let best = null;
+  variants.forEach(v => {
+    const stats = variantStats(v, tests, cells);
+    if(!best || stats.passRate > best.stats.passRate ||
+       (stats.passRate === best.stats.passRate && stats.avgScore > best.stats.avgScore)){
+      best = { variant:v, stats };
+    }
+  });
+  return best;
+}
+function diffVariants(baseId, candId, tests, cells){
+  return tests.map(t => {
+    const b = cells[baseId][t.id].pass;
+    const c = cells[candId][t.id].pass;
+    let kind = "same";
+    if(!b && c) kind = "improved";
+    else if(b && !c) kind = "regressed";
+    return { testId:t.id, base:b, cand:c, kind };
+  });
+}
+
+// ============================================================
+// Baked data: 3 variants, 5 tests, deterministic canned outputs.
+// Task: classify a support email -> {category, urgent}.
+// V1 = naive (prose), V2 = +JSON schema, V3 = +few-shot.
+// ============================================================
+const VARIANTS = [
+  { id:"v1", name:"V1 · Naive", tag:"just classify",
+    prompt:"Classify this support email." },
+  { id:"v2", name:"V2 · +JSON schema", tag:"format pinned",
+    prompt:'Classify the email. Return ONLY JSON:\n{"category": string, "urgent": boolean}' },
+  { id:"v3", name:"V3 · +few-shot", tag:"examples added",
+    prompt:'Classify → JSON {category,urgent}. Examples:\n"site is down for all" → {"category":"technical","urgent":true}\n"payment failed, locked out" → {"category":"billing","urgent":true}' }
+];
+
+const TESTS = [
+  { id:"t1", input:"I was charged twice this month.",
+    truth:"billing / not urgent", grader:"json_valid", assertion:"" },
+  { id:"t2", input:"How do I reset my password?",
+    truth:"account / not urgent", grader:"contains", assertion:"account" },
+  { id:"t3", input:"The whole site is down, nobody can log in!",
+    truth:"technical / URGENT", grader:"regex", assertion:'"urgent"\\s*:\\s*true' },
+  { id:"t4", input:"Just wanted to say thanks — love the product!",
+    truth:"feedback / not urgent", grader:"exact_match", assertion:'{"category":"feedback","urgent":false}' },
+  { id:"t5", input:"My payment failed and now I can't access my account at all.",
+    truth:"billing / URGENT", grader:"rubric", assertion:'billing, "urgent":true, access' }
+];
+
+// canned "model outputs": OUTPUTS[variantId][testId]
+const OUTPUTS = {
+  v1: {
+    t1:"This is a billing issue — the customer was charged twice.",
+    t2:"The customer wants to reset their password, so it's an account request.",
+    t3:"This is a technical problem: the site appears to be down.",
+    t4:"This is positive feedback thanking us for the product.",
+    t5:"This looks like a billing question about a failed payment."
+  },
+  v2: {
+    t1:'{"category":"billing","urgent":false}',
+    t2:'{"category":"account","urgent":false}',
+    t3:'{"category":"technical","urgent":false}',
+    t4:'{"category":"feedback","urgent":false}',
+    t5:'{"category":"billing","urgent":false}'
+  },
+  v3: {
+    t1:'{"category":"billing","urgent":false}',
+    t2:'{"category":"account","urgent":false}',
+    t3:'{"category":"technical","urgent":true}',
+    t4:'{"category":"feedback","urgent":true}',
+    t5:'{"category":"billing","urgent":true}'
+  }
+};
+
+function defaultConfig(){
+  const cfg = {};
+  TESTS.forEach(t => { cfg[t.id] = { grader:t.grader, assertion:t.assertion }; });
+  return cfg;
+}
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+
+// ============================================================
+// Browser mount — all DOM wiring lives here so the pure logic
+// above stays headless-testable. Only runs in a browser.
+// ============================================================
+function mount(){
+  // ---- tabs ----
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(p => p.classList.add("hidden"));
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+
+  // ============================================================
+  // LOOK — a REAL, deterministic prompt-eval harness.
+  //  - VARIANTS / TESTS / OUTPUTS is the baked data.
+  //  - `config` is the LIVE, editable grader config (per test).
+  //  - recompute() re-grades everything from config on every edit.
+  // ============================================================
+  const GRADERS = [
+    { id:"exact_match", label:"exact-match" },
+    { id:"contains",    label:"contains" },
+    { id:"regex",       label:"regex" },
+    { id:"json_valid",  label:"JSON-valid" },
+    { id:"rubric",      label:"rubric score" }
+  ];
+  function graderHint(g){
+    if(g==="exact_match") return "output must equal this exactly";
+    if(g==="contains")    return "output must contain this substring";
+    if(g==="regex")       return "output must match this regex";
+    if(g==="json_valid")  return "— (checks output parses as JSON)";
+    if(g==="rubric")      return "comma-separated required keywords";
+    return "";
+  }
+
+  let config = defaultConfig();
+  let baseId = "v2", candId = "v3";
+
+  const variantsCard = document.getElementById("variantsCard");
+  const testEditor   = document.getElementById("testEditor");
+  const matrixCard   = document.getElementById("matrixCard");
+  const diffCard     = document.getElementById("diffCard");
+  const baseSel      = document.getElementById("baseSel");
+  const candSel      = document.getElementById("candSel");
+  const resetBtn     = document.getElementById("resetBtn");
+
+  // ---- variant cards (winner marked on recompute) ----
+  function renderVariants(winnerId){
+    variantsCard.innerHTML = "";
+    VARIANTS.forEach(v => {
+      const el = document.createElement("div");
+      el.className = "vcard" + (v.id===winnerId ? " win" : "");
+      el.innerHTML = `<div class="vn">${escapeHtml(v.name)}${v.id===winnerId?' 🏆':''}</div>
+        <div class="vt">${escapeHtml(v.tag)}</div>
+        <div class="vp">${escapeHtml(v.prompt)}</div>`;
+      variantsCard.appendChild(el);
+    });
+  }
+
+  // ---- editable test/grader rows ----
+  function buildEditor(){
+    testEditor.innerHTML = "";
+    TESTS.forEach(t => {
+      const row = document.createElement("div"); row.className = "erow";
+
+      const lab = document.createElement("div"); lab.className = "einput";
+      lab.innerHTML = `<div class="etxt">"${escapeHtml(t.input)}"</div><div class="etruth">truth: ${escapeHtml(t.truth)}</div>`;
+
+      const sel = document.createElement("select"); sel.className = "esel";
+      GRADERS.forEach(g => {
+        const o = document.createElement("option");
+        o.value = g.id; o.textContent = g.label;
+        if(g.id === config[t.id].grader) o.selected = true;
+        sel.appendChild(o);
+      });
+
+      const inp = document.createElement("input"); inp.className = "eassert";
+      inp.value = config[t.id].assertion;
+
+      function applyState(){
+        const g = config[t.id].grader;
+        inp.disabled = (g === "json_valid");
+        inp.placeholder = graderHint(g);
+      }
+      sel.onchange = () => { config[t.id].grader = sel.value; applyState(); recompute(); };
+      inp.oninput  = () => { config[t.id].assertion = inp.value; recompute(); };
+      applyState();
+
+      row.appendChild(lab); row.appendChild(sel); row.appendChild(inp);
+      testEditor.appendChild(row);
+    });
+  }
+
+  // ---- variant pickers for the diff ----
+  function buildPickers(){
+    [baseSel, candSel].forEach((selEl, k) => {
+      selEl.innerHTML = "";
+      VARIANTS.forEach(v => {
+        const o = document.createElement("option");
+        o.value = v.id; o.textContent = v.name;
+        if((k===0 && v.id===baseId) || (k===1 && v.id===candId)) o.selected = true;
+        selEl.appendChild(o);
+      });
+    });
+    baseSel.onchange = () => { baseId = baseSel.value; recompute(); };
+    candSel.onchange = () => { candId = candSel.value; recompute(); };
+  }
+
+  function renderMatrix(cells, winner){
+    let h = `<table class="matrix"><thead><tr><th class="rowh">test&nbsp;\\&nbsp;variant</th>`;
+    VARIANTS.forEach(v => {
+      const win = v.id === winner.variant.id;
+      h += `<th class="${win?'winner-col':''}">${escapeHtml(v.name)}${win?' 🏆':''}</th>`;
+    });
+    h += `</tr></thead><tbody>`;
+    TESTS.forEach(t => {
+      h += `<tr><td class="rowh"><div class="tinput">"${escapeHtml(t.input)}"</div><div class="tmeta">${escapeHtml(config[t.id].grader)} · truth: ${escapeHtml(t.truth)}</div></td>`;
+      VARIANTS.forEach(v => {
+        const c = cells[v.id][t.id];
+        const win = v.id === winner.variant.id;
+        h += `<td class="${c.pass?'cell-pass':'cell-fail'} ${win?'winner-col':''}" title="${escapeHtml(c.detail)}">${c.pass?'✓ PASS':'✗ FAIL'}<div class="cscore">score ${c.score.toFixed(2)}</div></td>`;
+      });
+      h += `</tr>`;
+    });
+    // footer: pass-rate + avg score
+    h += `<tr class="footrow"><td class="rowh">pass-rate · avg score</td>`;
+    VARIANTS.forEach(v => {
+      const s = variantStats(v, TESTS, cells);
+      const win = v.id === winner.variant.id;
+      h += `<td class="${win?'winner-col':''}"><div class="prate">${Math.round(s.passRate*100)}%</div><div class="cscore">${s.passes}/${s.total} · avg ${s.avgScore.toFixed(2)}</div></td>`;
+    });
+    h += `</tr></tbody></table>`;
+    matrixCard.innerHTML = h;
+  }
+
+  function renderDiff(cells){
+    const baseV = VARIANTS.find(v => v.id===baseId);
+    const candV = VARIANTS.find(v => v.id===candId);
+    if(baseId === candId){
+      diffCard.innerHTML = `<div class="callout info">Pick two <em>different</em> variants to see what a change moved. Try <b>baseline V2 → candidate V3</b>.</div>`;
+      return;
+    }
+    const d = diffVariants(baseId, candId, TESTS, cells);
+    const improved = d.filter(x => x.kind==="improved").length;
+    const regressed = d.filter(x => x.kind==="regressed").length;
+    const bs = variantStats(baseV, TESTS, cells), cs = variantStats(candV, TESTS, cells);
+
+    let h = "";
+    if(regressed > 0){
+      h += `<div class="callout bad mb-3"><b>⚠️ ${regressed} regression${regressed>1?'s':''} despite pass-rate ${Math.round(bs.passRate*100)}% → ${Math.round(cs.passRate*100)}%.</b> ${escapeHtml(candV.name)} improved ${improved} test${improved!==1?'s':''} but <b>dropped ${regressed}</b> that ${escapeHtml(baseV.name)} passed. A single headline number would hide this — the diff won't. <b>Block the ship until the regression is understood.</b></div>`;
+    } else if(improved > 0){
+      h += `<div class="callout good mb-3"><b>✓ Clean win — no regressions.</b> ${escapeHtml(candV.name)} improved ${improved} test${improved!==1?'s':''} and dropped none vs ${escapeHtml(baseV.name)} (pass-rate ${Math.round(bs.passRate*100)}% → ${Math.round(cs.passRate*100)}%). Safe to ship.</div>`;
+    } else {
+      h += `<div class="callout info mb-3"><b>No change.</b> ${escapeHtml(candV.name)} passes exactly the same tests as ${escapeHtml(baseV.name)} under the current graders.</div>`;
+    }
+    h += `<div class="difflist">`;
+    d.forEach((x, i) => {
+      const t = TESTS[i];
+      const tag = x.kind==="improved" ? "▲ improved" : x.kind==="regressed" ? "▼ regressed" : "= same";
+      const move = `${x.base?'PASS':'FAIL'} → ${x.cand?'PASS':'FAIL'}`;
+      h += `<div class="diffrow ${x.kind}"><span class="dtag">${tag}</span><span class="dtxt">"${escapeHtml(t.input)}"</span><span class="dmove">${move}</span></div>`;
+    });
+    h += `</div>`;
+    diffCard.innerHTML = h;
+  }
+
+  function recompute(){
+    const cells = evalMatrix(VARIANTS, TESTS, OUTPUTS, config);
+    const winner = pickWinner(VARIANTS, TESTS, cells);
+    renderVariants(winner.variant.id);
+    renderMatrix(cells, winner);
+    renderDiff(cells);
+  }
+
+  resetBtn.onclick = () => { config = defaultConfig(); buildEditor(); recompute(); };
+
+  buildEditor();
+  buildPickers();
+  recompute();
+
+  // ============================================================
+  // UNDERSTAND — step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. Eyeballing prompt changes doesn't scale", why:"The default way to iterate on a prompt is to tweak it, run one input you happen to care about, skim the output, and decide it 'feels better'. That works for exactly one case and forgets it the moment you move on. You never see the input the change broke, you can't compare two candidates fairly, and 'better' is a vibe you can't defend to anyone — or to yourself next week. The instant a prompt matters (it's in production, or a teammate depends on it), eyeballing becomes the thing that ships a regression.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">tweak → glance at ONE output<br>"yeah, feels better" → ship<br>the case you broke = invisible<br>"better" = an undefendable vibe</div>`,
+     code:`// eyeballing: n=1, no memory, no comparison.
+//   tweak prompt → look at one output → ship on a vibe
+//   → the regression you can't see is the one that bites` },
+   { title:"2. The eval loop — test set × variants → graders → matrix", why:"Eval-driven prompt development replaces the vibe check with a measurement. Fix a TEST SET (inputs + how to judge each output), write a few candidate VARIANTS of the prompt, run every variant against every test, and let GRADERS turn each cell into a pass/fail and a score. The output is a matrix you can read: which variant wins, on which cases, and by how much. It's the 'promptfoo-style' loop — the same one CI runs on every prompt change.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">test set (inputs + assertions)<br>× variants (candidate prompts)<br>─► graders ─► results matrix<br>pass-rate · avg score · winner</div>`,
+     code:`// the loop:
+for (const v of variants)
+  for (const t of tests)
+    matrix[v][t] = grade(t.grader, run(v, t.input), t.assertion);` },
+   { title:"3. The test set — inputs + expected answers / assertions", why:"A test is an input plus how to judge the output. Sometimes you have a gold EXPECTED answer (exact-match); more often you have an ASSERTION — a property the output must have ('contains account', 'is valid JSON', 'urgent is true'). Curate the set deliberately: cover the easy path AND the edge cases that bite (the empty input, the sarcastic thank-you, the multi-issue email). Keep it versioned so every change is judged on the same bar, and keep a HOLDOUT slice you never tune against — otherwise you overfit the prompt to the tests and the score lies.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">test = input + assertion<br>cover easy AND edge cases<br>version it (same bar each run)<br>holdout ≠ tuning set (no overfit)</div>`,
+     code:`{ input: "site is down for everyone!",
+  grader: "regex", assertion: '"urgent"\\s*:\\s*true' }
+// input + how-to-judge; keep a holdout you never tune on` },
+   { title:"4. Assertions & graders — deterministic beats a human eye", why:"A grader is a function (output, assertion) → {pass, score}. The best ones are DETERMINISTIC: exact-match, contains, regex, and JSON-valid need no model, run in milliseconds, cost nothing, and give the same answer every time — so they're perfect for CI. Prefer them wherever the correctness is objective (right format, right field, right value). Reserve model-graded assertions (LLM-as-judge, Day 58) for the genuinely fuzzy stuff — tone, helpfulness, faithfulness — where no string check can capture 'good'.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">grader(output, assertion) → {pass, score}<br>deterministic: exact · contains<br>· regex · json-valid  (fast, free, CI)<br>model-graded: only for fuzzy quality</div>`,
+     code:`function grade(type, out, a){
+  if (type==="json_valid"){ try{JSON.parse(out);return{pass:1,score:1}}catch{return{pass:0,score:0}} }
+  // exact_match / contains / regex ... all deterministic
+}` },
+   { title:"5. The five graders in the demo", why:"EXACT-MATCH: output equals the expected string (strict — great for a canonical JSON answer). CONTAINS: a required substring is present (loose — 'mentions account'). REGEX: matches a pattern (surgical — '\"urgent\":true' regardless of spacing). JSON-VALID: parses as JSON at all (a format gate, ignores the value). RUBRIC: a graded score — here, the fraction of required keywords present, passing at a threshold. Toggle any test's grader in the LOOK tab and watch cells flip: the SAME output passes or fails depending on what you assert. Choosing the right grader is half the skill.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">exact  · strict equality<br>contains · substring present<br>regex  · pattern match<br>json-valid · parses at all<br>rubric · fraction of keywords (0..1)</div>`,
+     code:`// same output, different grader → different verdict:
+//   '{"category":"billing","urgent":false}'
+//   contains "billing" → PASS   |   regex "urgent":true → FAIL` },
+   { title:"6. Pass-rate vs rubric score — a gate and a dial", why:"Two numbers summarise a variant, and they answer different questions. PASS-RATE is the fraction of tests that pass — a hard GATE, the thing you gate CI on. AVG SCORE is the mean cell score — a DIAL that captures partial quality a pass/fail can't: a rubric cell can score 0.67, so two variants with the same pass-rate can still be ranked by how close their near-misses were. Report both. Pass-rate says 'is it acceptable?'; avg score says 'how good, and is it trending up?'.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pass-rate = #pass / #tests  (GATE)<br>avg score = mean cell score (DIAL)<br>same pass-rate, diff avg score<br>→ the dial breaks the tie</div>`,
+     code:`passRate = cells.filter(c=>c.pass).length / cells.length;   // gate
+avgScore = cells.reduce((a,c)=>a+c.score,0) / cells.length;  // dial` },
+   { title:"7. The results matrix — read columns AND rows", why:"The matrix is variants across the columns, tests down the rows. Read a COLUMN to judge a variant overall (its pass-rate and avg score). Read a ROW to see which variants handle a specific case — often the most revealing view, because it exposes the one hard test that only your best prompt gets right. A promptfoo table adds another axis: providers/models as columns too, so you compare prompts AND models in one grid. The matrix is the whole point — it makes 'which is better' a thing you look at, not argue about.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">      V1   V2   V3<br>t1  ✗    ✓    ✓<br>t3  ✗    ✗    ✓   ← only V3<br>t4  ✗    ✓    ✗   ← V3 dropped it<br>col = variant · row = case</div>`,
+     code:`// column → a variant's overall quality
+// row    → which variant handles THIS case
+// (promptfoo also puts models on columns → prompt × model grid)` },
+   { title:"8. Picking a winner — highest pass-rate, then avg score", why:"The winner is mechanical: the variant with the highest pass-rate, tie-broken by avg score. No cherry-picked demo, no 'I like V3's tone' — the fixed test set already encoded what 'good' means, so the ranking just falls out. Two cautions. Don't declare victory on a tiny test set (5 cases is a teaching size; real sets are dozens-plus). And don't tune the prompt against the test set until the number looks nice — that's overfitting; the holdout is what tells you the win is real.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">winner = max pass-rate<br>tie → max avg score<br>beware: tiny set = noisy<br>beware: tuning to the set = overfit</div>`,
+     code:`const winner = rows.slice().sort((a,b)=>
+  b.passRate - a.passRate || b.avgScore - a.avgScore)[0];
+// mechanical — the test set already defined "good"` },
+   { title:"9. Guarding against regressions — the part that saves you", why:"A prompt change almost never strictly dominates. V3's few-shot examples finally catch the urgent cases V2 missed (pass-rate 60% → 80%) — but the same examples make it over-trigger 'urgent' on a friendly thank-you, so it REGRESSED a test V2 passed. The headline pass-rate went UP while a specific behaviour got WORSE. That's exactly the trap eyeballing can't catch. The fix: diff the candidate against a baseline cell-by-cell, flag any pass → fail, and gate CI on it — a change can raise the average and still be blocked until you understand what it broke.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">V2 → V3 : 60% → 80%  (looks great)<br>t3 FAIL→PASS ▲   t5 FAIL→PASS ▲<br>t4 PASS→FAIL ▼  ← regression!<br>gate CI on any pass→fail</div>`,
+     code:`const dropped = tests.filter((t,i)=> base.cells[i].pass && !cand.cells[i].pass);
+if (dropped.length) throw new Error("regression — block the ship");
+// higher pass-rate can still hide a worse behaviour` },
+   { title:"10. In practice — promptfoo, CI, and what's next", why:"You rarely hand-roll the harness. promptfoo is the de-facto tool: declare prompts, providers (models) and tests in a YAML config, attach assertions per test, run `npx promptfoo eval` for the matrix and `promptfoo view` for the web UI. Wire it into CI so every prompt PR runs the eval and a regression fails the build — prompts get the same safety net as code. This is the discipline layer under this whole series: every pattern from Days 1–56 becomes shippable once you can measure it. Next: LLM-as-judge — when the right answer is fuzzy (tone, helpfulness, faithfulness), grade with a model against a rubric instead of a string.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">promptfooconfig.yaml → npx promptfoo eval<br>assertions per test · models as columns<br>CI gate: regression = red build<br>next → LLM-as-judge (fuzzy quality)</div>`,
+     code:`# promptfooconfig.yaml
+prompts: [ ... ]     # your candidate variants
+providers: [ ... ]   # models to compare
+tests: [ { vars, assert: [ {type: contains, value: account} ] } ]
+# npx promptfoo eval  → matrix ;  gate CI on the pass-rate` }
+  ];
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+  function show(i){ curStep=i; const s=STEPS[i];
+    document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+    document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+    document.getElementById("code").textContent=s.code;
+    stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+  }
+  prevB.onclick=()=>show(Math.max(0,curStep-1)); nextBtn.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+  let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = { grade, evalMatrix, variantStats, pickWinner, diffVariants, VARIANTS, TESTS, OUTPUTS, defaultConfig };
+</script>
+</body>
+</html>
