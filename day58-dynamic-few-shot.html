@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 58 — Dynamic Few-Shot (kNN exemplar selection)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== query box + presets ===== */
+  .qbox { width:100%; font-size:13.5px; font-weight:700; color:#0f172a; padding:11px 13px; border-radius:12px; border:2px solid #ddd6fe; background:#faf5ff; }
+  .qbox:focus { outline:none; border-color:#8b5cf6; }
+  .qchip { font-size:11.5px; font-weight:700; padding:6px 11px; border-radius:999px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .qchip:hover { border-color:#c4b5fd; }
+  .qchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+
+  /* ===== k slider ===== */
+  .krow { display:flex; align-items:center; gap:12px; }
+  .krow input[type=range] { flex:1; accent-color:#8b5cf6; }
+  .kval { font-size:20px; font-weight:900; color:#7c3aed; min-width:34px; text-align:center; }
+
+  /* ===== exemplar pool rows ===== */
+  .exlist { display:flex; flex-direction:column; gap:6px; }
+  .exrow { border:1px solid #e2e8f0; border-radius:12px; padding:9px 11px; background:#fff; transition:.15s; position:relative; }
+  .exrow.sel { border-color:#8b5cf6; background:#f5f3ff; box-shadow:0 2px 8px rgba(139,92,246,.10); }
+  .exrow.dim { opacity:.5; }
+  .exrow .top { display:flex; align-items:center; gap:8px; }
+  .exrow .rank { font-size:10px; font-weight:900; color:#94a3b8; width:26px; flex:none; }
+  .exrow .txt { font-size:12.5px; font-weight:700; color:#0f172a; flex:1; }
+  .lbl { font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:999px; flex:none; }
+  .selpill { font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; padding:2px 8px; border-radius:999px; background:#8b5cf6; color:#fff; flex:none; }
+  .simwrap { display:flex; align-items:center; gap:8px; margin-top:6px; }
+  .simbar { height:7px; border-radius:999px; background:#eef2f7; overflow:hidden; flex:1; border:1px solid #eef2f7; }
+  .simbar .fill { height:100%; background:linear-gradient(90deg,#8b5cf6,#d946ef); transition:width .3s; }
+  .simnum { font-size:11px; font-weight:800; color:#64748b; min-width:64px; text-align:right; }
+  .toks { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; padding-left:34px; }
+  .tok { font-size:10px; font-weight:800; padding:1px 7px; border-radius:999px; background:#ede9fe; color:#6d28d9; }
+  .tok.none { background:#f1f5f9; color:#94a3b8; }
+
+  /* ===== assembled prompt boxes ===== */
+  .promptbox { background:#0f172a; color:#e2e8f0; border-radius:12px; padding:12px 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11.5px; line-height:1.55; overflow:auto; white-space:pre-wrap; }
+  .promptbox .hdr { color:#a5b4fc; }
+  .promptbox .msg { color:#e2e8f0; }
+  .promptbox .lab { color:#6ee7b7; font-weight:700; }
+  .promptbox .ann { color:#64748b; }
+  .promptbox .qline { color:#fcd34d; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 58</div>
+      <h1 class="text-xl font-bold">🎯 Dynamic Few-Shot — instead of pasting the <strong>same static examples</strong> into every prompt (that's Day&nbsp;4), you keep a <strong>pool of labeled exemplars</strong> and, for each incoming input, <strong>retrieve the k most similar ones</strong> and build the few-shot prompt <em>on the fly</em>. It's <strong>kNN in embedding space</strong>: embed every exemplar once, embed the query, score each exemplar by <span class="mono">cosine</span> similarity, take the <strong>top-k</strong>, and paste <em>only those</em> in front of the question. Why bother? A fixed example set is a compromise — it has to cover every kind of input at once, so for any <em>particular</em> input most of its examples are irrelevant noise, and the cases it happens not to cover get no help at all. Dynamic selection makes the examples <strong>relevant to this input</strong>: a billing question pulls billing exemplars, a cancellation question pulls cancellation exemplars — the model sees the pattern that actually matches what it's being asked, which lifts accuracy and lets a <em>small</em> k beat a big static block on both quality <em>and</em> tokens. This page is genuinely interactive with <strong>no API and no network</strong>: a self-contained JS demo with a <strong>15-exemplar pool</strong>, a query box (type your own or pick a preset), a lightweight <strong>TF-IDF bag-of-words embedding</strong> that scores every exemplar against your query by cosine, a <strong>k slider</strong>, and the <strong>assembled dynamic prompt</strong> rendered live — with each pick's similarity score and shared terms — right next to a <strong>fixed static-few-shot</strong> prompt so you can watch dynamic surface more relevant exemplars per query. Everything is deterministic. Distinct from Day&nbsp;4 (static few-shot — one fixed set for all) and a cousin of RAG (Day&nbsp;5) — here we retrieve <em>examples</em>, not facts.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Stop pasting the <span class="text-rose-500">same examples</span> every time. Type a query, and watch a <span class="text-violet-600">kNN retriever</span> score all 15 exemplars, pick the <span class="text-violet-600">top-k</span> most similar, and assemble a <span class="text-emerald-600">prompt tailored to this input</span> — beside the fixed static block that can't.</h2>
+        <p class="text-slate-500 mb-5">Everything below is deterministic (no API key, no network): a <b>TF-IDF bag-of-words</b> embedding scores every exemplar against your query by <b>cosine similarity</b> — the real math, running live in your browser. <b>Type a support message</b> (or pick a preset), <b>drag the k slider</b>, and watch the ranked pool, the similarity bars, and the <b>assembled dynamic prompt</b> recompute. The static prompt on the right never changes — so on a <b>cancellation</b> or <b>feedback</b> query, which the fixed set doesn't cover, notice dynamic surfaces the on-topic exemplars while static offers none.</p>
+      </div>
+
+      <!-- query + presets -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🔎 The query — the incoming input we build a few-shot prompt for</div>
+        <input id="queryInput" class="qbox mb-3" />
+        <div class="flex flex-wrap gap-2" id="presetChips"></div>
+      </div>
+
+      <!-- k slider -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🎚 k — how many nearest exemplars to paste</div>
+          <span class="text-xs text-slate-400">1 = brittle · big k = dilutes + costs tokens</span>
+        </div>
+        <div class="krow">
+          <span class="text-xs font-bold text-slate-400">1</span>
+          <input id="kSlider" type="range" min="1" max="8" value="3" />
+          <span class="text-xs font-bold text-slate-400">8</span>
+          <span class="kval" id="kVal">3</span>
+        </div>
+      </div>
+
+      <!-- ranked pool -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🗂 The exemplar pool — <span class="normal-case font-normal text-slate-400">15 labeled examples, ranked by cosine similarity to your query · top-k selected</span></div>
+        <div class="exlist" id="poolList"></div>
+      </div>
+
+      <!-- static vs dynamic prompts -->
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-rose-200 p-4 flex flex-col">
+          <div class="text-xs uppercase font-bold text-rose-600 tracking-wider mb-2">🅐 Static few-shot <span class="text-slate-400 normal-case font-normal">— fixed 4, same every query (Day 4)</span></div>
+          <div class="promptbox" id="staticPrompt" style="flex:1;"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🅑 Dynamic few-shot <span class="text-slate-400 normal-case font-normal">— top-k for THIS query</span></div>
+            <button class="btn" id="copyDyn">📋 Copy prompt</button>
+          </div>
+          <div class="promptbox" id="dynamicPrompt" style="flex:1;"></div>
+        </div>
+      </div>
+
+      <div id="compareBox" class="mb-3"></div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Static few-shot fixes the examples; dynamic few-shot fixes the <em>pool</em> and picks per input.</strong> A static block has to serve every possible input with one set of examples, so it's a permanent compromise: for any single query most of its examples are off-topic filler that spends tokens and dilutes the pattern, and any input whose kind it didn't anticipate gets no relevant demonstration at all. Dynamic few-shot flips that — you curate a broad <em>pool</em> once, embed it once, and at request time retrieve the <span class="mono">k</span> exemplars nearest the query in embedding space (kNN by cosine) and paste only those. The examples the model sees are now <em>about the thing it's being asked</em>, so a smaller k carries more signal than a bigger static block. Watch it here: on a <span class="mono">cancellation</span> query the static set — billing/shipping/technical/account — offers nothing on point, while the retriever surfaces the two cancellation exemplars at the top. The lightweight TF-IDF embedding matches on shared words (a real system swaps in dense embeddings that also catch synonyms), but the machinery is identical: <strong>embed once, score by cosine, take top-k, assemble on the fly.</strong>
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Dynamic few-shot = a labeled exemplar pool + an embedding + cosine kNN → the k most similar examples, assembled into a per-input few-shot prompt. Relevant examples, small k, no wasted tokens.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How dynamic few-shot works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Dynamic few-shot is a tiny retriever glued to your prompt builder: a <em>pool</em> of labeled exemplars, an <em>embedding</em> (computed once), a <em>cosine</em> ranker, a <em>top-k</em> selector, and an <em>assembler</em> that pastes only the winners. Below is the exact deterministic harness the demo runs — plain, dependency-free functions you can lift straight into a project — followed by the production shape (real embeddings, precomputed and cached) and a copy-paste assembly template. Same idea both ways: <strong>embed once, score by cosine, take top-k, build the prompt on the fly.</strong></p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — retrieve examples, don't hard-code them</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Static few-shot (Day 4) pastes the <em>same</em> examples into every prompt — a compromise that serves no input especially well. Dynamic few-shot keeps a <em>pool</em> and, per input, retrieves the k most similar exemplars and pastes only those. The examples become relevant to <em>this</em> request, so a small k beats a big static block.</p>
+        <div class="relative"><pre>// Static few-shot →  same examples every time (Day 4):
+//   prompt = FIXED_EXAMPLES + query
+//   (most are off-topic for any single query; uncovered kinds get nothing)
+//
+// Dynamic few-shot →  retrieve the k nearest per input:
+//   pool → embed once → score(query) by cosine → top-k → prompt
+//   (the examples now match THIS input; small k, high signal)</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">The exemplar pool — labeled examples, curated once</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The pool is your knowledge base of demonstrations: input + the label/output you want the model to imitate. Curate for <em>coverage</em> (every category you expect), <em>quality</em> (correct, canonical labels — a wrong exemplar teaches the wrong thing), and <em>no near-duplicates</em>. This is the exact pool the demo ranks.</p>
+        <div class="relative"><pre>// STEP 2 — the exemplar pool (input + gold label).
+const POOL = [
+  { text: "I was charged twice and need a refund.", label: "billing" },
+  { text: "Where is my package? Delivery has not arrived.", label: "shipping" },
+  { text: "The app crashes with an error every time.", label: "technical" },
+  { text: "I forgot my password and cannot login.", label: "account" },
+  { text: "Please cancel my subscription before it renews.", label: "cancellation" },
+  { text: "This product is amazing, thank you!", label: "feedback" },
+  // ...cover every category you expect at inference time
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Embed the text — a vector per exemplar (precompute)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">To measure similarity you need vectors. The demo uses a lightweight <span class="mono">TF-IDF bag-of-words</span>: tokenize, weight each term by how rare it is across the pool (rare words carry more signal), so each text becomes a sparse vector. Crucially, embed the <em>pool</em> once and store it — only the query is embedded per request.</p>
+        <div class="relative"><pre>// STEP 3 — lightweight TF-IDF embedding (deterministic, no model).
+function tokenize(t){ return (t.toLowerCase().match(/[a-z0-9]+/g)||[])
+  .filter(w => w.length >= 2 && !STOP.has(w)); }
+
+function buildIdf(docsTokens){                 // rarity weight per term
+  const N = docsTokens.length, df = {};
+  docsTokens.forEach(toks => new Set(toks).forEach(t => df[t]=(df[t]||0)+1));
+  const idf = {};
+  for (const t in df) idf[t] = Math.log((N+1)/(df[t]+1)) + 1;
+  return idf;
+}
+function vectorize(tokens, idf, dflt){          // vec[term] = tf * idf
+  const tf = {}, v = {};
+  tokens.forEach(t => tf[t]=(tf[t]||0)+1);
+  for (const t in tf) v[t] = tf[t] * (t in idf ? idf[t] : dflt);
+  return v;
+}
+// PRECOMPUTE: const vectors = POOL.map(e => vectorize(tokenize(e.text), idf, dflt));</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Cosine similarity — closeness, ignoring length</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Cosine measures the <em>angle</em> between two vectors, not their magnitude — so a short query and a longer exemplar can still score high if they point the same way (share the important terms). 1.0 = identical direction, 0 = no shared terms. This is the exact scorer the demo runs.</p>
+        <div class="relative"><pre>// STEP 4 — cosine similarity between two sparse vectors.
+function cosine(a, b){
+  let dot = 0, na = 0, nb = 0;
+  for (const k in a){ na += a[k]*a[k]; if (k in b) dot += a[k]*b[k]; }
+  for (const k in b){ nb += b[k]*b[k]; }
+  return (na && nb) ? dot / (Math.sqrt(na) * Math.sqrt(nb)) : 0;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">kNN select — score all, sort, take the top-k</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The selection itself: embed the query, score it against every precomputed exemplar vector, sort by similarity, and keep the k highest. That's k-nearest-neighbours in embedding space — no training, just distance. Return the picks (and their scores) so the assembler and the UI can show <em>why</em> each was chosen.</p>
+        <div class="relative"><pre>// STEP 5 — kNN: score every exemplar, take the k nearest.
+function selectExemplars(query, pool, vectors, idf, dflt, k){
+  const qv = vectorize(tokenize(query), idf, dflt);
+  return pool
+    .map((e, i) => ({ exemplar: e, sim: cosine(qv, vectors[i]) }))
+    .sort((a, b) => b.sim - a.sim)      // nearest first
+    .slice(0, k);                        // top-k
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Assemble the prompt — paste only the selected exemplars</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Build the few-shot prompt from the picks: a task header, each selected exemplar as an input→label pair, then the query with the label left blank. This is what changes per request — same template, different (relevant) examples. This is the exact assembler the demo renders.</p>
+        <div class="relative"><pre>// STEP 6 — assemble the few-shot prompt from the picks.
+function assemblePrompt(picks, query){
+  const header = "Classify the support message into exactly one label:\n" +
+    "billing | shipping | technical | account | cancellation | feedback";
+  const shots = picks
+    .map(p => `Message: "${p.exemplar.text}"\nLabel: ${p.exemplar.label}`)
+    .join("\n\n");
+  return `${header}\n\nExamples:\n${shots}\n\nMessage: "${query}"\nLabel:`;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Wire it up — the per-request pipeline (real embeddings)</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In production swap the TF-IDF stub for a real embedding model, but <strong>precompute the pool once</strong> (embeddings are cache-able and immutable) and, at scale, store them in a vector index so top-k is an <span class="mono">ANN</span> lookup, not a full scan. The request path is just: embed query → retrieve top-k → assemble → call the model.</p>
+        <div class="relative"><pre>// STEP 7 — production pipeline (embed pool ONCE, retrieve per request).
+import { embedMany, embed, generateText } from "ai";
+import { openai } from "@ai-sdk/openai";
+
+const emb = openai.embedding("text-embedding-3-small");
+// ONCE at startup (or store in a vector DB — Pinecone/pgvector/etc.):
+const { embeddings: poolVecs } = await embedMany({ model: emb, values: POOL.map(e => e.text) });
+
+async function dynamicFewShot(query, k = 3){
+  const { embedding: qv } = await embed({ model: emb, value: query });
+  const picks = POOL
+    .map((e, i) => ({ exemplar: e, sim: cosineSim(qv, poolVecs[i]) }))
+    .sort((a, b) => b.sim - a.sim).slice(0, k);        // ANN index at scale
+  const prompt = assemblePrompt(picks, query);
+  const { text } = await generateText({ model: openai("gpt-4o-mini"), prompt });
+  return { text, picks };                               // + which exemplars & scores
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Optional: MMR — trade a little relevance for diversity</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Pure top-k can return k near-duplicates — three ways of saying the same thing — wasting shots. <span class="mono">Maximal Marginal Relevance</span> re-ranks to keep picks that are relevant to the query <em>and</em> different from each other, so the k examples cover more of the input's facets. Tune <span class="mono">λ</span>: 1.0 = pure relevance, lower = more diverse.</p>
+        <div class="relative"><pre>// STEP 8 — MMR: relevance to query MINUS redundancy with picks.
+function mmr(qv, cands, k, lambda = 0.7){
+  const picked = [];
+  while (picked.length < k && cands.length){
+    let best = null;
+    for (const c of cands){
+      const rel = cosine(qv, c.vec);
+      const red = picked.length ? Math.max(...picked.map(p => cosine(c.vec, p.vec))) : 0;
+      const score = lambda * rel - (1 - lambda) * red;    // penalise duplicates
+      if (!best || score > best.score) best = { c, score };
+    }
+    picked.push(best.c);
+    cands = cands.filter(x => x !== best.c);
+  }
+  return picked;
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the dynamic few-shot assembly template</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The shape of the prompt you assemble each request. Retrieve the top-k exemplars for the query, drop them into the <span class="mono">Examples</span> block, and leave the final label blank for the model to complete. Only the examples change from request to request — the header and the query slot stay constant.</p>
+        <div class="relative"><pre>Classify the support message into exactly one label:
+billing | shipping | technical | account | cancellation | feedback
+
+Examples:
+{{#each topK}}
+Message: "{{this.text}}"
+Label: {{this.label}}
+
+{{/each}}
+Message: "{{query}}"
+Label:
+
+# topK = the k exemplars whose embeddings are nearest the query (cosine).
+# Retrieved fresh per request; a cancellation query pulls cancellation
+# exemplars, a billing query pulls billing ones — no wasted shots.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 58 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>dynamic few-shot</strong>: instead of one fixed example set for every input (static few-shot, Day 4), keep a curated <strong>pool of labeled exemplars</strong>, embed it <em>once</em>, and per request retrieve the <strong>k most similar</strong> to the input via <strong>cosine kNN</strong> — then assemble the prompt from only those. The examples become relevant to <em>this</em> input, so a small k carries more signal than a big static block and covers cases the fixed set never anticipated. You saw the whole pipeline live and deterministic: TF-IDF bag-of-words vectors, cosine scoring, a top-k slider, and the assembled prompt rebuilding as you type — with a static block beside it that can't adapt. In production swap the lightweight embedding for a dense model, <strong>precompute and cache the pool vectors</strong>, and use an <strong>ANN vector index</strong> so retrieval stays O(log n); mind the <strong>k tradeoff</strong> (too small is brittle, too big dilutes and burns tokens), consider <strong>MMR</strong> so your k picks aren't near-duplicates, and remember the pool <em>is</em> the model's knowledge — curate for coverage, correctness and dedup. It's the example-retrieval cousin of RAG (Day 5, which retrieves facts) and the adaptive upgrade of static few-shot (Day 4). <strong>👉 Next up — LLM-as-judge: when the &ldquo;right answer&rdquo; is fuzzy (tone, helpfulness, faithfulness), grade outputs with a model against a rubric instead of an exact string.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// Pure, DOM-free logic (node-testable). Nothing here touches the
+// DOM, so `node --check` parses it and the dynamic-few-shot
+// pipeline — embed, cosine, kNN select, assemble — runs headlessly.
+// ============================================================
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// --- tokenizer: lowercase, alnum tokens, drop stopwords / length<2 ---
+const STOP = new Set(("a an the and or but if is are was were be been being to of for on in at by " +
+  "my me you your it its this that these those with without do does did how can could will would " +
+  "should i im youre we us our they them their he she not no get got so very much many every time " +
+  "keep keeps need needs want wants see there here has have had before after then than as about into " +
+  "out up down off over under again more most some any all i").split(/\s+/));
+function tokenize(text){
+  const m = String(text).toLowerCase().match(/[a-z0-9]+/g) || [];
+  return m.filter(w => w.length >= 2 && !STOP.has(w));
+}
+
+// --- term frequency ---
+function termFreq(tokens){
+  const tf = Object.create(null);
+  tokens.forEach(t => { tf[t] = (tf[t] || 0) + 1; });
+  return tf;
+}
+
+// --- IDF over the pool (corpus = exemplar texts): rare terms weigh more ---
+function buildIdf(docsTokens){
+  const N = docsTokens.length;
+  const df = Object.create(null);
+  docsTokens.forEach(toks => { new Set(toks).forEach(t => { df[t] = (df[t] || 0) + 1; }); });
+  const idf = Object.create(null);
+  Object.keys(df).forEach(t => { idf[t] = Math.log((N + 1) / (df[t] + 1)) + 1; });
+  return idf;
+}
+
+// --- vector = tf * idf; unknown (query-only) terms fall back to dflt ---
+function vectorize(tokens, idf, dflt){
+  const tf = termFreq(tokens);
+  const v = Object.create(null);
+  Object.keys(tf).forEach(t => { v[t] = tf[t] * ((t in idf) ? idf[t] : dflt); });
+  return v;
+}
+
+// --- cosine similarity of two sparse vectors (angle, not magnitude) ---
+function cosine(a, b){
+  let dot = 0, na = 0, nb = 0;
+  for (const k in a){ na += a[k] * a[k]; if (k in b) dot += a[k] * b[k]; }
+  for (const k in b){ nb += b[k] * b[k]; }
+  if (na === 0 || nb === 0) return 0;
+  return dot / (Math.sqrt(na) * Math.sqrt(nb));
+}
+
+// --- precompute a "model" from the pool: idf + a vector per exemplar ---
+function buildModel(pool){
+  const docsTokens = pool.map(e => tokenize(e.text));
+  const idf = buildIdf(docsTokens);
+  const vals = Object.keys(idf).map(t => idf[t]);
+  const dflt = vals.length ? Math.max.apply(null, vals) : 1;  // unseen term = rarest
+  const vectors = docsTokens.map(toks => vectorize(toks, idf, dflt));
+  return { idf, dflt, docsTokens, vectors };
+}
+
+// --- score every exemplar vs the query, ranked nearest-first ---
+function scoreAll(query, pool, model){
+  const qTokens = tokenize(query);
+  const qVec = vectorize(qTokens, model.idf, model.dflt);
+  const qSet = new Set(qTokens);
+  return pool.map((e, i) => {
+    const sim = cosine(qVec, model.vectors[i]);
+    const shared = Array.from(new Set(model.docsTokens[i].filter(t => qSet.has(t))));
+    return { index: i, exemplar: e, sim, shared };
+  }).sort((a, b) => (b.sim - a.sim) || (a.index - b.index));  // stable tie-break
+}
+
+// --- kNN: the k nearest exemplars ---
+function selectExemplars(query, pool, model, k){ return scoreAll(query, pool, model).slice(0, k); }
+
+// --- similarity-weighted kNN vote → predicted label (downstream payoff) ---
+function knnVote(picks){
+  const tally = Object.create(null);
+  picks.forEach(p => { tally[p.exemplar.label] = (tally[p.exemplar.label] || 0) + p.sim; });
+  let best = null;
+  Object.keys(tally).forEach(l => { if (!best || tally[l] > best.w) best = { label: l, w: tally[l] }; });
+  return best ? best.label : null;
+}
+
+// --- assemble the few-shot prompt from the selected exemplars ---
+function assemblePrompt(picks, query){
+  const header = "Classify the support message into exactly one label:\n" +
+    "billing | shipping | technical | account | cancellation | feedback";
+  const shots = picks.map(p => `Message: "${p.exemplar.text}"\nLabel: ${p.exemplar.label}`).join("\n\n");
+  return `${header}\n\nExamples:\n${shots}\n\nMessage: "${query}"\nLabel:`;
+}
+
+function mean(xs){ return xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0; }
+
+// ============================================================
+// Baked data: a 15-exemplar labeled pool across 6 categories,
+// a fixed static-few-shot set (4), and preset queries.
+// Task: classify a support message -> a single label.
+// ============================================================
+const POOL = [
+  { text:"I was charged twice and need a refund for the payment.", label:"billing" },
+  { text:"There is a strange charge on my invoice this month.", label:"billing" },
+  { text:"Why was I billed an extra fee for my subscription?", label:"billing" },
+  { text:"Where is my package? The delivery has not arrived.", label:"shipping" },
+  { text:"My order says delivered but the parcel never arrived.", label:"shipping" },
+  { text:"How long does shipping take and can I get a tracking number?", label:"shipping" },
+  { text:"The app crashes with an error every time I open it.", label:"technical" },
+  { text:"I get a 500 error when the page tries to load.", label:"technical" },
+  { text:"The website will not load and keeps freezing.", label:"technical" },
+  { text:"I forgot my password and cannot login to my account.", label:"account" },
+  { text:"How do I change the email address on my account?", label:"account" },
+  { text:"I want to reset my password and enable two-factor login.", label:"account" },
+  { text:"Please cancel my subscription before it renews.", label:"cancellation" },
+  { text:"How can I unsubscribe and cancel the auto-renewal?", label:"cancellation" },
+  { text:"This product is amazing, thank you for the great work!", label:"feedback" }
+];
+
+// fixed static-few-shot set: one billing, one shipping, one technical, one account.
+// Note it has NO cancellation and NO feedback exemplar — the gap dynamic fills.
+const STATIC_INDICES = [0, 3, 6, 9];
+
+const PRESETS = [
+  { label:"🛑 cancellation", q:"I need to cancel my subscription and stop the renewal." },
+  { label:"💬 feedback",     q:"Amazing product and great support, thank you so much!" },
+  { label:"💳 billing",      q:"I see a strange charge on my invoice and want a refund." },
+  { label:"📦 shipping",     q:"My parcel was marked delivered but never arrived." },
+  { label:"🐞 technical",    q:"I get a 500 error and the page will not load." },
+  { label:"🔑 account",      q:"I forgot my password and cannot login." }
+];
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+
+// ============================================================
+// Browser mount — all DOM wiring lives here so the pure logic
+// above stays headless-testable. Only runs in a browser.
+// ============================================================
+function mount(){
+  // ---- tabs ----
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(p => p.classList.add("hidden"));
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+
+  // ============================================================
+  // LOOK — a REAL, deterministic dynamic-few-shot retriever.
+  //  - POOL / STATIC_INDICES / PRESETS is the baked data.
+  //  - MODEL (idf + pool vectors) is precomputed ONCE, like production.
+  //  - recompute() embeds the live query, scores by cosine, takes top-k,
+  //    and rebuilds the assembled prompt on every keystroke / k change.
+  // ============================================================
+  const LABELS = {
+    billing:      { bg:"#eff6ff", fg:"#1e40af" },
+    shipping:     { bg:"#f0fdf4", fg:"#15803d" },
+    technical:    { bg:"#fef2f2", fg:"#b91c1c" },
+    account:      { bg:"#fffbeb", fg:"#92400e" },
+    cancellation: { bg:"#f5f3ff", fg:"#7c3aed" },
+    feedback:     { bg:"#fdf4ff", fg:"#a21caf" }
+  };
+
+  const MODEL = buildModel(POOL);            // precompute once (immutable)
+
+  const queryInput   = document.getElementById("queryInput");
+  const presetChips  = document.getElementById("presetChips");
+  const kSlider      = document.getElementById("kSlider");
+  const kVal         = document.getElementById("kVal");
+  const poolList     = document.getElementById("poolList");
+  const staticPrompt = document.getElementById("staticPrompt");
+  const dynamicPrompt= document.getElementById("dynamicPrompt");
+  const compareBox   = document.getElementById("compareBox");
+  const copyDyn      = document.getElementById("copyDyn");
+
+  let query = PRESETS[0].q;
+  let k = 3;
+  queryInput.value = query;
+
+  function labelBadge(label){
+    const L = LABELS[label] || { bg:"#f1f5f9", fg:"#475569" };
+    return `<span class="lbl" style="background:${L.bg};color:${L.fg};">${escapeHtml(label)}</span>`;
+  }
+
+  function buildPresets(){
+    presetChips.innerHTML = "";
+    PRESETS.forEach(p => {
+      const b = document.createElement("button");
+      b.className = "qchip" + (p.q === query ? " active" : "");
+      b.textContent = p.label;
+      b.onclick = () => { query = p.q; queryInput.value = query; recompute(); };
+      presetChips.appendChild(b);
+    });
+  }
+
+  // ---- ranked exemplar pool (all 15; top-k highlighted as selected) ----
+  function renderPool(scored){
+    const maxSim = scored.length ? scored[0].sim : 0;
+    poolList.innerHTML = "";
+    scored.forEach((s, rank) => {
+      const selected = rank < k;
+      const pct = maxSim > 0 ? Math.round((s.sim / maxSim) * 100) : 0;
+      const toks = s.shared.length
+        ? s.shared.map(t => `<span class="tok">${escapeHtml(t)}</span>`).join("")
+        : `<span class="tok none">no shared terms</span>`;
+      const row = document.createElement("div");
+      row.className = "exrow" + (selected ? " sel" : (s.sim > 0 ? "" : " dim"));
+      row.innerHTML = `
+        <div class="top">
+          <span class="rank">#${rank + 1}</span>
+          ${labelBadge(s.exemplar.label)}
+          <span class="txt">"${escapeHtml(s.exemplar.text)}"</span>
+          ${selected ? `<span class="selpill">✓ in prompt</span>` : ``}
+        </div>
+        <div class="simwrap">
+          <div class="simbar"><div class="fill" style="width:${pct}%"></div></div>
+          <span class="simnum">cos ${s.sim.toFixed(3)}</span>
+        </div>
+        <div class="toks">${toks}</div>`;
+      poolList.appendChild(row);
+    });
+  }
+
+  function promptHtml(picks, withScores){
+    const head = `<span class="hdr">Classify the support message into exactly one label:\n`
+      + `billing | shipping | technical | account | cancellation | feedback</span>\n\nExamples:\n`;
+    const shots = picks.map(p => {
+      const ann = withScores ? `   <span class="ann"># cos ${p.sim.toFixed(3)}${p.shared && p.shared.length ? " · shares: " + p.shared.slice(0,4).join(", ") : ""}</span>` : "";
+      return `<span class="msg">Message: "${escapeHtml(p.exemplar.text)}"</span>${ann}\n<span class="lab">Label: ${escapeHtml(p.exemplar.label)}</span>`;
+    }).join("\n\n");
+    return head + shots + `\n\n<span class="qline">Message: "${escapeHtml(query)}"\nLabel: ▁</span>`;
+  }
+
+  function recompute(){
+    // update preset highlight + k label
+    buildPresets();
+    kVal.textContent = k;
+
+    const scored = scoreAll(query, POOL, MODEL);
+    const picks = scored.slice(0, k);
+    renderPool(scored);
+
+    // static picks (fixed set), scored against the SAME query for comparison
+    const staticPicks = STATIC_INDICES.map(i => scored.find(s => s.index === i));
+
+    staticPrompt.innerHTML  = promptHtml(staticPicks, false);
+    dynamicPrompt.innerHTML = promptHtml(picks, true);
+
+    // ---- comparison callout ----
+    const dynAvg  = mean(picks.map(s => s.sim));
+    const statAvg = mean(staticPicks.map(s => s.sim));
+    const voted   = knnVote(picks);
+    const staticCovers = STATIC_INDICES.some(i => POOL[i].label === voted);
+    const dynOnTopic = picks.filter(s => s.exemplar.label === voted).length;
+
+    let html;
+    if (dynAvg === 0 && statAvg === 0){
+      html = `<div class="callout info"><b>No shared terms with any exemplar.</b> This lightweight TF-IDF embedding matches on overlapping <em>words</em>, so a query using none of the pool's vocabulary scores 0 everywhere — try a preset, or reuse a word like <span class="mono">refund</span>, <span class="mono">cancel</span> or <span class="mono">password</span>. A real dense embedding would still catch synonyms; the selection machinery is identical.</div>`;
+    } else if (!staticCovers){
+      html = `<div class="callout good"><b>✓ Dynamic wins clearly here.</b> The nearest exemplars point to <b>${escapeHtml(voted)}</b>, a category the fixed static set (billing / shipping / technical / account) <b>doesn't include at all</b> — so static offers <b>0</b> on-topic examples while dynamic surfaced <b>${dynOnTopic}</b>. Avg similarity of the picks: <b>dynamic ${dynAvg.toFixed(3)}</b> vs <b>static ${statAvg.toFixed(3)}</b>. This is exactly the gap a static block can't close.</div>`;
+    } else {
+      html = `<div class="callout ${dynAvg > statAvg + 1e-9 ? "good" : "info"}"><b>Predicted label (similarity-weighted kNN vote): ${escapeHtml(voted)}.</b> Avg similarity of the pasted examples: <b>dynamic ${dynAvg.toFixed(3)}</b> vs <b>static ${statAvg.toFixed(3)}</b>${dynAvg > statAvg + 1e-9 ? " — dynamic's examples are closer to this query, so more of the prompt is signal." : "."} The static set happens to include a <b>${escapeHtml(voted)}</b> example, but it still spends its other three shots on off-topic categories.</div>`;
+    }
+    compareBox.innerHTML = html;
+  }
+
+  queryInput.oninput = () => { query = queryInput.value; recompute(); };
+  kSlider.oninput = () => { k = parseInt(kSlider.value, 10); recompute(); };
+  copyDyn.onclick = () => {
+    const picks = scoreAll(query, POOL, MODEL).slice(0, k);
+    navigator.clipboard.writeText(assemblePrompt(picks, query));
+    const o = copyDyn.textContent; copyDyn.textContent = "✓ Copied!"; setTimeout(() => copyDyn.textContent = o, 1500);
+  };
+
+  recompute();
+
+  // ============================================================
+  // UNDERSTAND — step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. Static few-shot is one compromise set for every input", why:"Classic few-shot (Day 4) pastes a FIXED handful of examples into every prompt. That single set has to serve every possible input at once, so it's a permanent compromise: for any PARTICULAR input, most of its examples are off-topic — they spend tokens and dilute the pattern the model should copy — and any kind of input the set didn't anticipate gets no relevant demonstration at all. It works when your inputs are narrow and uniform; it breaks the moment they vary.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">FIXED examples + any query<br>most examples off-topic here<br>uncovered input → no help<br>one set can't fit all inputs</div>`,
+     code:`// static few-shot (Day 4): same examples, every time.
+prompt = FIXED_EXAMPLES + query;
+// billing query still shows shipping+account examples → noise` },
+   { title:"2. Dynamic few-shot — retrieve the k most similar per input", why:"Dynamic few-shot flips the compromise. Instead of fixing the examples, you fix a POOL of labeled exemplars and, for each incoming input, RETRIEVE the k most similar ones and paste only those. The examples are now relevant to THIS input — a billing question pulls billing exemplars, a cancellation question pulls cancellation exemplars. It's the same move as RAG, but you retrieve EXAMPLES to shape behaviour, not FACTS to ground content.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">pool of labeled exemplars<br>query ─► find k nearest<br>paste ONLY those + query<br>examples match THIS input</div>`,
+     code:`// dynamic: pick examples per input.
+const picks = selectExemplars(query, POOL, model, k); // top-k nearest
+const prompt = assemblePrompt(picks, query);` },
+   { title:"3. Turn text into a vector (embedding)", why:"To ask 'which exemplars are most SIMILAR to the query', you need numbers. An embedding maps text to a vector so similarity becomes geometry. This demo uses a lightweight TF-IDF BAG-OF-WORDS: tokenize, then weight each term by how rare it is across the pool (IDF) — rare, distinctive words like 'refund' or 'password' carry more signal than common ones. Real systems use a DENSE embedding model, which also captures synonyms ('cancel' ≈ 'unsubscribe') that a word-overlap method misses. Either way: text → vector.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">"refund my charge"<br>→ tokenize → tf × idf<br>→ sparse vector {refund, charge}<br>(dense model: also synonyms)</div>`,
+     code:`const idf = buildIdf(POOL.map(e => tokenize(e.text)));
+const v = vectorize(tokenize(text), idf, dflt); // {term: tf*idf}
+// PRECOMPUTE pool vectors once; only the query is embedded per request` },
+   { title:"4. Cosine similarity — measure the angle, not the length", why:"Given two vectors, cosine similarity is their dot product over the product of their lengths — the COSINE OF THE ANGLE between them. It ignores magnitude, so a short query and a longer exemplar still score high when they point the same way (share the important, rare terms). 1.0 = same direction, 0 = no shared terms. It's the standard closeness metric for embeddings because direction, not size, is what carries meaning.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">cos(θ) = (a·b) / (‖a‖‖b‖)<br>1.0 = identical direction<br>0 = orthogonal (nothing shared)<br>length-invariant closeness</div>`,
+     code:`function cosine(a, b){
+  let dot=0, na=0, nb=0;
+  for (const k in a){ na+=a[k]*a[k]; if(k in b) dot+=a[k]*b[k]; }
+  for (const k in b){ nb+=b[k]*b[k]; }
+  return (na&&nb) ? dot/(Math.sqrt(na)*Math.sqrt(nb)) : 0;
+}` },
+   { title:"5. kNN selection — score all, sort, take the top-k", why:"The selection is k-nearest-neighbours in embedding space: embed the query, compute its cosine similarity to every (precomputed) exemplar vector, sort descending, and keep the k highest. No training, no model — just distance. Return the picks WITH their scores so the assembler and your UI can show WHY each example was chosen. At small scale a full scan is fine; at large scale you swap the scan for an approximate-nearest-neighbour (ANN) index.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">score every exemplar vs query<br>sort by cosine, descending<br>take the top-k<br>= k nearest neighbours</div>`,
+     code:`function selectExemplars(query, pool, model, k){
+  const qv = vectorize(tokenize(query), model.idf, model.dflt);
+  return pool.map((e,i)=>({exemplar:e, sim:cosine(qv, model.vectors[i])}))
+             .sort((a,b)=>b.sim-a.sim).slice(0, k);
+}` },
+   { title:"6. Assemble the prompt on the fly — only the picks", why:"Build the few-shot prompt from the k picks: a task header, each selected exemplar as an input→label pair, then the live query with its label left blank for the model to complete. This is the part that CHANGES per request — same template, different (relevant) examples. Keep the label format identical across shots so the model has a crisp pattern to imitate. That's the whole payoff of the retrieval: the examples in front of the model are the ones that actually resemble what it's being asked.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">header (labels)<br>+ k nearest input→label pairs<br>+ query, label blank<br>rebuilt every request</div>`,
+     code:`function assemblePrompt(picks, query){
+  const shots = picks.map(p =>
+    \`Message: "\${p.exemplar.text}"\\nLabel: \${p.exemplar.label}\`).join("\\n\\n");
+  return \`\${HEADER}\\n\\nExamples:\\n\${shots}\\n\\nMessage: "\${query}"\\nLabel:\`;
+}` },
+   { title:"7. The k tradeoff — brittle vs diluted", why:"k is the key dial. Too SMALL (k=1) is brittle — the whole prompt rides on one exemplar, and one bad neighbour derails it. Too LARGE reaches past the genuinely-similar examples into off-topic ones, so you re-import the static problem (irrelevant shots) AND pay more tokens and latency. The sweet spot is usually small — 3 to 8 — big enough to be robust, small enough that every shot is actually near the query. Drag the slider in LOOK and watch marginal picks get less relevant as k grows.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">k=1 → brittle (rides one example)<br>k too big → off-topic + costly<br>sweet spot ≈ 3–8<br>each extra shot must earn its place</div>`,
+     code:`// each additional neighbour is less similar than the last.
+// small k = high average relevance; big k = diluted + more tokens.
+const picks = selectExemplars(query, POOL, model, k); // tune k` },
+   { title:"8. Diversity & MMR — don't paste k near-duplicates", why:"Pure top-k has a failure mode: if the pool holds several near-identical exemplars, the k nearest can all be the SAME example in disguise — wasting shots and over-fitting to one phrasing. Maximal Marginal Relevance (MMR) re-ranks to balance RELEVANCE to the query against DIVERSITY from the already-picked set: score = λ·relevance − (1−λ)·redundancy. The result covers more of the input's facets with the same k. Tune λ (≈0.7 is a common start); dedup your pool too so the problem is smaller to begin with.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">top-k: 3 clones of one example<br>MMR: relevant AND different<br>score = λ·rel − (1−λ)·redundancy<br>k picks cover more facets</div>`,
+     code:`// MMR: penalise a candidate that duplicates an already-picked one.
+score = lambda * cos(query, cand)
+      - (1 - lambda) * max(cos(cand, alreadyPicked));
+// λ=1 → pure relevance; lower λ → more diverse` },
+   { title:"9. The pool IS the knowledge — curate it", why:"Dynamic few-shot is only as good as its pool. Three rules. COVERAGE: include exemplars for every category/edge-case you expect, or retrieval has nothing on-topic to return (that's why the static set fails on cancellation here — no such example exists for it). QUALITY: every exemplar's label must be correct and canonical — a wrong exemplar teaches the wrong pattern to every query that retrieves it. DEDUP: drop near-duplicates so top-k doesn't waste shots. The pool grows over time — log real inputs, label the good ones, and fold them back in.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">coverage: an example per case<br>quality: correct, canonical labels<br>dedup: no near-duplicates<br>grow it from real, labeled inputs</div>`,
+     code:`// a wrong exemplar poisons every query that retrieves it.
+// missing a category → retrieval returns off-topic neighbours.
+// curate: coverage + correctness + dedup, and keep growing it.` },
+   { title:"10. Where it sits — RAG for examples · precompute · next", why:"Dynamic few-shot is the adaptive upgrade of static few-shot (Day 4) and the example-retrieval cousin of RAG (Day 5): RAG retrieves FACTS to put in the context; this retrieves EXAMPLES to shape behaviour — often you do both. Engineering: embed the pool ONCE (immutable, cache it), store vectors in an ANN index (pgvector/Pinecone/FAISS) so retrieval stays O(log n), and cache per-query results if inputs repeat. The lightweight TF-IDF here matches on shared words; a dense embedding also catches synonyms. Next: LLM-as-judge — grade fuzzy outputs (tone, faithfulness) with a model against a rubric instead of an exact string.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">vs D4 static few-shot (fixed)<br>vs D5 RAG (facts, not examples)<br>precompute + ANN index + cache<br>next → LLM-as-judge</div>`,
+     code:`// precompute pool vectors once; ANN index at scale.
+// RAG (D5) retrieves facts; dynamic few-shot retrieves examples.
+// next → LLM-as-judge: grade fuzzy quality with a rubric.` }
+  ];
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+  function show(i){ curStep=i; const s=STEPS[i];
+    document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+    document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+    document.getElementById("code").textContent=s.code;
+    stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+  }
+  prevB.onclick=()=>show(Math.max(0,curStep-1)); nextBtn.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+  let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = { tokenize, buildIdf, vectorize, cosine, buildModel, scoreAll, selectExemplars, knnVote, assemblePrompt, mean, POOL, STATIC_INDICES, PRESETS };
+</script>
+</body>
+</html>
