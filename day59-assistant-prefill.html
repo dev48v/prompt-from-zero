@@ -1,0 +1,897 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 59 — Assistant Prefill (response priming)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { display:inline-block; font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 15px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+
+  /* ===== task chips ===== */
+  .qchip { font-size:11.5px; font-weight:700; padding:6px 11px; border-radius:999px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .qchip:hover { border-color:#c4b5fd; }
+  .qchip.active { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+
+  /* ===== inputs ===== */
+  .qbox { width:100%; font-size:13px; font-weight:700; color:#0f172a; padding:10px 12px; border-radius:10px; border:2px solid #ddd6fe; background:#faf5ff; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .qbox:focus { outline:none; border-color:#8b5cf6; }
+  .sbox { width:110px; font-size:13px; font-weight:700; color:#0f172a; padding:10px 12px; border-radius:10px; border:2px solid #e2e8f0; background:#fff; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .sbox:focus { outline:none; border-color:#8b5cf6; }
+
+  /* ===== transcript / turn boxes ===== */
+  .turnbox { background:#0f172a; color:#e2e8f0; border-radius:12px; padding:12px 13px; font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size:11.5px; line-height:1.55; overflow:auto; white-space:pre-wrap; }
+  .turnbox .role { color:#a5b4fc; font-weight:700; }
+  .turnbox .sys  { color:#6ee7b7; }
+  .pf { background:#78350f; color:#fde68a; border-radius:3px; padding:0 2px; }
+  .gen { color:#e2e8f0; }
+  .cut { color:#64748b; text-decoration:line-through; }
+  .cutnote { color:#f87171; font-weight:700; }
+  .caret { color:#c4b5fd; }
+
+  /* ===== check rows ===== */
+  .checks { display:flex; flex-direction:column; gap:5px; margin-top:8px; }
+  .chk { display:flex; align-items:flex-start; gap:8px; font-size:12px; font-weight:600; border-radius:9px; padding:6px 9px; border:1px solid #eef2f7; }
+  .chk.ok  { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
+  .chk.bad { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
+  .chk .mk { font-weight:900; flex:none; }
+  .scorepill { font-size:11px; font-weight:900; padding:3px 10px; border-radius:999px; }
+  .scorepill.ok  { background:#dcfce7; color:#166534; }
+  .scorepill.bad { background:#fee2e2; color:#991b1b; }
+
+  /* ===== decode trace ===== */
+  .trace { display:flex; flex-direction:column; gap:4px; max-height:230px; overflow:auto; }
+  .trow { display:flex; gap:8px; align-items:flex-start; font-size:11px; border-bottom:1px dashed #eef2f7; padding:4px 2px; }
+  .trow .n { font-weight:900; color:#94a3b8; width:20px; flex:none; }
+  .trow .r { font-weight:800; color:#7c3aed; width:200px; flex:none; }
+  .trow .t { font-family: ui-monospace, Menlo, monospace; color:#0f172a; word-break:break-word; }
+
+  /* ===== scoreboard ===== */
+  table.sb { width:100%; border-collapse:collapse; font-size:12.5px; }
+  table.sb th { text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.05em; color:#64748b; padding:6px 8px; border-bottom:1px solid #e2e8f0; }
+  table.sb td { padding:7px 8px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#0f172a; }
+  table.sb tr:last-child td { border-bottom:none; }
+  .num.bad { color:#b91c1c; font-weight:900; }
+  .num.ok  { color:#15803d; font-weight:900; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.5; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
+    <div>
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 59</div>
+      <h1 class="text-xl font-bold">✍️ Assistant Prefill (response priming) — a chat request isn't a question, it's a <strong>transcript</strong>: system turn, user turn, then an <em>empty assistant turn</em> the model fills in. Prefill means you <strong>write the first few characters of that assistant turn yourself</strong>, and the model — which cannot tell your text from its own — simply <strong>continues</strong> it. That one move settles the fight over output format by fiat instead of by request: an empty turn's most likely opening is &ldquo;Sure! Here's the JSON you asked for:&rdquo; followed by a markdown fence and a friendly sign-off, all of which breaks <span class="mono">JSON.parse</span>; a turn that already starts with <span class="mono">{</span> has no room for &ldquo;Sure!&rdquo; at all, because the only sensible continuation of an open brace is a JSON key. Land the prefill mid-string and the very next token is that string's contents. This page is genuinely interactive with <strong>no API and no network</strong>: a deterministic token-by-token decoder whose every step is chosen by <em>really scanning the text written so far</em> — brace depth, open strings, which schema keys already appear, whether a fence is open — so editing the prefill genuinely changes the decode path, plus <strong>real validators</strong> (<span class="mono">JSON.parse</span>, exact-label match, bullet-line parsing, SQL shape) scoring <strong>14 checks</strong> across 4 tasks: <strong>baseline 4/14 · prefill 14/14</strong>. You also get a live <strong>stop sequence</strong> field, because prefill controls how a turn <em>starts</em> and a stop sequence controls where it <em>ends</em>. One honest caveat up front, covered in step 11: <strong>current Claude models reject a trailing assistant turn with a 400</strong> — the affordance moved to <span class="mono">output_config.format</span> (structured outputs). The mechanism is still worth knowing cold: it's native anywhere you control the raw prompt, and it's the clearest way to understand <em>why</em> the first token owns the whole response.</h1>
+    </div>
+    <div class="flex gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-2xl font-bold mb-1">Stop <span class="text-rose-500">asking</span> for the format. <span class="text-violet-600">Start the reply yourself</span> and the model has nowhere else to go.</h2>
+        <p class="text-slate-500 mb-5">Everything below is deterministic (no API key, no network). A tiny <b>continuation decoder</b> emits the assistant turn token by token; at every step it picks the next token by <b>really scanning</b> what's written so far — is the text empty, is a markdown fence open, is a JSON string unterminated, which schema keys are already present. So the prefill isn't a lookup key: it puts the decoder in a different <b>state</b>, and the decode path genuinely changes. <b>Pick a task</b>, <b>edit the prefill</b>, <b>change the stop sequence</b>, and watch the raw output and its checks recompute.</p>
+      </div>
+
+      <!-- task chips -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🗂 The task — <span class="normal-case font-normal text-slate-400">4 jobs where a program, not a person, reads the answer</span></div>
+        <div class="flex flex-wrap gap-2 mb-3" id="taskChips"></div>
+        <div class="turnbox" id="promptBox"></div>
+      </div>
+
+      <!-- controls -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="grid md:grid-cols-3 gap-3">
+          <div class="md:col-span-2">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">✍️ The prefill <span class="text-slate-400 normal-case font-normal">— the first characters of the assistant turn (you write these)</span></div>
+            <input id="prefillInput" class="qbox" spellcheck="false" />
+          </div>
+          <div>
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🛑 Stop sequence <span class="text-slate-400 normal-case font-normal">— where it ends</span></div>
+            <div class="flex gap-2 items-center">
+              <input id="stopInput" class="sbox" spellcheck="false" placeholder="(none)" />
+              <button class="btn" id="resetBtn">↺ Reset task</button>
+            </div>
+          </div>
+        </div>
+        <div id="prefillWarn" class="mt-3"></div>
+      </div>
+
+      <!-- baseline vs prefill -->
+      <div class="grid md:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-rose-200 p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs uppercase font-bold text-rose-600 tracking-wider">🅐 No prefill <span class="text-slate-400 normal-case font-normal">— empty assistant turn</span></div>
+            <span class="scorepill bad" id="scoreA">–</span>
+          </div>
+          <div class="turnbox" id="turnA" style="flex:1;"></div>
+          <div class="checks" id="checksA"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-4 flex flex-col">
+          <div class="flex items-center justify-between mb-2">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🅑 With prefill <span class="text-slate-400 normal-case font-normal">— seeded assistant turn</span></div>
+            <span class="scorepill ok" id="scoreB">–</span>
+          </div>
+          <div class="turnbox" id="turnB" style="flex:1;"></div>
+          <div class="checks" id="checksB"></div>
+        </div>
+      </div>
+
+      <!-- decode trace -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🔬 Decode trace — <span class="normal-case font-normal text-slate-400">every token the prefilled run emitted, and the rule that fired (the rule is chosen by scanning the text so far, not by a script)</span></div>
+        <div class="trace" id="traceB"></div>
+      </div>
+
+      <!-- scoreboard -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex items-center justify-between mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🧮 All 4 tasks — 14 real checks</div>
+          <button class="btn btn-p" id="runAll">▶ Run all tasks</button>
+        </div>
+        <div id="scoreboard"><p class="text-sm text-slate-400">Click <b>Run all tasks</b> to score every task with its default prefill and stop sequence.</p></div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 Prefill fixes the envelope, not the answer.</strong> Look at the checks: in every task the baseline already <em>knew</em> the right content — the order ID, the sentiment, the three risks, the query — and still failed, because it wrapped that content in a greeting, a markdown fence and a friendly sign-off. Format was the whole failure. Asking for the format in words is a request the sampler can ignore; prefilling it is a <em>fact about the transcript</em> — after <span class="mono">{"order_id": "</span> there is no continuation in which the model says &ldquo;Sure!&rdquo;, because the only thing that follows an unterminated JSON string is its contents. That's why a one-character prefill routinely beats three paragraphs of formatting instructions: the entire argument about output shape is really an argument about the <em>first token</em>, and prefill wins it before generation starts. Two things travel with it — a <strong>stop sequence</strong> so the turn also <em>ends</em> where you want (clear the stop field on the classification task and watch the exact-match check break), and the reminder that most APIs return only the <em>generated</em> text, so the prefill you sent must be concatenated back on before you parse.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">Assistant prefill = write the opening of the model's own turn → it continues rather than restarts → the format is decided, not requested. Pair with a stop sequence; re-attach the prefill before parsing.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2">
+      <h3 class="font-bold text-lg mb-3">How assistant prefill works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4">
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-8">
+    <h2 class="text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Prefill is the smallest technique in this whole series — it is one extra message in the array — but everything around it is where the engineering lives: choosing a prefix that can only be continued one way, pairing it with a stop sequence, re-attaching the prefill before you parse, keeping the string developer-owned, and knowing which replacement to reach for on a model that no longer accepts a trailing assistant turn. Below is the exact deterministic harness this page runs — the state scans, the continuation decoder, the validators — followed by the production shape both ways: prefill where it's supported, and structured outputs where it isn't.</p>
+    <ol class="space-y-6">
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">The idea in one line — write the opening of the model's turn</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A chat call is a transcript the model completes. Normally you hand it an empty assistant turn and it writes the whole thing, greeting and all. Prefill hands it a turn that already starts — and because the model cannot tell your characters from its own, it finishes your sentence instead of starting its own.</p>
+        <div class="relative"><pre>// Normal:   [system, user]                  -> model writes the WHOLE assistant turn
+//           "Sure! Here's the JSON:\n```json\n{...}\n```\nLet me know!"
+//
+// Prefill:  [system, user, assistant:'{"']  -> model CONTINUES your text
+//           'order_id": "A-1042", ... }'
+//
+// Same model, same prompt. The only change is where the turn starts.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Where it goes — a trailing assistant message</h3></div>
+        <p class="text-sm text-slate-600 mb-3">There is no <span class="mono">prefill</span> parameter. You append one more message with role <span class="mono">assistant</span> as the <em>last</em> entry in the array. Assistant messages elsewhere in the conversation are ordinary history (that's how few-shot examples work) — only a <em>trailing</em> one is a prefill, because only the last turn is the one being generated.</p>
+        <div class="relative"><pre>// STEP 2 — a prefill is just the last message, with role "assistant".
+const messages = [
+  { role: "user", content: 'Extract order_id, customer, total, status as JSON.\n\n' + doc },
+  { role: "assistant", content: '{\n  "order_id": "' }   // <-- the prefill
+];
+
+// Mid-array assistant turns are NOT prefills — they are conversation history:
+//   [user, assistant, user, assistant, user]            = few-shot / chat history
+//   [user, assistant, user, assistant]                  = the last one is a prefill</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Pick the shortest prefix that can only be continued one way</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A good prefill is not a sentence — it is the smallest string that makes exactly one kind of continuation plausible. One character is often enough. Anything longer than the format marker starts asserting <em>content</em>, which is a different and riskier thing (step 7).</p>
+        <div class="relative"><pre>// STEP 3 — the prefills this page ships with.
+const PREFILLS = {
+  json:     '{\n  "order_id": "',   // lands mid-string: next token IS the value
+  label:    'Label:',               // classification slot, one word follows
+  bullets:  '-',                    // a bullet list can only continue as bullets
+  sql:      'SELECT',               // SQL, not prose about SQL
+  xml:      '&lt;answer&gt;',              // tag-delimited output for easy extraction
+  letter:   'Dear Ms Alvarez,'      // register lock: a letter, not a chat reply
+};
+// Rule of thumb: stop at the marker. '{' beats '{"name":' unless you have a
+// reason to dictate the first field too.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">The mechanism — continuation is a function of the text so far</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the part the demo makes literal. The decoder never looks at "which run am I?"; it looks at the accumulated text and asks real questions of it — is a quote open, how deep is the brace nesting, which keys already appear. Those scans are why a prefill changes the output: it changes the answers.</p>
+        <div class="relative"><pre>// STEP 4 — real state scans over the text written so far (the demo runs these).
+function inOpenString(s){                       // odd number of unescaped quotes?
+  let open = false;
+  for (let i = 0; i &lt; s.length; i++)
+    if (s[i] === '"' &amp;&amp; s[i-1] !== "\\") open = !open;
+  return open;
+}
+function jsonKeys(s){                           // which "key": have been written?
+  const re = /"([A-Za-z_][A-Za-z0-9_]*)"\s*:/g, out = [];
+  let m; while ((m = re.exec(s))) out.push(m[1]);
+  return out;
+}
+function braceDepth(s){ /* count { } outside strings */ }
+function fenceOpen(s){ return (s.match(/```/g) || []).length % 2 === 1; }
+
+// The decoder picks the next token from these answers — so seeding the text
+// with a prefill genuinely puts it on a different path.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Validate the envelope, not just the content</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Score what actually breaks your pipeline. In the demo the baseline passes the <em>content</em> check on every task and fails every <em>format</em> check — which is exactly the failure prefill exists to fix, and exactly the failure a "did it get the answer right?" eval would miss.</p>
+        <div class="relative"><pre>// STEP 5 — the real validators (5 + 3 + 3 + 3 = 14 checks).
+const PREAMBLE = /^\s*(sure|certainly|of course|absolutely|here'?s|here is|great question|i'?d be happy|no problem|got it)/i;
+
+json:    !PREAMBLE.test(raw)                       // no greeting
+       &amp;&amp; !raw.includes("```")                     // no markdown fence
+       &amp;&amp; parses(raw)                              // JSON.parse(raw) with no repair
+       &amp;&amp; raw.trim().endsWith("}")                 // no trailing chatter
+       &amp;&amp; valuesMatch(extractJson(raw))            // content correct (baseline passes)
+
+label:   /^Label: (positive|negative|neutral)$/.test(raw.trim())
+bullets: everyLineStartsWith("- ") &amp;&amp; lines.length === 3
+sql:     raw.trim().startsWith("SELECT") &amp;&amp; raw.trim().endsWith(";") &amp;&amp; !raw.includes("```")</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Stop sequences, and re-attaching the prefill</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Prefill owns the start of the turn; a stop sequence owns the end. They are a pair. And because most APIs return only the tokens they generated, the prefill you sent is <em>not</em> in the response — concatenate it back before you parse, or your <span class="mono">JSON.parse</span> chokes on a fragment that starts at the second key.</p>
+        <div class="relative"><pre>// STEP 6 — stop at the end of the line, then re-attach what you sent.
+const PREFILL = "Label:";
+const res = await callModel({ messages, prefill: PREFILL, stop: ["\n"] });
+
+const full = PREFILL + res.text;    // "Label: negative"
+//            ^^^^^^^ the API returned only " negative"
+
+// The stop sequence itself is normally excluded from the returned text.
+// Without stop:["\n"] this model keeps going: "\n\nWould you like me to
+// explain the reasoning?" — and the exact-match check fails. Try it in LOOK.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Two rules that bite: the seam, and who owns the string</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Never end a prefill with whitespace — the join between your text and the generated text is a token boundary, and a dangling space makes the model complete a word that never started, or double the space. And never let an end user supply the prefill: it is the most direct steering lever in the whole API, and it is developer-owned text, like the system prompt.</p>
+        <div class="relative"><pre>// STEP 7 — trim the seam; own the string.
+const prefill = raw.replace(/\s+$/, "");   // "Label: " -> "Label:"
+// "Label: " + " negative"  =  "Label:  negative"   <- double space, exact match fails
+
+// NEVER:
+//   prefill: req.body.userSuppliedPrefix        // user writes the model's mouth
+// The prefill is trusted, developer-owned text. Treat it like the system prompt.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">On current Claude models: use structured outputs instead</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A trailing assistant turn <strong>returns a 400</strong> on Claude Opus 4.6 and later, Sonnet 4.6 and later, and Claude Fable 5 — prefill was removed as an affordance. Its jobs were split up: a JSON schema for shape, a tool with an <span class="mono">enum</span> for labels, and a plain system-prompt line for &ldquo;no preamble&rdquo;. Structured outputs are strictly stronger than prefill for JSON, because the schema is enforced rather than nudged.</p>
+        <div class="relative"><pre># STEP 8 — the replacement for a JSON-forcing prefill on current Claude models.
+response = client.messages.create(
+    model="claude-opus-5",
+    max_tokens=1024,
+    output_config={"format": {"type": "json_schema", "schema": {
+        "type": "object",
+        "properties": {
+            "order_id": {"type": "string"},
+            "customer": {"type": "string"},
+            "total":    {"type": "number"},
+            "status":   {"type": "string"},
+        },
+        "required": ["order_id", "customer", "total", "status"],
+        "additionalProperties": False,
+    }}},
+    messages=[{"role": "user", "content": f"Extract the order fields.\n\n{doc}"}],
+)
+# No fence, no preamble, no repair step — the format is enforced, not requested.
+
+# For a classification label: a tool with an enum, or the same json_schema with
+#   {"label": {"type": "string", "enum": ["positive", "negative", "neutral"]}}
+# For "no preamble" in prose: one system-prompt line does it.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-slate-200 p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">Wire it up — one call site, two strategies</h3></div>
+        <p class="text-sm text-slate-600 mb-3">If you ship across several models, put the choice behind one function: prefill where the runtime supports a trailing assistant turn, schema-constrained decoding where it doesn't, and the same parse + fallback on both paths. Keep the <span class="mono">try/catch</span> either way — neither approach makes a repair step pointless if a response is truncated.</p>
+        <div class="relative"><pre>// STEP 9 — one shape, two strategies.
+async function extract(doc, model){
+  if (SUPPORTS_PREFILL[model]) {
+    const prefill = '{\n  "order_id": "';
+    const res = await call(model, {
+      messages: [
+        { role: "user",      content: `Extract the order fields.\n\n${doc}` },
+        { role: "assistant", content: prefill },       // trailing turn = prefill
+      ],
+    });
+    return safeParse(prefill + res.text);              // re-attach, then parse
+  }
+  const res = await call(model, {
+    messages: [{ role: "user", content: `Extract the order fields.\n\n${doc}` }],
+    output_config: { format: { type: "json_schema", schema: ORDER_SCHEMA } },
+  });
+  return safeParse(res.text);
+}
+function safeParse(s){ try { return JSON.parse(s); } catch { return repair(s); } }</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+      <li class="bg-white rounded-2xl border border-violet-200 p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Copy-paste — the prefill request shape</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The whole technique on one screen: the transcript, the prefill as the trailing turn, the stop sequence, and the re-attach. Swap the prefill line per task from the table in step 3.</p>
+        <div class="relative"><pre>{
+  "messages": [
+    { "role": "user",      "content": "{{task}}\n\n{{input}}" },
+    { "role": "assistant", "content": "{{prefill}}" }
+  ],
+  "stop": ["{{stop}}"],
+  "max_tokens": 512
+}
+
+# {{prefill}}  the SHORTEST prefix with only one plausible continuation.
+#              No trailing whitespace. Developer-owned, never user-supplied.
+# {{stop}}     where the turn should end ("\n" for a one-line label; omit for
+#              a self-terminating format like JSON or a bulleted list).
+# The response contains ONLY the generated text:
+#     full = prefill + response.text     <- do this before parsing.
+# Current Claude models reject a trailing assistant turn (400) — use
+#     output_config.format  (structured outputs) there instead.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 59 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>assistant prefill</strong>, also called <strong>response priming</strong>: a chat request is a transcript with an empty assistant turn at the end, and you are allowed to write the first characters of that turn yourself. Because the model is autoregressive and cannot distinguish your tokens from its own, it <em>continues</em> rather than restarts — land it after <span class="mono">{</span> and the next token is a JSON key, land it mid-string and the next token is that string's contents. That converts the output format from something you <em>request</em> (and the sampler may ignore) into something that is already <em>true</em> of the transcript, which is why a one-character prefill routinely beats three paragraphs of formatting instructions: the whole argument is about the first token. You watched it run: a deterministic decoder whose every step is chosen by really scanning the accumulated text, scored by real validators — <strong>baseline 4/14, prefill 14/14</strong>, with the baseline passing every <em>content</em> check and failing every <em>format</em> check, because format was the entire failure. You also met the rules that travel with it — pair it with a <strong>stop sequence</strong> so the turn ends where you want, <strong>re-attach the prefill</strong> before parsing since APIs return only the generated text, never leave <strong>trailing whitespace</strong> at the seam, prefill the <em>shape</em> and never the <em>values</em> (a prefilled value gets confabulated rather than contradicted), and keep the string <strong>developer-owned</strong>, never user-supplied. And the honest state of play: <strong>current Claude models reject a trailing assistant turn with a 400</strong> — its jobs moved to <span class="mono">output_config.format</span> for JSON, a tool <span class="mono">enum</span> for labels, and a system-prompt line for &ldquo;no preamble&rdquo; — while the mechanism stays native anywhere you control the raw prompt. Distinct from Day 16 (structured output — the schema side of the same problem) and Day 51 (system prompt — the turn <em>before</em> the conversation, not the one being written). <strong>👉 Next up — LLM-as-judge: when the &ldquo;right answer&rdquo; is fuzzy (tone, helpfulness, faithfulness), grade outputs with a model against a rubric instead of an exact string.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ============================================================
+// Pure, DOM-free logic (node-testable). Nothing here touches the
+// DOM, so the whole prefill pipeline — state scans, continuation
+// decoder, stop-sequence trimming, validators — runs headlessly.
+// ============================================================
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ---------- real scans over the accumulated assistant text ----------
+const PREAMBLE_RE = /^\s*(sure|certainly|of course|absolutely|here'?s|here is|great question|i'?d be happy|no problem|got it)/i;
+function hasPreamble(t){ return PREAMBLE_RE.test(t); }
+function hasFence(t){ return String(t).indexOf("```") !== -1; }
+function fenceOpen(t){ return ((String(t).match(/```/g) || []).length % 2) === 1; }
+
+function inOpenString(s){
+  let open = false;
+  for (let i = 0; i < s.length; i++){
+    if (s[i] === '"' && s[i-1] !== "\\") open = !open;
+  }
+  return open;
+}
+function jsonKeys(s){
+  const re = /"([A-Za-z_][A-Za-z0-9_]*)"\s*:/g, out = [];
+  let m; while ((m = re.exec(s))) out.push(m[1]);
+  return out;
+}
+function braceDepth(s){
+  let d = 0, str = false;
+  for (let i = 0; i < s.length; i++){
+    const c = s[i];
+    if (c === '"' && s[i-1] !== "\\"){ str = !str; continue; }
+    if (str) continue;
+    if (c === "{") d++; else if (c === "}") d--;
+  }
+  return d;
+}
+function lastNonSpace(s){ const t = String(s).replace(/\s+$/, ""); return t.charAt(t.length - 1); }
+function jsonLit(v){ return (typeof v === "number") ? String(v) : '"' + String(v) + '"'; }
+function bulletCount(s){ return (String(s).match(/^- .+$/gm) || []).length; }
+function numberedCount(s){ return (String(s).match(/^\d+\. /gm) || []).length; }
+function nonEmptyLines(s){ return String(s).split("\n").filter(l => l.trim() !== ""); }
+
+// ============================================================
+// Baked data: 4 tasks a PROGRAM reads the answer to.
+// Each carries the correct answer, a default prefill and a
+// default stop sequence.
+// ============================================================
+const TASKS = [
+  { id:"json", icon:"🧾", name:"Extract to JSON",
+    system:"You are a data-extraction service inside an order pipeline.",
+    user:'Extract order_id, customer, total and status as JSON.\n\n"Order A-1042 for Priya Nair came to $129.50 and has now shipped."',
+    prefill:'{\n  "order_id": "',
+    stop:"",
+    answer:{ order_id:"A-1042", customer:"Priya Nair", total:129.5, status:"shipped" } },
+
+  { id:"label", icon:"🏷️", name:"Classify — one label",
+    system:"You are a review classifier. Reply with the label only.",
+    user:'Classify the sentiment as positive, negative or neutral.\n\n"Delivery was quick, but the product arrived with a cracked casing and I want a refund."',
+    prefill:"Label:",
+    stop:"\\n",
+    answer:"negative",
+    labels:["positive","negative","neutral"] },
+
+  { id:"bullets", icon:"•", name:"Bullets only",
+    system:"You are a risk analyst writing machine-readable notes.",
+    user:"List exactly three risks of signing this vendor contract. Bullet lines only, nothing else.",
+    prefill:"-",
+    stop:"",
+    answer:[
+      { t:"Vendor lock-in",  d:"one vendor owns the data path" },
+      { t:"Cost overrun",    d:"usage-based pricing scales with traffic" },
+      { t:"Migration risk",  d:"there is no export path if the contract ends" }
+    ] },
+
+  { id:"sql", icon:"🗄️", name:"SQL only",
+    system:"You are a SQL generator wired straight into a query runner.",
+    user:"Write a query returning the five customers with the most shipped orders.",
+    prefill:"SELECT",
+    stop:"",
+    answer:"SELECT customer_id, COUNT(*) AS orders\nFROM orders\nWHERE status = 'shipped'\nGROUP BY customer_id\nORDER BY orders DESC\nLIMIT 5;" }
+];
+function getTask(id){ return TASKS.filter(t => t.id === id)[0]; }
+
+// ============================================================
+// The continuation decoder. Every rule is a predicate over the
+// text written SO FAR — that is what makes a prefill change the
+// path instead of selecting a canned answer.
+// ============================================================
+function stepJson(task, out){
+  const body = task.answer, keys = Object.keys(body);
+  if (out === "")                                return { rule:"chat preamble",              tok:"Sure! Here's the extracted data as JSON:\n\n" };
+  if (!out.includes("{") && !hasFence(out))      return { rule:"open a markdown fence",      tok:"```json\n" };
+  if (!out.includes("{"))                        return { rule:"open the object",            tok:"{" };
+  if (inOpenString(out)){
+    const ks = jsonKeys(out), k = ks[ks.length - 1];
+    const v = (k in body) ? body[k] : "";
+    return { rule:'finish the open string for "' + k + '"', tok: String(v) + '"' };
+  }
+  const missing = keys.filter(k => jsonKeys(out).indexOf(k) === -1);
+  if (missing.length){
+    const k = missing[0];
+    const comma = (lastNonSpace(out) === "{") ? "" : ",";
+    return { rule:'emit field "' + k + '"', tok: comma + '\n  "' + k + '": ' + jsonLit(body[k]) };
+  }
+  if (braceDepth(out) > 0)                       return { rule:"close the object",           tok:"\n}" };
+  if (fenceOpen(out))                            return { rule:"close the fence",            tok:"\n```" };
+  if (hasPreamble(out) && !out.includes("Let me know"))
+                                                 return { rule:"chat trailer",               tok:"\n\nLet me know if you need any other fields!" };
+  return null;
+}
+
+function stepLabel(task, out){
+  const A = task.answer;
+  if (/(^|\n)label:\s*$/i.test(out))             return { rule:"continue the 'Label:' slot",  tok:" " + A };
+  if (out === "")                                return { rule:"chat preamble",               tok:"Sure — happy to help! " };
+  if (!/frustrated/.test(out) && !/^label:/i.test(out))
+                                                 return { rule:"think out loud in prose",     tok:"Looking at this review, the customer is clearly frustrated about the cracked casing, though they do praise the fast delivery. " };
+  if (!(new RegExp(A, "i")).test(out))           return { rule:"state the verdict in prose",  tok:"On balance I'd call the sentiment **" + A + "**." };
+  if (!/\n\n/.test(out))                         return { rule:"offer a follow-up",           tok:"\n\nWould you like me to explain the reasoning in more detail?" };
+  return null;
+}
+
+function stepBullets(task, out){
+  const items = task.answer, n = bulletCount(out), num = numberedCount(out);
+  if (/(^|\n)-\s*$/.test(out) && n < items.length)
+                                                 return { rule:"continue bullet #" + (n + 1), tok:" " + items[n].t + " — " + items[n].d };
+  if (out === "")                                return { rule:"chat preamble",               tok:"Of course! Here are the three biggest risks:\n\n" };
+  if (!/^-/m.test(out) && num < items.length)
+    return { rule:"numbered item " + (num + 1),
+             tok:(num ? "\n" : "") + (num + 1) + ". **" + items[num].t + "** — " + items[num].d + "." };
+  if (n > 0 && n < items.length)                 return { rule:"start bullet #" + (n + 1),    tok:"\n-" };
+  if (hasPreamble(out) && !out.includes("mitigation plan"))
+                                                 return { rule:"chat trailer",                tok:"\n\nWant me to expand any of these into a mitigation plan?" };
+  return null;
+}
+
+function stepSql(task, out){
+  const q = task.answer;
+  if (/(^|\n)select\s*$/i.test(out))             return { rule:"continue the SELECT",         tok: q.slice("SELECT".length) };
+  if (out === "")                                return { rule:"chat preamble",               tok:"Sure! Here's the query you're after:\n\n" };
+  if (!hasFence(out) && !/select/i.test(out))    return { rule:"open a markdown fence",       tok:"```sql\n" };
+  if (!/select/i.test(out))                      return { rule:"write the query",             tok:q };
+  if (fenceOpen(out))                            return { rule:"close the fence",             tok:"\n```" };
+  if (hasPreamble(out) && !out.includes("This groups"))
+                                                 return { rule:"chat trailer",                tok:"\n\nThis groups the shipped orders by customer and returns the five busiest." };
+  return null;
+}
+
+function step(task, out){
+  if (task.id === "json")    return stepJson(task, out);
+  if (task.id === "label")   return stepLabel(task, out);
+  if (task.id === "bullets") return stepBullets(task, out);
+  return stepSql(task, out);
+}
+
+// --- decode: append tokens until no rule fires (or the cap is hit) ---
+function decode(task, prefill, maxSteps){
+  let out = (prefill == null) ? "" : String(prefill);
+  const trace = [];
+  const cap = maxSteps || 24;
+  for (let i = 0; i < cap; i++){
+    const s = step(task, out);
+    if (!s){ trace.push({ n:i + 1, rule:"end of turn", tok:"" }); break; }
+    out += s.tok;
+    trace.push({ n:i + 1, rule:s.rule, tok:s.tok });
+  }
+  return { raw: out, trace: trace };
+}
+
+// --- stop sequences apply to the GENERATED text, never to the prefill ---
+function unescapeStop(s){ return String(s == null ? "" : s).replace(/\\n/g, "\n").replace(/\\t/g, "\t"); }
+function applyStop(full, prefill, stop){
+  const pf = (prefill == null) ? "" : String(prefill);
+  const st = unescapeStop(stop);
+  if (!st) return { text: full, cut: "" };
+  const gen = full.slice(pf.length);
+  const i = gen.indexOf(st);
+  if (i < 0) return { text: full, cut: "" };
+  return { text: pf + gen.slice(0, i), cut: gen.slice(i) };
+}
+
+// --- fish a JSON object out of prose/fences (what a repair step would do) ---
+function extractJson(raw){
+  const stripped = String(raw).replace(/```json/g, "").replace(/```/g, "");
+  const a = stripped.indexOf("{"), b = stripped.lastIndexOf("}");
+  if (a < 0 || b < a) return null;
+  try { return JSON.parse(stripped.slice(a, b + 1)); } catch (e) { return null; }
+}
+function sameValues(obj, want){
+  if (!obj) return false;
+  return Object.keys(want).every(k => obj[k] === want[k]);
+}
+function normSql(s){ return String(s).replace(/\s+/g, " ").trim().toLowerCase(); }
+
+// ============================================================
+// Validators — 5 + 3 + 3 + 3 = 14 real checks.
+// ============================================================
+function checkJson(raw, task){
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (e) { parsed = null; }
+  const t = String(raw).trim();
+  return [
+    { label:"No preamble — the reply starts with the payload", ok: !hasPreamble(raw) },
+    { label:"No markdown fence to strip",                      ok: !hasFence(raw) },
+    { label:"JSON.parse(raw) succeeds with no repair step",    ok: parsed !== null },
+    { label:"Nothing trailing after the closing brace",        ok: t.charAt(t.length - 1) === "}" },
+    { label:"Values are correct (after fishing the JSON out)", ok: sameValues(extractJson(raw), task.answer) }
+  ];
+}
+function checkLabel(raw, task){
+  const t = String(raw).trim();
+  const re = new RegExp("^Label: (" + task.labels.join("|") + ")$");
+  return [
+    { label:"Exactly \u201CLabel: <one of the three>\u201D",   ok: re.test(t) },
+    { label:"No preamble, no prose around it",                 ok: !hasPreamble(raw) && !/\*\*/.test(raw) },
+    { label:"The label itself is correct",                     ok: (new RegExp(task.answer, "i")).test(raw) }
+  ];
+}
+function checkBullets(raw, task){
+  const lines = nonEmptyLines(raw);
+  return [
+    { label:"Every line is a \u201C- \u201D bullet",           ok: lines.length > 0 && lines.every(l => l.indexOf("- ") === 0) },
+    { label:"Exactly 3 lines, no wrapper text",                ok: lines.length === 3 },
+    { label:"All three risks are present",                     ok: task.answer.every(i => raw.indexOf(i.t) !== -1) }
+  ];
+}
+function checkSql(raw, task){
+  const t = String(raw).trim();
+  const m = String(raw).match(/SELECT[\s\S]*?;/i);
+  return [
+    { label:"Starts with SELECT and ends with ; — nothing else", ok: t.indexOf("SELECT") === 0 && t.charAt(t.length - 1) === ";" },
+    { label:"No markdown fence to strip",                        ok: !hasFence(raw) },
+    { label:"The query itself is correct",                       ok: m !== null && normSql(m[0]) === normSql(task.answer) }
+  ];
+}
+function checkTask(task, raw){
+  if (task.id === "json")    return checkJson(raw, task);
+  if (task.id === "label")   return checkLabel(raw, task);
+  if (task.id === "bullets") return checkBullets(raw, task);
+  return checkSql(raw, task);
+}
+
+// --- one full run: decode -> apply stop -> validate ---
+function runTask(task, prefill, stop){
+  const d = decode(task, prefill);
+  const s = applyStop(d.raw, prefill, stop);
+  const checks = checkTask(task, s.text);
+  return {
+    raw: s.text,
+    cut: s.cut,
+    trace: d.trace,
+    checks: checks,
+    passed: checks.filter(c => c.ok).length,
+    total: checks.length
+  };
+}
+// --- score every task, baseline vs prefill, with the shipped defaults ---
+function runAll(){
+  const rows = TASKS.map(t => {
+    const base = runTask(t, "", t.stop);
+    const pre  = runTask(t, t.prefill, t.stop);
+    return { task:t, base:base, pre:pre };
+  });
+  return {
+    rows: rows,
+    baseTotal: rows.reduce((a, r) => a + r.base.passed, 0),
+    preTotal:  rows.reduce((a, r) => a + r.pre.passed, 0),
+    max:       rows.reduce((a, r) => a + r.pre.total, 0)
+  };
+}
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre=btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o=btn.textContent; btn.textContent="✓ Copied!"; setTimeout(()=>btn.textContent=o,1500); }
+
+// ============================================================
+// Browser mount — all DOM wiring lives here so the pure logic
+// above stays headless-testable. Only runs in a browser.
+// ============================================================
+function mount(){
+  // ---- tabs ----
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(t => t.onclick = () => {
+    tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(p => p.classList.add("hidden"));
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+
+  // ============================================================
+  // LOOK — a REAL, deterministic prefill playground.
+  //  - TASKS is the baked data (task + correct answer + defaults).
+  //  - recompute() decodes BOTH runs, applies the stop sequence,
+  //    validates with the real checkers, and re-renders.
+  // ============================================================
+  const taskChips    = document.getElementById("taskChips");
+  const promptBox    = document.getElementById("promptBox");
+  const prefillInput = document.getElementById("prefillInput");
+  const stopInput    = document.getElementById("stopInput");
+  const prefillWarn  = document.getElementById("prefillWarn");
+  const resetBtn     = document.getElementById("resetBtn");
+  const turnA        = document.getElementById("turnA");
+  const turnB        = document.getElementById("turnB");
+  const checksA      = document.getElementById("checksA");
+  const checksB      = document.getElementById("checksB");
+  const scoreA       = document.getElementById("scoreA");
+  const scoreB       = document.getElementById("scoreB");
+  const traceB       = document.getElementById("traceB");
+  const scoreboard   = document.getElementById("scoreboard");
+  const runAllBtn    = document.getElementById("runAll");
+
+  let taskId  = TASKS[0].id;
+  let prefill = TASKS[0].prefill;
+  let stopSeq = TASKS[0].stop;
+
+  function escVis(s){ return escapeHtml(s).replace(/\n/g, "\u21B5\n"); }
+  function escInline(s){ return escapeHtml(s).replace(/\n/g, "\u21B5"); }
+
+  function buildChips(){
+    taskChips.innerHTML = "";
+    TASKS.forEach(t => {
+      const b = document.createElement("button");
+      b.className = "qchip" + (t.id === taskId ? " active" : "");
+      b.textContent = t.icon + " " + t.name;
+      b.onclick = () => {
+        taskId = t.id; prefill = t.prefill; stopSeq = t.stop;
+        prefillInput.value = t.prefill.replace(/\n/g, "\\n");
+        stopInput.value = t.stop;
+        recompute();
+      };
+      taskChips.appendChild(b);
+    });
+  }
+
+  function renderPrompt(task){
+    promptBox.innerHTML =
+      '<span class="role">system:</span> <span class="sys">' + escapeHtml(task.system) + '</span>\n\n' +
+      '<span class="role">user:</span> ' + escapeHtml(task.user) + '\n\n' +
+      '<span class="role">assistant:</span> <span class="caret">\u2588 \u2190 the turn being generated</span>';
+  }
+
+  function renderTurn(el, pf, res){
+    const gen = res.raw.slice(pf.length);
+    let html = '<span class="role">assistant:</span> ';
+    html += pf ? '<span class="pf">' + escVis(pf) + '</span>' : '<span class="caret">(empty \u2014 the model starts from nothing)</span>\n';
+    html += '<span class="gen">' + escVis(gen) + '</span>';
+    if (res.cut) html += '<span class="cut">' + escVis(res.cut) + '</span> <span class="cutnote">\u25C0 cut by the stop sequence</span>';
+    el.innerHTML = html;
+  }
+
+  function renderChecks(el, pill, res){
+    el.innerHTML = res.checks.map(c =>
+      '<div class="chk ' + (c.ok ? "ok" : "bad") + '"><span class="mk">' + (c.ok ? "\u2713" : "\u2717") + '</span><span>' + c.label + '</span></div>'
+    ).join("");
+    pill.textContent = res.passed + "/" + res.total;
+    pill.className = "scorepill " + (res.passed === res.total ? "ok" : "bad");
+  }
+
+  function renderTrace(res){
+    traceB.innerHTML = res.trace.map(t =>
+      '<div class="trow"><span class="n">' + t.n + '</span><span class="r">' + escapeHtml(t.rule) + '</span><span class="t">' +
+      (t.tok ? escInline(t.tok) : '<span style="color:#94a3b8">\u2014 no rule fires, the turn is complete</span>') + '</span></div>'
+    ).join("");
+  }
+
+  function renderWarn(pf){
+    if (/\s$/.test(pf)){
+      prefillWarn.innerHTML = '<div class="callout warn"><b>\u26A0 Trailing whitespace in the prefill.</b> The join between your text and the generated text is a token boundary, so a dangling space either doubles up or makes the model complete a word that never started \u2014 here it produces <span class="mono">"Label:&nbsp;&nbsp;negative"</span> and the exact-match check fails. Trim it: <span class="mono">prefill.replace(/\\s+$/, "")</span>.</div>';
+    } else if (pf === ""){
+      prefillWarn.innerHTML = '<div class="callout info"><b>Empty prefill.</b> Both panels are now the same run \u2014 that is the baseline. Type <span class="mono">{</span>, <span class="mono">-</span>, <span class="mono">Label:</span> or <span class="mono">SELECT</span> and watch the decode path change.</div>';
+    } else {
+      prefillWarn.innerHTML = "";
+    }
+  }
+
+  function recompute(){
+    const task = getTask(taskId);
+    buildChips();
+    renderPrompt(task);
+
+    const resA = runTask(task, "", stopSeq);
+    const resB = runTask(task, prefill, stopSeq);
+
+    renderTurn(turnA, "", resA);
+    renderTurn(turnB, prefill, resB);
+    renderChecks(checksA, scoreA, resA);
+    renderChecks(checksB, scoreB, resB);
+    renderTrace(resB);
+    renderWarn(prefill);
+  }
+
+  prefillInput.value = TASKS[0].prefill.replace(/\n/g, "\\n");
+  stopInput.value    = TASKS[0].stop;
+
+  prefillInput.oninput = () => { prefill = prefillInput.value.replace(/\\n/g, "\n"); recompute(); };
+  stopInput.oninput    = () => { stopSeq = stopInput.value; recompute(); };
+  resetBtn.onclick     = () => {
+    const t = getTask(taskId);
+    prefill = t.prefill; stopSeq = t.stop;
+    prefillInput.value = t.prefill.replace(/\n/g, "\\n");
+    stopInput.value = t.stop;
+    recompute();
+  };
+
+  runAllBtn.onclick = () => {
+    const r = runAll();
+    scoreboard.innerHTML =
+      '<table class="sb"><thead><tr><th>Task</th><th>What a program needs</th><th>No prefill</th><th>With prefill</th></tr></thead><tbody>' +
+      r.rows.map(row =>
+        '<tr><td>' + row.task.icon + " " + row.task.name + '</td>' +
+        '<td style="font-weight:500;color:#64748b">' + row.pre.total + ' checks</td>' +
+        '<td class="num ' + (row.base.passed === row.base.total ? "ok" : "bad") + '">' + row.base.passed + "/" + row.base.total + '</td>' +
+        '<td class="num ' + (row.pre.passed === row.pre.total ? "ok" : "bad") + '">' + row.pre.passed + "/" + row.pre.total + '</td></tr>'
+      ).join("") +
+      '<tr style="background:#faf5ff"><td><b>TOTAL</b></td><td></td>' +
+      '<td class="num bad">' + r.baseTotal + "/" + r.max + '</td>' +
+      '<td class="num ok">' + r.preTotal + "/" + r.max + '</td></tr>' +
+      '</tbody></table>' +
+      '<div class="callout good" style="margin-top:10px;"><b>\u2713 ' + r.preTotal + "/" + r.max + ' with prefill vs ' + r.baseTotal + "/" + r.max + ' without.</b> Notice <em>which</em> ' + r.baseTotal + ' the baseline passes: exactly one per task, and in every case it is the <b>content</b> check. The model knew the answer every time \u2014 it lost on the envelope. Prefill changes nothing about the model\u2019s knowledge; it removes the greeting, the fence and the sign-off by making them impossible continuations.</div>';
+  };
+
+  recompute();
+
+  // ============================================================
+  // UNDERSTAND — step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. A chat request is a transcript — and the last turn can be yours to start", why:"Under the hood a chat API call is not a question, it is a TRANSCRIPT: a system message, then alternating user and assistant turns, and the model's only job is to predict what comes next. Normally you send [system, user] and the model writes the entire assistant turn into an empty slot. Prefill — also called response priming, or less politely putting words in the model's mouth — means you append an ASSISTANT message yourself that already contains the first few characters, and the model carries on from exactly where you stopped. Nothing about the model changes; you are simply handing it a half-written turn instead of a blank one. That single move is the whole technique: no extra call, no extra tokens beyond the prefill itself, no fine-tune.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">system: ...<br>user: ...<br>assistant: <b>{"</b>&#9608; &#8592; you wrote the start<br>the model finishes YOUR sentence</div>`,
+     code:`// a prefill is the LAST message, with role "assistant".
+messages = [
+  { role: "user",      content: task },
+  { role: "assistant", content: '{"' }   // <-- the prefill
+];` },
+
+   { title:"2. Why the model opens with \u201CSure! Here's\u2026\u201D in the first place", why:"Chat models are trained on helpful-assistant conversations, so the highest-probability opening for an EMPTY assistant turn is a friendly acknowledgement — 'Sure!', 'Certainly!', 'Here's the JSON you asked for:' — followed by a fenced code block and a closing offer to help. That style prior is not a bug; it is exactly what makes the model pleasant to talk to. It becomes a bug the moment a PROGRAM is the reader: JSON.parse chokes on the greeting, your regex grabs the wrong line, and the markdown fence has to be stripped by hand. Asking politely in the prompt ('respond with JSON only, no preamble') helps, but it is a request the sampler can ignore — especially on smaller or busier models. Prefill changes the odds instead of asking: if the turn already starts with an open brace, 'Sure!' is no longer a possible continuation at all.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">empty turn &#8594; friendly opener<br>&#8594; \`\`\`json fence<br>&#8594; payload<br>&#8594; \u201Clet me know!\u201D<br><b>3 of those 4 break your parser</b></div>`,
+     code:`// the baseline the demo decodes, one rule per line:
+"Sure! Here's the extracted data as JSON:\\n\\n"  // style prior
++ "\`\`\`json\\n"                                   // fence
++ '{ "order_id": "A-1042", ... }'                // the part you wanted
++ "\\n\`\`\`\\n\\nLet me know if you need more!"      // sign-off` },
+
+   { title:"3. Continuation, not restart — the model treats the prefill as its own words", why:"Because the model is autoregressive, it conditions on every token in the context INCLUDING the ones you wrote into the assistant turn — and it has no way to tell that you, not it, produced them. So it does not re-plan an answer from scratch; it finishes the sentence you started. Land it mid-array and it emits the next element; land it mid-string and it closes that string. The demo makes this literal: the JSON prefill stops right after an opening quote, and the very first generated token is the ORDER ID itself, because the only sensible continuation of an unterminated JSON string is its contents. That is why the technique is so effective — you are not adding an instruction, you are deleting every branch that does not continue your text.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prefill: <b>{"order_id": "</b><br>&#8595; only sensible next token<br><b>A-1042"</b><br>not an instruction \u2014 a deleted branch</div>`,
+     code:`// the decoder asks the TEXT, not a flag:
+if (inOpenString(out)) {                 // a quote is still open
+  const k = jsonKeys(out).pop();         // which key opened it?
+  return String(body[k]) + '"';          // emit its value, close it
+}` },
+
+   { title:"4. The first token decides the whole shape", why:"Formats are self-reinforcing. Once a response starts with '{', the highest-probability continuation is a JSON key; once it starts with '- ', the continuation is another bullet; once it starts with 'SELECT', the continuation is SQL rather than prose about SQL. So the entire fight over output format is really a fight over the FIRST TOKEN, and prefill wins it by fiat. This is why a prefill of one character routinely outperforms three paragraphs of formatting instructions, and why the fix scales down rather than up: pick the shortest prefix that can only be continued one way — a bare '{', a '- ', a 'SELECT', an opening XML tag — and stop there. Longer is not better; longer starts asserting content.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\u201C{\u201D &#8594; a JSON key must follow<br>\u201C- \u201D &#8594; a bullet must follow<br>\u201CSELECT\u201D &#8594; SQL must follow<br><b>win token #1, win the response</b></div>`,
+     code:`// shortest prefix with exactly one plausible continuation:
+json    -> '{'          bullets -> '-'
+label   -> 'Label:'     sql     -> 'SELECT'
+xml     -> '<answer>'   letter  -> 'Dear Ms Alvarez,'` },
+
+   { title:"5. Preamble suppression — deleting the chatter, not asking for less of it", why:"'Do not include any preamble' is an instruction competing against a strong trained habit, and it loses often enough to matter at scale — one stray 'Certainly!' in a thousand calls is a production incident when a parser is downstream. Prefill does not compete with the habit, it forecloses it: there is no position in the transcript where the greeting could go, because the payload already started. The same argument covers the tail — a model that opened with 'Sure!' tends to close with 'Let me know if you need anything else!', and a model that opened with '{' has no such pull. Watch the decode trace in LOOK: the baseline's first and last tokens are pure chat, and the prefilled run never emits either.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\u201Cno preamble please\u201D = a REQUEST<br>prefill \u201C{\u201D = a FACT<br><br>the greeting has nowhere to go</div>`,
+     code:`// baseline trace:  [preamble][fence][payload][/fence][trailer]
+// prefill trace:   [payload]
+// same model, same task \u2014 the chat wrapper simply never fires.` },
+
+   { title:"6. Schema scaffolding — and why you prefill shape, never values", why:"You can prefill more than one character. Writing '{\\n  \"order_id\": \"' says not only 'be JSON' but 'the first field is order_id, and its value is a string that starts NOW'. Extend that to a full skeleton and you dictate field order, force optional fields to appear, and delete whole classes of drift. The cost is the sharp edge: anything you prefill is ASSERTED as true whether or not it is. Prefill '\"status\": \"' for a record that has no status and the model will invent one rather than break the syntax you started — it cannot contradict you, only continue you. So scaffold the SHAPE (braces, keys, tags) and leave every VALUE to the model.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prefill the shape &#10003;<br>{ \u201Corder_id\u201D: \u201C<br><br>prefill a value &#10007;<br>{ \u201Cstatus\u201D: \u201Cshipped<br><b>&#8594; asserted, then confabulated</b></div>`,
+     code:`// scaffold keys, never values:
+'{\\n  "order_id": "'            // \u2713 forces shape + field order
+'{\\n  "status": "shipped'       // \u2717 the model can only agree with you` },
+
+   { title:"7. Prefill is a strong nudge, not a hard guarantee", why:"Prefill shifts probabilities; it does not restrict the sampler's vocabulary. The model can still close the JSON early, emit a trailing comma, or — after a long enough generation — drift back into prose. Grammar-constrained decoding is the different, stronger thing: JSON mode, structured outputs and strict tool schemas mask the logits so an invalid token literally cannot be sampled, which is a guarantee prefill can never make. Reach for prefill when the runtime has no structured-output mode, when you want a shape the schema languages cannot express (a specific prose voice, a partial SQL statement, an opening XML tag), or ON TOP of a schema simply to skip the preamble. And keep the parse in a try/catch either way.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prefill = shifts probabilities<br>constrained decoding = masks logits<br><br>nudge vs guarantee<br><b>keep the try/catch regardless</b></div>`,
+     code:`// prefill: an invalid token is unlikely.
+// constrained decoding: an invalid token is impossible.
+try { data = JSON.parse(prefill + res.text); }
+catch (e) { data = repair(prefill + res.text); }   // still needed` },
+
+   { title:"8. Pair it with a stop sequence — and remember to re-attach the prefill", why:"Prefill controls how the turn STARTS; a stop sequence controls where it ENDS. They are two halves of one idea. Toggle the stop field on the classification task in LOOK: with the prefill alone the model writes 'Label: negative' and then keeps going with an explanation, so the exact-match check fails; add '\\n' as a stop sequence and generation halts at the end of that line, and the response is exactly 'Label: negative'. Two practical details travel with this. Most APIs return only the GENERATED text, so the prefill you sent is not echoed back and you must concatenate it yourself before parsing. And the stop sequence itself is normally excluded from the returned text, so you do not have to trim it off.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prefill \u2192 controls the START<br>stop  \u2192 controls the END<br><br>response = generated text ONLY<br><b>full = prefill + response</b></div>`,
+     code:`const PREFILL = "Label:";
+const res = await call({ messages, prefill: PREFILL, stop: ["\\n"] });
+const full = PREFILL + res.text;      // "Label: negative"
+//            ^^^^^^^ the API returned only " negative"` },
+
+   { title:"9. The seam — trailing whitespace and token boundaries", why:"The join between your prefill and the first generated token is a real token boundary, and it is the classic prefill bug. End the prefill with a space and one of two things happens: the model emits its own leading space and you get a doubled one, or the tokenizer now expects a word CONTINUING from that space and produces something subtly odd. APIs that supported prefill rejected a trailing-whitespace prefill outright for exactly this reason. The fix is one line — strip trailing whitespace before sending — and the demo shows the failure live: type 'Label: ' with the space and the exact-match check breaks on a double space, even though the label itself is right.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\u201CLabel: \u201D + \u201C negative\u201D<br>= \u201CLabel:&nbsp;&nbsp;negative\u201D &#10007;<br><br>\u201CLabel:\u201D + \u201C negative\u201D<br>= \u201CLabel: negative\u201D &#10003;</div>`,
+     code:`const prefill = raw.replace(/\\s+$/, "");   // ALWAYS trim the seam
+// the space belongs to the model's first token, not to your prefix.` },
+
+   { title:"10. Voice, persona — and why the prefill must never come from a user", why:"Prefill works on prose as well as data. Start the turn with 'Dear Ms Alvarez,' and you get a letter rather than a chat message; start it with '## Findings' and you get a report section; start it with a first line of verse and the register is set for the rest. Anything whose failure mode is 'it answered, but in the wrong shape' is a prefill candidate. That same power is the security note: because the model continues WHATEVER you wrote as if it had written it, a prefill is the most direct steering lever the API exposes — which is exactly why an application must never let an END USER supply the prefill string. Treat it as trusted, developer-owned text, on the same footing as the system prompt.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">\u201CDear Ms Alvarez,\u201D &#8594; a letter<br>\u201C## Findings\u201D &#8594; a report<br><br><b>developer-owned text</b><br>never user-supplied</div>`,
+     code:`// \u2713 prefill = a constant in YOUR code
+const prefill = "## Findings\\n\\n";
+// \u2717 prefill = anything that came from a request body
+const prefill = req.body.prefix;      // user writes the model's mouth` },
+
+   { title:"11. Where prefill stands today — and what replaced it on Claude", why:"Be precise about availability, because it changed. On current Claude models — Opus 4.6 and later, Sonnet 4.6 and later, and Claude Fable 5 — a TRAILING assistant turn returns a 400 error; prefill was removed as an affordance, and assistant messages elsewhere in the array (few-shot history) are unaffected. Its jobs were split up and made stronger: output_config.format with a json_schema for JSON, a tool with an enum for a classification label, and a one-line system instruction for 'respond directly, no preamble'. That is a real upgrade — a schema is enforced rather than nudged (step 7). Meanwhile the mechanism itself is alive and native anywhere you control the raw prompt string, which is most local and self-hosted runtimes, where 'prefill' is simply the prompt ending mid-assistant-turn. Learn it for the mental model regardless: it is the clearest demonstration in the whole series of why the first token owns the response. Next: LLM-as-judge — grading fuzzy outputs (tone, faithfulness, helpfulness) with a model against a rubric instead of an exact string.",
+     concept:`<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">current Claude: trailing assistant turn &#8594; <b>400</b><br>&#8594; output_config.format (JSON)<br>&#8594; tool + enum (labels)<br>&#8594; system line (no preamble)<br>raw-prompt runtimes: still native</div>`,
+     code:`# the replacement on current Claude models:
+client.messages.create(
+    model="claude-opus-5", max_tokens=1024,
+    output_config={"format": {"type": "json_schema", "schema": ORDER_SCHEMA}},
+    messages=[{"role": "user", "content": task}],
+)   # enforced, not nudged \u2014 and no prefill to re-attach.` }
+  ];
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach((s,i)=>{ const bn=document.createElement("button"); bn.className="w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; bn.innerHTML=`<div class="font-semibold">${s.title}</div>`; bn.onclick=()=>show(i); stepsEl.appendChild(bn); });
+  function show(i){ curStep=i; const s=STEPS[i];
+    document.getElementById("concept").innerHTML=`<div class="fade-in w-full flex items-center justify-center">${s.concept}</div>`;
+    document.getElementById("why").innerHTML=`<span class="fade-in inline-block">${s.why}</span>`;
+    document.getElementById("code").textContent=s.code;
+    stepsEl.querySelectorAll("button").forEach((bn,idx)=>{ bn.className = idx===i ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold" : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm"; });
+  }
+  prevB.onclick=()=>show(Math.max(0,curStep-1)); nextBtn.onclick=()=>show(Math.min(STEPS.length-1,curStep+1));
+  let tm=null; autoB.onclick=()=>{ if(tm){clearInterval(tm);tm=null;autoB.textContent="▶ Auto-play";return;} autoB.textContent="⏸ Pause"; show(0); tm=setInterval(()=>{ if(curStep>=STEPS.length-1){clearInterval(tm);tm=null;autoB.textContent="▶ Replay";return;} show(curStep+1); },3200); };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = { hasPreamble, hasFence, fenceOpen, inOpenString, jsonKeys, braceDepth, bulletCount, numberedCount, nonEmptyLines, extractJson, applyStop, unescapeStop, decode, step, runTask, runAll, checkTask, getTask, TASKS };
+</script>
+</body>
+</html>
