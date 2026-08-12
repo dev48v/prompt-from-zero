@@ -61,6 +61,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 57 — Prompt Evals](https://dev48v.infy.uk/prompt/day57-prompt-evals.html) — `day57-prompt-evals.html`
 - [PromptFromZero · Day 58 — Dynamic Few-Shot](https://dev48v.infy.uk/prompt/day58-dynamic-few-shot.html) — `day58-dynamic-few-shot.html`
 - [PromptFromZero · Day 59 — Assistant Prefill (response priming)](https://dev48v.infy.uk/prompt/day59-assistant-prefill.html) — `day59-assistant-prefill.html`
+- [PromptFromZero · Day 60 — AMA Prompting](https://dev48v.infy.uk/prompt/day60-ama-prompting.html) — `day60-ama-prompting.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

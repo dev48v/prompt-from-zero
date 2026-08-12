@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 60 — AMA Prompting (Ask Me Anything)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; max-width:100%; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+  .btn.on { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+
+  /* ===== score tiles ===== */
+  .tile { border-radius:14px; padding:12px 14px; border:1px solid #e2e8f0; background:#fff; }
+  .tile .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+  .tile .v { font-size:30px; font-weight:900; color:#0f172a; line-height:1.15; }
+  .tile .s { font-size:11px; font-weight:600; color:#94a3b8; }
+  .tile.win { border-color:#8b5cf6; background:#faf5ff; }
+  .tile.win .v { color:#6d28d9; }
+  .tile.lose .v { color:#b91c1c; }
+
+  /* ===== prompt view cards ===== */
+  .vcard { border:1px solid #e2e8f0; border-radius:12px; padding:10px 11px; background:#fff; display:flex; flex-direction:column; gap:7px; }
+  .vcard.on { border-color:#8b5cf6; box-shadow:0 0 0 1px #ddd6fe inset; }
+  .vcard.off { opacity:.45; }
+  .vcard.bias.on { border-color:#f43f5e; box-shadow:0 0 0 1px #fecdd3 inset; }
+  .vname { font-size:12.5px; font-weight:800; color:#0f172a; }
+  .vnote { font-size:11px; color:#64748b; line-height:1.45; }
+  .ptext { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:8px 9px; font-family:ui-monospace, Menlo, monospace; font-size:10.5px; line-height:1.5; white-space:pre-wrap; word-break:break-word; overflow-x:auto; }
+  .ptext .hl { color:#c4b5fd; }
+  .ptext .cm { color:#6ee7b7; }
+
+  /* ===== matrix ===== */
+  .scroll { overflow:auto; max-width:100%; min-width:0; -webkit-overflow-scrolling:touch; }
+  .minw0 { min-width:0; }
+  table.mtx { border-collapse:collapse; font-size:11px; }
+  table.mtx th { position:sticky; top:0; background:#fff; z-index:2; font-size:9.5px; text-transform:uppercase; letter-spacing:.04em; color:#64748b; padding:4px 5px; border-bottom:1px solid #e2e8f0; white-space:nowrap; text-align:center; }
+  table.mtx td { padding:2px 5px; border-bottom:1px solid #f8fafc; white-space:nowrap; text-align:center; }
+  table.mtx td.q { text-align:left; font-size:10.5px; color:#475569; max-width:230px; overflow:hidden; text-overflow:ellipsis; }
+  table.mtx td.n { color:#cbd5e1; font-weight:800; font-size:10px; }
+  .mc { display:inline-block; min-width:22px; text-align:center; border-radius:4px; font-weight:900; font-size:10.5px; padding:1px 3px; }
+  .mc.ok  { background:#dcfce7; color:#166534; }
+  .mc.no  { background:#fee2e2; color:#b91c1c; }
+  .mc.pos { background:#ede9fe; color:#5b21b6; }
+  .mc.neg { background:#f1f5f9; color:#475569; }
+  .mc.gold{ background:#fef3c7; color:#92400e; }
+
+  /* ===== plain tables ===== */
+  table.sb { width:100%; border-collapse:collapse; font-size:12px; }
+  table.sb th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#64748b; padding:5px 7px; border-bottom:1px solid #e2e8f0; white-space:nowrap; }
+  table.sb td { padding:6px 7px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#0f172a; white-space:nowrap; }
+  table.sb tr:last-child td { border-bottom:none; }
+  .num.bad { color:#b91c1c; font-weight:900; }
+  .num.ok  { color:#15803d; font-weight:900; }
+  .num.mid { color:#a16207; font-weight:900; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.55; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+
+  input[type=range] { accent-color:#8b5cf6; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 md:sticky md:top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-3 top-3 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 pl-[68px] md:pl-[76px] flex flex-wrap items-center justify-between gap-3">
+    <div class="flex-1 min-w-0">
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 60</div>
+      <h1 class="text-lg md:text-xl font-bold">❓ AMA Prompting (&ldquo;Ask Me Anything&rdquo;) — there is no one perfect prompt, so stop hunting for it. AMA (Arora et al., 2022) asks the <em>same</em> question through <strong>many different prompt formats</strong> — open-ended question-answering, cloze, question-generation, a paraphrase, a few-shot variant — collects one noisy vote from each, and then combines them with <strong>weak supervision</strong> rather than a plain majority. The combiner is the interesting half: it looks only at <em>how often the prompts agree with each other</em>, uses that to estimate <strong>each prompt's accuracy without ever seeing a label</strong>, and turns those estimates into log-odds weights so a confidently-wrong prompt gets a <em>negative</em> weight instead of an equal vote. Two things it is not: it is not <strong>Day 3 self-consistency</strong> (that is ONE prompt sampled k times, then majority vote — it fixes sampling noise but cannot fix the prompt's own bias), and it is not an eval. Everything below runs live in your browser on a baked 40-item benchmark: the model calls are <em>simulated</em> by seeded, deterministic noisy labelers, but every number on screen — agreement rates, triplet-method accuracy estimates, weights, the aggregated prediction and all three scores — is <strong>computed at runtime, in front of you</strong>.</h1>
+    </div>
+    <div class="flex flex-wrap gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-4 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-xl md:text-2xl font-bold mb-1">One prompt is a <span class="text-rose-500">guess</span>. Many prompts plus <span class="text-violet-600">weak supervision</span> is an estimate.</h2>
+        <p class="text-slate-500 text-sm md:text-base mb-4">40 baked reviews, gold labels known to <em>us</em> but never to the aggregator. Seven prompt views of the same task, each a genuinely different format with its own error profile. Toggle views, break conditional independence, re-seed — <b>every number recomputes</b>.</p>
+      </div>
+
+      <!-- ===== scoreboard tiles ===== -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div class="tile" id="tileBest"></div>
+        <div class="tile" id="tileMaj"></div>
+        <div class="tile win" id="tileAma"></div>
+        <div class="tile" id="tileDelta"></div>
+      </div>
+      <div id="narr" class="mb-3"></div>
+
+      <!-- ===== controls ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎛 Controls — <span class="normal-case font-normal text-slate-400">every one of these forces a full recompute</span></div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button class="btn btn-p" id="ctlSeed">🎲 Re-seed</button>
+          <button class="btn" id="ctlCorr">🔗 Correlated prompts: <b id="corrState">off</b></button>
+          <button class="btn" id="ctlGold">👁 Gold column: <b id="goldState">shown</b></button>
+          <button class="btn" id="ctlAll">↺ Reset views</button>
+          <span class="text-xs font-bold text-slate-500 ml-1">seed <span class="mono" id="seedLbl"></span></span>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-3">
+          <label class="text-xs font-bold text-slate-600">Use first <span class="mono text-violet-700" id="kLabel">7</span> active views</label>
+          <input type="range" id="kSlider" min="2" max="7" step="1" value="7" class="w-48 max-w-full" />
+          <span class="text-xs text-slate-400" id="kNote"></span>
+        </div>
+      </div>
+
+      <!-- ===== prompt views ===== -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🗂 Seven prompt views of one task — <span class="normal-case font-normal text-slate-400">same 40 reviews, seven genuinely different formats. Click a card to switch it off.</span></div>
+        <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3" id="viewCards"></div>
+      </div>
+
+      <!-- ===== label matrix ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🧮 The label matrix — <span class="normal-case font-normal text-slate-400">40 questions &times; k prompt views. This, not the answers, is the object AMA studies.</span></div>
+          <div class="text-[10px] font-bold text-slate-400">+ = positive &nbsp;&nbsp; − = negative</div>
+        </div>
+        <div class="scroll" style="max-height:420px;">
+          <table class="mtx" id="matrix"></table>
+        </div>
+        <div id="goldNote" class="mt-2"></div>
+      </div>
+
+      <!-- ===== weak supervision internals ===== -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🤝 Pairwise agreement — <span class="normal-case font-normal text-slate-400">the only signal the aggregator gets</span></div>
+          <div class="scroll"><table class="sb" id="agree"></table></div>
+          <p class="text-[11px] text-slate-500 mt-2 leading-relaxed">Each cell is how often two views output the <b>same</b> label. Two views agree either when both are right or when both are wrong — so agreement carries accuracy information even with no gold anywhere in sight. The method-of-moments identity is <span class="mono">E[λ<sub>i</sub>λ<sub>j</sub>] = a<sub>i</sub>·a<sub>j</sub></span>, where <span class="mono">a = 2·accuracy − 1</span> and <span class="mono">E[λ<sub>i</sub>λ<sub>j</sub>] = 2·agreement − 1</span>.</p>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📐 Triplet estimates &rarr; log-odds weights</div>
+          <div class="scroll"><table class="sb" id="estTable"></table></div>
+          <div id="estNote" class="mt-2"></div>
+        </div>
+      </div>
+
+      <!-- ===== self-consistency comparison ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🔁 Day 3 self-consistency vs Day 60 AMA — <span class="normal-case font-normal text-slate-400">same budget of k calls, spent two different ways</span></div>
+        <div class="scroll"><table class="sb" id="scTable"></table></div>
+        <div class="callout info mt-3"><b>Self-consistency samples ONE prompt k times.</b> It averages away <em>sampling</em> noise, so it climbs fast and then flattens at that prompt's own ceiling — the questions this prompt reads wrongly, it reads wrongly on every sample. AMA spends the same k calls on <em>different prompts</em>, whose hard questions are not the same questions, so the errors actually cancel instead of stacking. They compose, too: sample each view a few times, then aggregate the per-view majorities.</div>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The aggregator never sees a label — that is the whole point.</strong> Press <b>👁 Gold column</b> and hide it: nothing on this page changes except the colours, because <span class="mono">aggregate(L)</span> takes the label matrix and nothing else. It computes agreement rates, recovers each view's accuracy from triplets of agreements, converts those to <span class="mono">w = log(a/(1−a))</span>, and takes <span class="mono">sign(Σ w<sub>i</sub>λ<sub>i</sub>)</span>. Notice what happens to the <span class="text-rose-600 font-bold">leading yes-question</span>: it agrees with everyone far <em>less</em> than chance, so its estimated accuracy lands below 0.5, its weight goes <b>negative</b>, and the aggregate starts reading it <em>backwards</em> — a confidently-wrong prompt turned into a useful one, with no labels. Plain majority vote cannot do that; it hands the same vote to the best prompt and the worst.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">AMA = many prompt formats, one vote each, then weak supervision learns whom to trust from agreement alone. Self-consistency = one prompt, k samples, majority vote.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-4 md:p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2 min-w-0">
+      <h3 class="font-bold text-lg mb-3">How AMA prompting works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4 min-w-0">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700 text-sm md:text-base leading-relaxed">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-2xl md:text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">AMA is two pieces that people usually get in the wrong proportion. The first is easy and everyone does it: write several prompts instead of one. The second is where the win actually lives: a combiner that <em>learns whom to trust from agreement alone</em>, so you are not stuck giving your worst prompt the same vote as your best. Below is exactly what this page runs — the views, the label matrix, the agreement moments, the triplet estimator, the log-odds vote — followed by the guards and the budget maths you need before shipping it.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Define the task as a binary decision the votes can be cast on</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Weak supervision needs a fixed label space to vote over. Start binary — sentiment, entailment, &ldquo;is this claim supported?&rdquo;, &ldquo;does this ticket need escalation?&rdquo; — and map every view's free-text output down to <span class="mono">+1 / −1</span>. Multi-class works too (one-vs-rest, or a categorical model) but the maths is cleanest and the debugging is honest when there are two options.</p>
+        <div class="relative"><pre>// STEP 1 — the benchmark. Gold labels exist for MEASUREMENT only;
+// the aggregator below never receives them.
+const ITEMS = [
+  { t: "Battery lasts two full days - I stopped carrying the charger.", y:  1 },
+  { t: "Died on day nine. Refund is still 'processing'.",              y: -1 },
+  // ... 40 items, 20 positive / 20 negative
+];
+const GOLD = ITEMS.map(it => it.y);          // +1 / -1</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Write k diverse prompt <em>views</em> — different formats, not reworded synonyms</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A view is a full strategy for extracting the answer, not a rephrasing. The AMA paper's headline empirical finding is that <strong>open-ended question-answering beats restrictive yes/no</strong>, so bias your set toward formats that let the model produce natural text and then map that text to a label. Diversity of <em>format</em> is what makes the errors different, and different errors are the only thing aggregation can exploit.</p>
+        <div class="relative"><pre>// STEP 2 — seven views, seven different SHAPES of the same question.
+const VIEWS = [
+  { id:"oqa",   name:"Open-ended QA",        // strongest: free text, then map
+    prompt:'Review: "{t}"\nQuestion: What is the author’s opinion of the product?\nAnswer:' },
+  { id:"qgen",  name:"Question-gen -> answer",
+    prompt:'Write a question that settles the sentiment, then answer it.\nQ: Would the reviewer buy this again?\nReview: "{t}"\nA:' },
+  { id:"few",   name:"Few-shot",
+    prompt:'"Charges fast, holds all day." -> positive\n"Stopped working after two weeks." -> negative\n"{t}" ->' },
+  { id:"cloze", name:"Cloze",
+    prompt:'"{t}"\nOverall, the reviewer sounds ____ about the product.' },
+  { id:"para",  name:"Paraphrased instruction",
+    prompt:'Read the note and tell me, in your own words, whether the\nperson writing it ended up happy.\nNote: "{t}"' },
+  { id:"yn",    name:"Restrictive yes/no",   // the format AMA says underperforms
+    prompt:'Review: "{t}"\nIs this review positive? Answer Yes or No.' },
+  { id:"lead",  name:"Leading yes-question", // deliberately biased
+    prompt:'Review: "{t}"\nThis is a happy customer, right? Yes or No.' },
+];</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Collect the label matrix <span class="mono">L</span> — n items &times; k views</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Run every view over every item and store one <span class="mono">±1</span> per cell. Map free text to a label with a tiny deterministic mapper and count anything unmappable as an abstention (<span class="mono">0</span>) rather than a guess. This matrix is the whole input to everything that follows — no prompts, no text, no labels.</p>
+        <div class="relative"><pre>// STEP 3 — in production this is k API calls per item, cached by (view, item).
+async function labelMatrix(items, views){
+  return Promise.all(views.map(v =&gt;
+    Promise.all(items.map(async it =&gt; {
+      const text = await call(v.prompt.replace("{t}", it.t));
+      return toLabel(text);                 // "sounds delighted" -> +1
+    }))
+  ));
+}
+// tiny, auditable mapper - keep it boring and log every miss.
+const POS = /\b(positive|happy|delighted|pleased|good|great|yes|would)\b/i;
+const NEG = /\b(negative|unhappy|disappointed|bad|poor|no|wouldn.t)\b/i;
+function toLabel(s){ if (POS.test(s) &amp;&amp; !NEG.test(s)) return 1;
+                     if (NEG.test(s)) return -1; return 0; }   // 0 = abstain</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Baseline first — plain majority vote</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Always compute this. It is three lines, it is often good, and it is the number weak supervision has to beat to justify itself. It is also the thing with the clean failure mode: every view gets one vote regardless of quality, so one confidently-wrong prompt with a class bias drags the whole ensemble toward its bias.</p>
+        <div class="relative"><pre>// STEP 4 — majority vote. Ties resolve to +1, deterministically.
+function majorityVote(L){
+  const n = L[0].length, out = new Array(n);
+  for (let q = 0; q &lt; n; q++){
+    let s = 0;
+    for (let i = 0; i &lt; L.length; i++) s += L[i][q];
+    out[q] = (s &gt; 0) ? 1 : ((s &lt; 0) ? -1 : 1);
+  }
+  return out;
+}
+// An even k plus a tie rule is a silent coin-flip. Prefer odd k, or make
+// the tie rule an explicit product decision (here: +1, and documented).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Agreement rates — the unlabeled signal</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Take every pair of views and compute the mean of their product. For <span class="mono">±1</span> votes, <span class="mono">E[λ<sub>i</sub>λ<sub>j</sub>]</span> is just <span class="mono">2·(agreement rate) − 1</span>: it is <span class="mono">+1</span> when two views always agree, <span class="mono">0</span> when they are independent coin flips, negative when they systematically disagree. No labels are touched anywhere in this function.</p>
+        <div class="relative"><pre>// STEP 5 — the second-moment matrix. Diagonal is always 1.
+function pairwiseProducts(L){
+  const k = L.length, n = L[0].length, E = [], A = [];
+  for (let i = 0; i &lt; k; i++){ E.push(new Array(k).fill(0)); A.push(new Array(k).fill(0)); }
+  for (let i = 0; i &lt; k; i++) for (let j = 0; j &lt; k; j++){
+    let s = 0;
+    for (let q = 0; q &lt; n; q++) s += L[i][q] * L[j][q];
+    E[i][j] = s / n;             // E[lambda_i * lambda_j]
+    A[i][j] = (s / n + 1) / 2;   // plain agreement rate, for humans
+  }
+  return { E: E, A: A };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">The triplet method — recover each view's accuracy without labels</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Under conditional independence, <span class="mono">E[λ<sub>i</sub>λ<sub>j</sub>] = a<sub>i</sub>a<sub>j</sub></span> where <span class="mono">a<sub>i</sub> = E[λ<sub>i</sub>y] = 2·accuracy<sub>i</sub> − 1</span>. Three views give three equations in three unknowns, and the product/quotient falls out algebraically. The square root only gives magnitudes, so signs are resolved against a reference view and then oriented globally by assuming the <em>majority</em> of your prompts are better than random — still no labels.</p>
+        <div class="relative"><pre>// STEP 6 — |a_i| = sqrt( E[ij] * E[ik] / E[jk] ), averaged over all triplets.
+function tripletEstimate(E){
+  const k = E.length, mag = new Array(k).fill(0);
+  for (let i = 0; i &lt; k; i++){
+    const vals = [];
+    for (let j = 0; j &lt; k; j++){ if (j === i) continue;
+      for (let l = j + 1; l &lt; k; l++){ if (l === i) continue;
+        if (Math.abs(E[j][l]) &lt; 1e-6) continue;             // unusable triplet
+        vals.push(clamp(Math.sqrt(Math.abs((E[i][j] * E[i][l]) / E[j][l])), 0, 0.99));
+      }
+    }
+    mag[i] = vals.length ? mean(vals) : 0;
+  }
+  // sign vs a reference view, then a global orientation flip if needed
+  let ref = 0, best = -1;
+  for (let i = 0; i &lt; k; i++){ let s = 0;
+    for (let j = 0; j &lt; k; j++) if (j !== i) s += Math.abs(E[i][j]);
+    if (s &gt; best){ best = s; ref = i; } }
+  let mu = mag.map((m, i) =&gt; (i === ref || E[ref][i] &gt;= 0) ? m : -m);
+  let tot = 0; for (let i = 0; i &lt; k; i++) tot += mu[i];
+  if (tot &lt; 0) mu = mu.map(x =&gt; -x);       // assume most prompts beat chance
+  return { mu: mu, acc: mu.map(m =&gt; clamp((1 + m) / 2, 0.02, 0.98)), ref: ref };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Log-odds weights and the weighted vote</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Under conditional independence the optimal combination is a naive-Bayes vote, and its weight per labeler is exactly the log-odds of its accuracy. That is why <span class="mono">w = log(a/(1−a))</span> and not <span class="mono">w = a</span>: a view at 0.50 gets weight 0, and a view <em>below</em> 0.50 gets a <strong>negative</strong> weight, which flips its vote instead of discarding it. Clamp the accuracy away from 0 and 1 or one view earns an infinite weight and becomes a dictator.</p>
+        <div class="relative"><pre>// STEP 7 — the whole aggregator. Signature takes L. That is all it takes.
+function logOddsWeights(acc){ return acc.map(a =&gt; Math.log(a / (1 - a))); }
+
+function weightedVote(L, w){
+  const n = L[0].length, out = new Array(n);
+  for (let q = 0; q &lt; n; q++){
+    let s = 0;
+    for (let i = 0; i &lt; L.length; i++) s += w[i] * L[i][q];
+    out[q] = (s &gt; 0) ? 1 : ((s &lt; 0) ? -1 : 1);   // same tie rule as majority
+  }
+  return out;
+}
+
+function aggregate(L){
+  const pp = pairwiseProducts(L);
+  const t  = tripletEstimate(pp.E);
+  const w  = logOddsWeights(t.acc);
+  return { E: pp.E, A: pp.A, mu: t.mu, acc: t.acc, w: w,
+           pred: weightedVote(L, w), ref: t.ref };
+}
+// Equal accuracies -> equal weights -> weightedVote === majorityVote.
+// Weak supervision can only ever help when the views DIFFER in quality.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Measure the lift — against the right baselines</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Score three things on a held-out labeled slice: the <em>best single view</em>, plain majority, and the AMA aggregate. Be honest that &ldquo;best single view&rdquo; is an <strong>oracle</strong> baseline — you can only know which view is best if you have labels, which is the situation AMA is designed to avoid. If AMA does not beat majority, your views are too similar or too uniformly good; both are diagnosable from the agreement matrix.</p>
+        <div class="relative"><pre>// STEP 8 — the three numbers that decide whether this is worth k calls.
+const acc = (p, g) =&gt; p.filter((x, i) =&gt; x === g[i]).length / g.length;
+
+const perView  = L.map(col =&gt; acc(col, GOLD));
+const best     = Math.max.apply(null, perView);   // ORACLE - needs labels
+const majority = acc(majorityVote(L), GOLD);
+const ama      = acc(aggregate(L).pred, GOLD);    // label-free at inference
+
+console.log({ best, majority, ama, lift: ama - majority });
+// Also print  estimated vs true accuracy per view: if the estimates are
+// wildly off, conditional independence is broken (step 9), not the maths.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-violet-200 p-4 md:p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">Guard the assumption — drop near-duplicate prompts</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything above rests on <em>conditional independence</em>: given the true label, the views' errors are unrelated. Two prompts that are paraphrases of each other break it — they agree because they are the same prompt, the estimator reads that agreement as competence, and both get inflated weights while a genuinely independent third view is under-weighted. Flip the <b>🔗 Correlated prompts</b> toggle in LOOK and watch the estimates drift and the aggregate lose ground. The cheap guard is a duplicate filter on the agreement matrix itself.</p>
+        <div class="relative"><pre>// STEP 9 — greedily drop views that agree with a kept view above a cap.
+function dropDuplicates(L, ids, cap){
+  const A = pairwiseProducts(L).A, keep = [];
+  for (let i = 0; i &lt; L.length; i++){
+    const dup = keep.some(j =&gt; A[i][j] &gt; (cap || 0.90));
+    if (!dup) keep.push(i);
+    else console.warn("dropping near-duplicate view: " + ids[i]);
+  }
+  return keep;
+}
+// Better still, model the correlation instead of pruning it: the structured
+// weak-supervision literature (Snorkel / FlyingSquid) fits a dependency graph
+// over the labelers. Pruning is the version you can ship this afternoon.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-violet-200 p-4 md:p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Cost, latency, and when NOT to reach for this</h3></div>
+        <p class="text-sm text-slate-600 mb-3">AMA costs k&times; the calls and k&times; the tokens. It buys you accuracy from a <em>small</em> model without a fine-tune — that is the trade the paper makes, and it is a good one when your unit economics favour many cheap calls over one expensive one. Fan the k views out in parallel so latency is one call plus a rounding error, cache by <span class="mono">(view, item)</span>, and stop before you build this if a single good prompt already clears your bar.</p>
+        <div class="relative"><pre># The decision table, in the order you should actually try things.
+
+# 1. ONE good prompt              1x cost   - always try first, always.
+# 2. Self-consistency (Day 3)     kx cost   - one prompt, k samples, majority.
+#                                             Fixes SAMPLING noise only.
+#                                             Needs temperature &gt; 0.
+# 3. AMA (today)                  kx cost   - k prompt FORMATS, weighted vote.
+#                                             Fixes PROMPT bias too. Needs
+#                                             genuinely different views.
+# 4. AMA + self-consistency       k*m cost  - sample each view m times, take
+#                                             the per-view majority, then
+#                                             weak-supervise across views.
+# 5. Fine-tune                    train $$  - once you have labels, or once
+#                                             AMA has LABELLED a corpus for
+#                                             you (its original purpose:
+#                                             programmatic training data).
+
+# Latency: fan out, do not loop.
+results = await asyncio.gather(*[call(v.prompt.format(t=item)) for v in VIEWS])</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-4 md:p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 60 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>AMA prompting</strong> — &ldquo;Ask Me Anything&rdquo;, Arora et al. 2022 — which starts from an uncomfortable admission: <em>there is no one perfect prompt, and prompt-to-prompt variance is enormous</em>, so the search for the magic wording is a search for something that does not exist. AMA replaces it with two moves. First, ask the same question through <strong>many different prompt formats</strong> — and prefer <strong>open-ended question-answering</strong> over restrictive yes/no, which is the paper's headline empirical result, because a format that lets the model write natural text and then maps that text to a label beats one that forces a token the model rarely produces. Second, and this is the half that matters, combine the votes with <strong>weak supervision</strong> instead of a plain majority: compute how often the prompts agree with each other, use the identity <span class="mono">E[λ<sub>i</sub>λ<sub>j</sub>] = a<sub>i</sub>a<sub>j</sub></span> and the <strong>triplet method</strong> to recover each prompt's accuracy <em>with no labels at all</em>, turn those into log-odds weights <span class="mono">w = log(a/(1−a))</span>, and take <span class="mono">sign(Σ w<sub>i</sub>λ<sub>i</sub>)</span>. That is what lets a confidently-wrong prompt earn a <em>negative</em> weight and get read backwards rather than dragging the vote. You saw all of it compute live on a 40-item benchmark: best single prompt, plain majority, and the AMA aggregate, with each view's estimated accuracy printed next to its true one so the estimator's work is visible. And you saw the honest limits — the whole thing rests on <strong>conditional independence</strong>, so near-duplicate prompts inflate their own estimates and degrade the result (flip the correlation toggle and watch it), and it costs <strong>k× the calls</strong>. Do not confuse it with <strong>Day 3 self-consistency</strong>: that is ONE prompt sampled k times and majority-voted, which averages away sampling noise but is capped by that prompt's own bias; AMA varies the prompt itself, and weights the results. <strong>👉 Next up — LLM-as-judge: when the &ldquo;right answer&rdquo; is fuzzy (tone, helpfulness, faithfulness), grade outputs with a model against a rubric instead of an exact string.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ==== AMA-CORE-START ====
+// Pure, DOM-free logic (node-testable). Nothing below touches the DOM, so the
+// entire AMA pipeline - seeded simulation, agreement moments, triplet
+// estimation, log-odds weighting, voting - runs headlessly under node.
+
+function hashStr(s){
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+
+function mulberry32(a){
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function rngFor(seed, tag){ return mulberry32(hashStr(String(seed) + "|" + String(tag))); }
+
+function clamp(x, lo, hi){ return x < lo ? lo : (x > hi ? hi : x); }
+
+function mean(a){ let s = 0; for (let i = 0; i < a.length; i++) s += a[i]; return a.length ? s / a.length : 0; }
+
+function pct(x){ return (100 * x).toFixed(1) + "%"; }
+
+// ------------------------------------------------------------------
+// The benchmark: 40 short reviews, 20 positive / 20 negative.
+// GOLD exists so WE can measure. The aggregator never receives it.
+// ------------------------------------------------------------------
+const ITEMS = [
+  { t:"Battery lasts two full days - I stopped carrying the charger.", y: 1 },
+  { t:"Died on day nine. Refund is still 'processing'.",               y:-1 },
+  { t:"Arrived a day early and the packaging was spotless.",           y: 1 },
+  { t:"Feels like it was designed by someone who never used it.",      y:-1 },
+  { t:"Cheap, cheerful, and it does exactly what the listing said.",   y: 1 },
+  { t:"The photos are generous. The product is not.",                  y:-1 },
+  { t:"Third one I have bought. That should tell you enough.",         y: 1 },
+  { t:"Loud enough that I can hear it from the next room.",            y:-1 },
+  { t:"The stitching held up after six months of daily use.",          y: 1 },
+  { t:"Three emails to support, zero replies.",                        y:-1 },
+  { t:"Support replaced it within 48 hours, no argument.",             y: 1 },
+  { t:"It works, technically, if you enjoy restarting it hourly.",     y:-1 },
+  { t:"Quieter than the model it replaced, which is the whole point.", y: 1 },
+  { t:"The charging port loosened within a fortnight.",                y:-1 },
+  { t:"Setup took four minutes and I am not a technical person.",      y: 1 },
+  { t:"Half the features are behind a subscription nobody mentioned.", y:-1 },
+  { t:"Not glamorous, but it has never once let me down.",             y: 1 },
+  { t:"Snapped at the hinge the first time I opened it fully.",        y:-1 },
+  { t:"Worth every rupee, and I do not say that often.",               y: 1 },
+  { t:"Shipping took three weeks and it arrived dented.",              y:-1 },
+  { t:"The app is basic, yet the hardware is genuinely excellent.",    y: 1 },
+  { t:"The manual is a diagram of a different product.",               y:-1 },
+  { t:"Sceptical at first; converted after one week.",                 y: 1 },
+  { t:"Overheats under any real load.",                                y:-1 },
+  { t:"Fits the space perfectly and looks better than the photos.",    y: 1 },
+  { t:"Great until the firmware update bricked it.",                   y:-1 },
+  { t:"Sound is warm without being muddy.",                            y: 1 },
+  { t:"Returned it. Buying the older version again.",                  y:-1 },
+  { t:"It survived a toddler. Nothing else in this house has.",        y: 1 },
+  { t:"Smells of solvent and the smell has not left.",                 y:-1 },
+  { t:"Two years in and it still runs like day one.",                  y: 1 },
+  { t:"The screen has a dead pixel dead centre.",                      y:-1 },
+  { t:"Small, light, and it disappears into my bag.",                  y: 1 },
+  { t:"Cheaper alternatives do more, and do it quietly.",              y:-1 },
+  { t:"Instructions were clear, parts labelled, no swearing required.",y: 1 },
+  { t:"The fan is the loudest thing I own.",                           y:-1 },
+  { t:"Does one job and does it flawlessly.",                          y: 1 },
+  { t:"Fell apart. Literally, into pieces, on the counter.",           y:-1 },
+  { t:"I bought a second one for the office.",                         y: 1 },
+  { t:"I want the hour of my life back.",                              y:-1 }
+];
+const GOLD = ITEMS.map(function(it){ return it.y; });
+
+// ------------------------------------------------------------------
+// Seven prompt VIEWS of the one task. Each is a different FORMAT, with
+// its own error profile. `copies` marks the two views that become
+// near-duplicates when the correlation toggle is on.
+// ------------------------------------------------------------------
+const VIEWS = [
+  { id:"oqa", icon:"💬", name:"Open-ended question-answering", acc:0.82,
+    prompt:'Review: "{t}"\nQuestion: What is the author’s opinion of the product?\nAnswer:',
+    map:'free text → label ("sounds delighted" → positive)',
+    note:"The format AMA says wins: let the model write natural text, then map that text to a label. Strongest view here." },
+
+  { id:"qgen", icon:"❓", name:"Question generation → answering", acc:0.78,
+    prompt:'Step 1 — write a question that settles it:\n  "Would the reviewer buy this again?"\nStep 2 — answer it from the review.\nReview: "{t}"\nQ: Would the reviewer buy this again?\nA:',
+    map:'yes → positive, no → negative',
+    note:"Two hops. The model invents the probe, then answers it — the AMA paper’s canonical view-builder." },
+
+  { id:"few", icon:"🎒", name:"Few-shot variant", acc:0.77,
+    prompt:'"Charges fast, holds all day."      -> positive\n"Stopped working after two weeks." -> negative\n"{t}"                              ->',
+    map:'the completed word IS the label',
+    note:"Two demonstrations set the pattern. Different failure mode from the others: it copies the demos’ surface form." },
+
+  { id:"cloze", icon:"🧩", name:"Cloze / fill-in-the-blank", acc:0.75,
+    prompt:'"{t}"\nOverall, the reviewer sounds ____ about the product.',
+    map:'filled word → label', copies:"oqa",
+    note:"Closest to the pretraining objective. Becomes a near-duplicate of the open-ended view when correlation is on." },
+
+  { id:"para", icon:"🔁", name:"Paraphrased instruction", acc:0.71,
+    prompt:'Read the note below and tell me, in your own words,\nwhether the person writing it ended up happy.\nNote: "{t}"',
+    map:'happy → positive', copies:"oqa",
+    note:"Same request, different wording. Cheapest view to write — and the most likely to be a duplicate in disguise." },
+
+  { id:"yn", icon:"📕", name:"Restrictive yes/no", acc:0.62,
+    prompt:'Review: "{t}"\nIs this review positive? Answer Yes or No.',
+    map:'Yes → positive, No → negative',
+    note:"The restrictive format the AMA paper shows underperforms: it forces a token the model rarely produces in pretraining." },
+
+  { id:"lead", icon:"⚠️", name:"Leading yes-question (biased)", acc:0.35, bias:true,
+    prompt:'Review: "{t}"\nThis is a happy customer, right? Yes or No.',
+    map:'Yes → positive, No → negative',
+    skew:{ pPosGivenPos:0.62, pPosGivenNeg:0.92 },
+    note:"Acquiescence bias: it says Yes about 77% of the time whatever the review says. Accuracy 0.35 — worse than a coin, and confidently so." }
+];
+
+function viewById(id){ return VIEWS.filter(function(v){ return v.id === id; })[0]; }
+
+// ------------------------------------------------------------------
+// SIMULATED model calls. Deterministic given (seed, view id, item index).
+// Every downstream number is computed from this matrix at runtime.
+// ------------------------------------------------------------------
+function simulateMatrix(gold, views, seed, opts){
+  const o = opts || {};
+  const rho = (o.rho == null) ? 0.90 : o.rho;
+  const n = gold.length;
+  const cols = {};
+  for (let i = 0; i < views.length; i++){
+    const v = views[i], r = rngFor(seed, v.id), col = new Array(n);
+    for (let q = 0; q < n; q++){
+      const u = r();
+      if (v.skew){
+        const pPos = (gold[q] === 1) ? v.skew.pPosGivenPos : v.skew.pPosGivenNeg;
+        col[q] = (u < pPos) ? 1 : -1;
+      } else {
+        col[q] = (u < v.acc) ? gold[q] : -gold[q];
+      }
+    }
+    cols[v.id] = col;
+  }
+  if (o.correlated){
+    const cr = rngFor(seed, "corr");
+    for (let i = 0; i < views.length; i++){
+      const v = views[i];
+      if (!v.copies || !cols[v.copies]) continue;
+      const col = cols[v.id], src = cols[v.copies];
+      for (let q = 0; q < n; q++) if (cr() < rho) col[q] = src[q];
+    }
+  }
+  return views.map(function(v){ return cols[v.id]; });
+}
+
+// ------------------------------------------------------------------
+// WEAK SUPERVISION. Note the signatures: none of these take gold.
+// ------------------------------------------------------------------
+function pairwiseProducts(L){
+  const k = L.length, n = L[0].length, E = [], A = [];
+  for (let i = 0; i < k; i++){ E.push(new Array(k).fill(0)); A.push(new Array(k).fill(0)); }
+  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++){
+    let s = 0;
+    for (let q = 0; q < n; q++) s += L[i][q] * L[j][q];
+    E[i][j] = s / n;
+    A[i][j] = (s / n + 1) / 2;
+  }
+  return { E: E, A: A };
+}
+
+function tripletEstimate(E){
+  const k = E.length;
+  const mag = new Array(k).fill(0);
+  for (let i = 0; i < k; i++){
+    const vals = [];
+    for (let j = 0; j < k; j++){
+      if (j === i) continue;
+      for (let l = j + 1; l < k; l++){
+        if (l === i) continue;
+        if (Math.abs(E[j][l]) < 1e-6) continue;
+        vals.push(clamp(Math.sqrt(Math.abs((E[i][j] * E[i][l]) / E[j][l])), 0, 0.99));
+      }
+    }
+    mag[i] = vals.length ? mean(vals) : 0;
+  }
+  let ref = 0, best = -1;
+  for (let i = 0; i < k; i++){
+    let s = 0;
+    for (let j = 0; j < k; j++) if (j !== i) s += Math.abs(E[i][j]);
+    if (s > best){ best = s; ref = i; }
+  }
+  let mu = mag.map(function(m, i){ return (i === ref || E[ref][i] >= 0) ? m : -m; });
+  let tot = 0;
+  for (let i = 0; i < k; i++) tot += mu[i];
+  if (tot < 0) mu = mu.map(function(x){ return -x; });
+  const acc = mu.map(function(m){ return clamp((1 + m) / 2, 0.02, 0.98); });
+  return { mu: mu, acc: acc, ref: ref };
+}
+
+function logOddsWeights(acc){ return acc.map(function(a){ return Math.log(a / (1 - a)); }); }
+
+function weightedVote(L, w){
+  const n = L[0].length, out = new Array(n);
+  for (let q = 0; q < n; q++){
+    let s = 0;
+    for (let i = 0; i < L.length; i++) s += w[i] * L[i][q];
+    out[q] = (s > 0) ? 1 : ((s < 0) ? -1 : 1);
+  }
+  return out;
+}
+
+function majorityVote(L){
+  const ones = [];
+  for (let i = 0; i < L.length; i++) ones.push(1);
+  return weightedVote(L, ones);
+}
+
+function aggregate(L){
+  const pp = pairwiseProducts(L);
+  const t  = tripletEstimate(pp.E);
+  const w  = logOddsWeights(t.acc);
+  return { E: pp.E, A: pp.A, mu: t.mu, acc: t.acc, w: w, pred: weightedVote(L, w), ref: t.ref };
+}
+
+// ------------------------------------------------------------------
+// Measurement helpers. THESE take gold - and nothing above them does.
+// ------------------------------------------------------------------
+function accuracyOf(pred, gold){
+  let c = 0;
+  for (let i = 0; i < gold.length; i++) if (pred[i] === gold[i]) c++;
+  return gold.length ? c / gold.length : 0;
+}
+
+function perViewAccuracy(L, gold){ return L.map(function(col){ return accuracyOf(col, gold); }); }
+
+function posRate(col){
+  let c = 0;
+  for (let i = 0; i < col.length; i++) if (col[i] === 1) c++;
+  return col.length ? c / col.length : 0;
+}
+
+// ------------------------------------------------------------------
+// Self-consistency (Day 3): ONE prompt, k samples, majority vote.
+// A share of questions is SYSTEMATICALLY hard for that one prompt, so
+// extra samples cannot rescue them - which is the whole comparison.
+// ------------------------------------------------------------------
+function simulateSC(gold, seed, k, aSys, pEasy, pHard){
+  const rh = rngFor(seed, "sc-hard"), rs = rngFor(seed, "sc-sample");
+  const hard = [];
+  for (let q = 0; q < gold.length; q++) hard.push(rh() >= aSys);
+  const out = new Array(gold.length);
+  for (let q = 0; q < gold.length; q++){
+    const p = hard[q] ? pHard : pEasy;
+    let s = 0;
+    for (let t = 0; t < k; t++) s += (rs() < p) ? gold[q] : -gold[q];
+    out[q] = (s > 0) ? 1 : ((s < 0) ? -1 : 1);
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------
+// One full run of the page: simulate -> aggregate -> measure.
+// ------------------------------------------------------------------
+function runBenchmark(cfg){
+  const c = cfg || {};
+  const ids = c.viewIds || VIEWS.map(function(v){ return v.id; });
+  const views = ids.map(viewById).filter(Boolean);
+  const L = simulateMatrix(GOLD, views, c.seed == null ? 1 : c.seed, { correlated: !!c.correlated });
+  const measured = perViewAccuracy(L, GOLD);
+  const maj = majorityVote(L);
+  const ag  = (views.length >= 3) ? aggregate(L) : null;
+  let bestI = 0;
+  for (let i = 1; i < measured.length; i++) if (measured[i] > measured[bestI]) bestI = i;
+  return {
+    views: views, L: L, measured: measured,
+    bestIdx: bestI, bestAcc: measured.length ? measured[bestI] : 0,
+    majPred: maj, majAcc: accuracyOf(maj, GOLD),
+    ag: ag,
+    amaPred: ag ? ag.pred : maj,
+    amaAcc: ag ? accuracyOf(ag.pred, GOLD) : accuracyOf(maj, GOLD)
+  };
+}
+// ==== AMA-CORE-END ====
+
+// --- global helper referenced by inline onclick in the BUILD tab ---
+function copy(btn){ const pre = btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(function(){ btn.textContent = o; }, 1500); }
+
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// Browser mount - all DOM wiring lives here.
+// ============================================================
+function mount(){
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(function(t){ t.onclick = function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  }; });
+
+  const state = {
+    seed: 107,
+    on: {},
+    correlated: false,
+    hideGold: false,
+    k: VIEWS.length
+  };
+  VIEWS.forEach(function(v){ state.on[v.id] = true; });
+
+  const el = function(id){ return document.getElementById(id); };
+  const viewCards = el("viewCards"), matrixEl = el("matrix"), agreeEl = el("agree");
+  const estTable = el("estTable"), scTable = el("scTable"), narr = el("narr");
+  const kSlider = el("kSlider"), kLabel = el("kLabel"), kNote = el("kNote");
+  const goldNote = el("goldNote"), estNote = el("estNote");
+
+  function activeIds(){
+    return VIEWS.filter(function(v){ return state.on[v.id]; }).map(function(v){ return v.id; });
+  }
+  function usedIds(){
+    const a = activeIds();
+    return a.slice(0, Math.max(2, Math.min(state.k, a.length)));
+  }
+
+  function tile(node, k, v, s, cls){
+    node.className = "tile " + (cls || "");
+    node.innerHTML = '<div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div>';
+  }
+
+  function renderViewCards(res){
+    const used = usedIds();
+    viewCards.innerHTML = "";
+    VIEWS.forEach(function(v){
+      const isUsed = used.indexOf(v.id) !== -1;
+      const idx = res.views.map(function(x){ return x.id; }).indexOf(v.id);
+      const d = document.createElement("div");
+      d.className = "vcard " + (state.on[v.id] ? "on" : "off") + (v.bias ? " bias" : "");
+      let stats = '<div class="text-[11px] font-bold text-slate-400">not in the ensemble</div>';
+      if (isUsed && idx >= 0 && res.ag){
+        stats = '<div class="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold">' +
+          '<span class="text-amber-700">true ' + pct(res.measured[idx]) + '</span>' +
+          '<span class="text-violet-700">est ' + pct(res.ag.acc[idx]) + '</span>' +
+          '<span class="' + (res.ag.w[idx] < 0 ? "text-rose-600" : "text-slate-500") + '">w ' + res.ag.w[idx].toFixed(2) + '</span>' +
+          '</div>';
+      } else if (isUsed && idx >= 0){
+        stats = '<div class="text-[11px] font-bold text-amber-700">true ' + pct(res.measured[idx]) + '</div>';
+      }
+      const corrTag = (state.correlated && v.copies) ?
+        '<span class="text-[10px] font-black text-rose-600 uppercase">⚠ copy of ' + v.copies + '</span>' : '';
+      d.innerHTML =
+        '<div class="flex items-start justify-between gap-2">' +
+          '<div class="vname">' + v.icon + " " + escapeHtml(v.name) + '</div>' +
+          '<span class="text-[10px] font-black ' + (state.on[v.id] ? "text-violet-600" : "text-slate-400") + '">' + (state.on[v.id] ? "ON" : "OFF") + '</span>' +
+        '</div>' +
+        '<div class="ptext">' + escapeHtml(v.prompt).replace(/\{t\}/g, '<span class="hl">{review}</span>') +
+          '\n<span class="cm">// ' + escapeHtml(v.map) + '</span></div>' +
+        stats + corrTag +
+        '<div class="vnote">' + escapeHtml(v.note) + '</div>';
+      d.style.cursor = "pointer";
+      d.onclick = function(){
+        const n = activeIds().length;
+        if (state.on[v.id] && n <= 3) return;
+        state.on[v.id] = !state.on[v.id];
+        recompute();
+      };
+      viewCards.appendChild(d);
+    });
+  }
+
+  function renderMatrix(res){
+    const vs = res.views;
+    let h = '<thead><tr><th>#</th><th style="text-align:left">Review</th>';
+    vs.forEach(function(v){ h += '<th title="' + escapeHtml(v.name) + '">' + v.icon + '<br>' + v.id + '</th>'; });
+    h += '<th>maj</th><th>ama</th>';
+    if (!state.hideGold) h += '<th>gold</th>';
+    h += '</tr></thead><tbody>';
+    for (let q = 0; q < GOLD.length; q++){
+      h += '<tr><td class="n">' + (q + 1) + '</td><td class="q">' + escapeHtml(ITEMS[q].t.slice(0, 40)) + (ITEMS[q].t.length > 40 ? "…" : "") + '</td>';
+      for (let i = 0; i < vs.length; i++){
+        const val = res.L[i][q];
+        const cls = state.hideGold ? (val === 1 ? "pos" : "neg") : (val === GOLD[q] ? "ok" : "no");
+        h += '<td><span class="mc ' + cls + '">' + (val === 1 ? "+" : "−") + '</span></td>';
+      }
+      const mv = res.majPred[q], av = res.amaPred[q];
+      h += '<td><span class="mc ' + (state.hideGold ? (mv === 1 ? "pos" : "neg") : (mv === GOLD[q] ? "ok" : "no")) + '">' + (mv === 1 ? "+" : "−") + '</span></td>';
+      h += '<td><span class="mc ' + (state.hideGold ? (av === 1 ? "pos" : "neg") : (av === GOLD[q] ? "ok" : "no")) + '">' + (av === 1 ? "+" : "−") + '</span></td>';
+      if (!state.hideGold) h += '<td><span class="mc gold">' + (GOLD[q] === 1 ? "+" : "−") + '</span></td>';
+      h += '</tr>';
+    }
+    matrixEl.innerHTML = h + '</tbody>';
+    goldNote.innerHTML = state.hideGold
+      ? '<div class="callout good"><b>✓ Gold hidden — and every aggregate number above is unchanged.</b> That is not a UI trick: <span class="mono">aggregate(L)</span> takes the label matrix and nothing else. Hiding gold only removes the right/wrong colouring that <em>you</em> were using to read the table.</div>'
+      : '<div class="callout info">Green = this view matched the gold label, red = it did not. Hit <b>\u{1F441} Gold column</b> to hide it: the scores will not move, because the aggregation never read it.</div>';
+  }
+
+  function renderAgree(res){
+    if (!res.ag){ agreeEl.innerHTML = '<tr><td class="text-slate-400 font-normal">Need at least 3 views for the triplet method.</td></tr>'; return; }
+    const vs = res.views;
+    let h = '<thead><tr><th></th>';
+    vs.forEach(function(v){ h += '<th>' + v.id + '</th>'; });
+    h += '</tr></thead><tbody>';
+    vs.forEach(function(v, i){
+      h += '<tr><td style="color:#64748b">' + v.id + '</td>';
+      vs.forEach(function(w2, j){
+        const a = res.ag.A[i][j];
+        const col = (i === j) ? "#94a3b8" : (a > 0.72 ? "#15803d" : (a < 0.45 ? "#b91c1c" : "#a16207"));
+        h += '<td style="color:' + col + '">' + (i === j ? "—" : a.toFixed(2)) + '</td>';
+      });
+      h += '</tr>';
+    });
+    agreeEl.innerHTML = h + '</tbody>';
+  }
+
+  function renderEst(res){
+    if (!res.ag){ estTable.innerHTML = '<tr><td class="text-slate-400 font-normal">Need at least 3 views.</td></tr>'; estNote.innerHTML = ""; return; }
+    const vs = res.views;
+    let h = '<thead><tr><th>View</th><th>true acc<br><span class="normal-case font-normal">(needs labels)</span></th><th>est acc<br><span class="normal-case font-normal">(no labels)</span></th><th>err</th><th>w = log(a/1−a)</th></tr></thead><tbody>';
+    let errSum = 0;
+    vs.forEach(function(v, i){
+      const e = Math.abs(res.ag.acc[i] - res.measured[i]);
+      errSum += e;
+      h += '<tr><td>' + v.icon + " " + v.id + '</td>' +
+           '<td class="num mid">' + pct(res.measured[i]) + '</td>' +
+           '<td class="num ' + (e < 0.08 ? "ok" : "bad") + '">' + pct(res.ag.acc[i]) + '</td>' +
+           '<td style="color:#94a3b8;font-weight:600">' + (100 * e).toFixed(1) + 'pp</td>' +
+           '<td class="num ' + (res.ag.w[i] < 0 ? "bad" : "ok") + '">' + res.ag.w[i].toFixed(2) + '</td></tr>';
+    });
+    estTable.innerHTML = h + '</tbody>';
+    const mae = errSum / vs.length;
+    const neg = res.ag.w.filter(function(x){ return x < 0; }).length;
+    estNote.innerHTML = '<div class="callout ' + (mae < 0.08 ? "good" : "warn") + '"><b>Mean absolute estimation error: ' + (100 * mae).toFixed(1) + 'pp</b> — recovered from agreement rates alone, with the gold column never touched. ' +
+      (neg ? '<b>' + neg + ' view' + (neg > 1 ? "s have" : " has") + ' a negative weight</b>, so the aggregate reads ' + (neg > 1 ? "them" : "it") + ' backwards instead of letting ' + (neg > 1 ? "them" : "it") + ' vote wrongly. ' : '') +
+      (mae >= 0.08 ? 'That is high — conditional independence is being violated (correlated views), which is exactly the failure mode step 10 warns about.' : '') + '</div>';
+  }
+
+  function renderSC(res){
+    const ks = [1, 3, 5, 10, 20];
+    let h = '<thead><tr><th>Strategy</th><th>calls / item</th><th>accuracy</th><th>note</th></tr></thead><tbody>';
+    ks.forEach(function(k){
+      const p = simulateSC(GOLD, state.seed, k, 0.82, 0.92, 0.14);
+      const a = accuracyOf(p, GOLD);
+      h += '<tr><td>Self-consistency ×' + k + ' <span style="font-weight:500;color:#94a3b8">(one prompt)</span></td>' +
+           '<td style="font-weight:500;color:#64748b">' + k + '</td>' +
+           '<td class="num mid">' + pct(a) + '</td>' +
+           '<td style="font-weight:500;color:#94a3b8">' + (k === 1 ? "single sample" : (k >= 10 ? "flat — at this prompt’s own ceiling" : "sampling noise shrinking")) + '</td></tr>';
+    });
+    h += '<tr style="background:#faf5ff"><td><b>AMA — ' + res.views.length + ' prompt views</b></td>' +
+         '<td style="font-weight:500;color:#64748b">' + res.views.length + '</td>' +
+         '<td class="num ok">' + pct(res.amaAcc) + '</td>' +
+         '<td style="font-weight:500;color:#94a3b8">different prompts, different hard questions</td></tr>';
+    scTable.innerHTML = h + '</tbody>';
+  }
+
+  function renderTiles(res){
+    const best = res.bestAcc, maj = res.majAcc, ama = res.amaAcc;
+    tile(el("tileBest"), "Best single prompt", pct(best), "oracle — " + (res.views[res.bestIdx] ? res.views[res.bestIdx].id : "?") + ", pickable only with labels", "");
+    tile(el("tileMaj"), "Plain majority vote", pct(maj), "every view gets one equal vote", maj < ama ? "lose" : "");
+    tile(el("tileAma"), "AMA weak supervision", pct(ama), "log-odds weighted, no labels used", "win");
+    const dM = ama - maj, dB = ama - best;
+    tile(el("tileDelta"), "AMA lift",
+      (dM >= 0 ? "+" : "") + (100 * dM).toFixed(1) + "pp",
+      "vs majority · " + (dB >= 0 ? "+" : "") + (100 * dB).toFixed(1) + "pp vs best single", "");
+  }
+
+  function renderNarr(res){
+    const n = res.views.length;
+    const worst = res.measured.indexOf(Math.min.apply(null, res.measured));
+    const negW = res.ag ? res.ag.w.filter(function(x){ return x < 0; }).length : 0;
+    narr.innerHTML = '<div class="callout ' + (res.amaAcc >= res.majAcc ? "good" : "warn") + '">' +
+      '<b>' + n + ' prompt views · ' + GOLD.length + ' questions · seed ' + state.seed + (state.correlated ? " · correlated ON" : "") + '.</b> ' +
+      'Weakest view is <span class="mono">' + res.views[worst].id + '</span> at ' + pct(res.measured[worst]) + '; strongest is <span class="mono">' + res.views[res.bestIdx].id + '</span> at ' + pct(res.bestAcc) + '. ' +
+      'Plain majority reaches ' + pct(res.majAcc) + '; the weak-supervision aggregate reaches <b>' + pct(res.amaAcc) + '</b>' +
+      (negW ? ', after handing ' + negW + ' view' + (negW > 1 ? "s" : "") + ' a negative weight' : '') + '. ' +
+      (res.amaAcc >= res.majAcc
+        ? 'Everything in that sentence except the two &ldquo;true accuracy&rdquo; figures was computed without looking at a single gold label.'
+        : 'AMA is <em>behind</em> majority on this configuration — which happens, and is worth seeing: with few views, near-equal accuracies or broken independence, the estimator has little to work with and the extra machinery buys nothing.') +
+      '</div>';
+  }
+
+  function recompute(){
+    const a = activeIds();
+    kSlider.max = String(Math.max(2, a.length));
+    if (state.k > a.length) state.k = a.length;
+    kSlider.value = String(Math.max(2, Math.min(state.k, a.length)));
+    kLabel.textContent = kSlider.value;
+    kNote.textContent = "(" + a.length + " views switched on, " + VIEWS.length + " available)";
+    el("seedLbl").textContent = state.seed;
+    el("corrState").textContent = state.correlated ? "on" : "off";
+    el("goldState").textContent = state.hideGold ? "hidden" : "shown";
+    el("ctlCorr").className = "btn" + (state.correlated ? " on" : "");
+    el("ctlGold").className = "btn" + (state.hideGold ? " on" : "");
+
+    const res = runBenchmark({ seed: state.seed, viewIds: usedIds(), correlated: state.correlated });
+    renderTiles(res);
+    renderNarr(res);
+    renderViewCards(res);
+    renderMatrix(res);
+    renderAgree(res);
+    renderEst(res);
+    renderSC(res);
+  }
+
+  el("ctlSeed").onclick = function(){ state.seed = (state.seed * 7 + 13) % 9973; recompute(); };
+  el("ctlCorr").onclick = function(){ state.correlated = !state.correlated; recompute(); };
+  el("ctlGold").onclick = function(){ state.hideGold = !state.hideGold; recompute(); };
+  el("ctlAll").onclick = function(){ VIEWS.forEach(function(v){ state.on[v.id] = true; }); state.k = VIEWS.length; state.correlated = false; recompute(); };
+  kSlider.oninput = function(){ state.k = parseInt(kSlider.value, 10); recompute(); };
+
+  recompute();
+
+  // ============================================================
+  // UNDERSTAND - step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. There is no perfect prompt — and prompt variance is the reason", why:"Everyone who has shipped an LLM feature has lived this: two prompts that a human would call identical in meaning score ten or fifteen points apart on the same benchmark, and swapping a word can undo a week of tuning. That is not sloppiness on your part; it is a real property of these models, and it is the observation AMA (Arora et al., 2022) starts from. If prompt-to-prompt variance is large, then hunting for THE prompt is hunting for a point estimate with a huge error bar around it — you will find something that looks great on your dev set and quietly regresses on live traffic. AMA takes the opposite move: stop trying to eliminate the variance, and start treating each prompt as a NOISY MEASUREMENT of the same underlying answer. Once you frame it that way, the question changes from 'which prompt is right?' to 'how do I combine several noisy measurements well?', and that second question has real, well-understood mathematics behind it.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">one prompt = one noisy measurement<br>&#8595;<br>huge variance, unknown bias<br><br><b>so take several, and combine them</b></div>',
+     code:`// the AMA framing, in one line of pseudocode:
+answer = combine([ prompt1(x), prompt2(x), ..., promptK(x) ]);
+// the whole technique is an argument about combine().` },
+
+   { title:"2. Open-ended question-answering beats restrictive yes/no", why:"This is AMA's headline empirical finding and it is worth internalising on its own, separate from the aggregation. A RESTRICTIVE prompt makes the model emit a token it rarely produced during pretraining in that position — 'Yes', 'No', a bare class name, a single digit. An OPEN-ENDED prompt asks a natural question ('What is the author's opinion of the product?') and lets the model answer in the register it was actually trained on, after which a tiny deterministic mapper turns that free text into a label. The paper measures this across many tasks and the open-ended format wins consistently. In the LOOK tab you can see the shape of it: the open-ended view sits at the top of the table and the restrictive yes/no view sits near the bottom, and the leading yes/no variant is worse than a coin. Practical consequence: when you write your k views, do not write k restrictive prompts.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">“Is this positive? Yes/No” &#8594; weak<br><br>“What is the author’s opinion?”<br>&#8594; free text &#8594; map to label<br><b>&#8594; stronger, consistently</b></div>',
+     code:`// restrictive: forces a rare token in a rare position
+'Review: "{t}"\\nIs this review positive? Answer Yes or No.'
+
+// open-ended: natural question, natural answer, then map
+'Review: "{t}"\\nQuestion: What is the author’s opinion?\\nAnswer:'
+//   "sounds thoroughly fed up"  ->  -1` },
+
+   { title:"3. A prompt VIEW is question-generation plus question-answering", why:"AMA does not just paraphrase the instruction — it builds each view as a small two-step pipeline. First a QUESTION-GENERATION step turns the raw task into a natural question about the input ('Would the reviewer buy this again?'). Then a QUESTION-ANSWERING step answers that question from the input. Both steps are themselves prompted, and both can be few-shot. The reason this matters is that the generated question is where the real diversity comes from: two different probes of the same underlying label ('would they buy again?' vs 'did they end up happy?') fail on genuinely different items, whereas two rewordings of the same instruction tend to fail on the same items. When you build views, ask yourself what DIFFERENT question could settle the same label — that is the axis of variation you want.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">task<br>&#8595; question generation<br>“Would they buy it again?”<br>&#8595; question answering<br>“No, they returned it.” &#8594; −1</div>',
+     code:`// view = qgen -> qa, both prompted
+const q = await call(QGEN.replace("{task}", taskDescription));
+const a = await call(QA.replace("{q}", q).replace("{t}", item));
+return toLabel(a);
+// different generated questions -> different failure sets` },
+
+   { title:"4. More votes only help if the errors are DIFFERENT", why:"This is the load-bearing assumption of every ensemble, and it is where most naive 'just run it five times' attempts quietly fail. If five prompts make exactly the same mistakes, five votes carry the information of one vote and you have paid 5x for nothing. Voting works because errors CANCEL, and errors can only cancel if they point in different directions on different items. So the design goal when writing your views is not 'write five good prompts' — it is 'write five prompts that are wrong about different things'. A mediocre view with an uncorrelated error profile can contribute more to the ensemble than a strong view that duplicates your best one. This is also why the format axis (open QA vs cloze vs few-shot vs question-generation) is the right axis to vary: changing the format changes what the model attends to, and therefore changes which items it fumbles.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">5 identical errors &#8594; 1 vote of information<br>5 independent errors &#8594; 5 votes<br><br><b>diversity is the product,<br>not a side effect</b></div>',
+     code:`// what you want to see in the agreement matrix:
+//   high-ish agreement (they are all about the same task)
+//   but NOT ~1.00 between any pair (that pair is one view)
+A[i][j] > 0.95   // -> these two are the same prompt wearing a hat` },
+
+   { title:"5. Plain majority vote, and the failure mode that motivates AMA", why:"Majority vote is the obvious combiner and you should always compute it as a baseline: it is three lines and it is frequently good. Its flaw is that it is a DEMOCRACY OF THE UNQUALIFIED — every view casts one identical vote whether it is right 82% of the time or 35% of the time. Add one confidently-wrong prompt with a class bias and it does real damage: it does not merely fail to help, it actively drags every close vote toward its bias. The LOOK tab ships exactly such a prompt — a leading yes-question ('This is a happy customer, right?') that says Yes about 77% of the time regardless of the review, giving it 35% accuracy. Switch it on and off and watch the majority-vote number move. The AMA number barely flinches, because weak supervision has already discovered that this view is worse than chance and given it a negative weight.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">majority: 82% view = 35% view = 1 vote<br><br>one biased prompt<br>&#8595;<br><b>every close call tilts its way</b></div>',
+     code:`// majority vote: the baseline you must beat
+function majorityVote(L){
+  // sum of +-1 votes, sign of the sum; ties -> +1, documented.
+  return weightedVote(L, L.map(function(){ return 1; }));
+}` },
+
+   { title:"6. The label matrix is the real object of study", why:"Here is the mental shift that makes weak supervision click. Once you have run k views over n items, you throw away the prompts, the responses, the reasoning — everything — and keep one n×k matrix of ±1 votes. That matrix is now the entire problem. It has no idea it came from an LLM; it could equally have come from k human annotators, k regex heuristics, or k weak classifiers, and the same mathematics applies. This is why the technique is called weak supervision rather than prompt engineering: it is the same machinery Snorkel uses for labelling functions and the same machinery crowdsourcing uses for noisy annotators (Dawid & Skene, 1979). Framing your ensemble as a label matrix immediately gives you a whole literature to borrow from, and it makes the next question obvious: what can I learn about the columns using only the columns?",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">40 items × 7 views<br>&#8595;<br>a matrix of ±1<br><br>prompts, text, model: <b>all discarded</b></div>',
+     code:`// L is k arrays of n votes. That is the entire input to aggregate().
+L = [
+  [ 1,-1, 1, 1,-1, ... ],   // view "oqa"
+  [ 1,-1,-1, 1,-1, ... ],   // view "cloze"
+  ...
+];` },
+
+   { title:"7. Agreement rates — an unlabeled signal that carries accuracy", why:"With no gold labels you cannot compute anyone's accuracy directly. But you can compute how often each PAIR of views agrees, and that turns out to be almost as good. Think about when two views agree: either both are right, or both are wrong in the same way. If they are wrong independently, agreeing-while-both-wrong is rare, so a high agreement rate mostly means both are right — and a pair of accurate views agrees more than a pair of inaccurate ones. Formalise it with ±1 votes: E[λᵢλⱼ] = 2·agreement − 1, which is +1 for perfect agreement, 0 for independence and negative for systematic disagreement. That single number per pair is the raw material for everything that follows, and computing it requires nothing but the matrix.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">agree = both right &nbsp;OR&nbsp; both wrong<br><br>errors independent<br>&#8594; both-wrong is rare<br>&#8594; <b>agreement ≈ accuracy signal</b></div>',
+     code:`// second moments, no labels anywhere in this function
+E[i][j] = mean_q( L[i][q] * L[j][q] );     //  +1 .. -1
+A[i][j] = (E[i][j] + 1) / 2;               //  plain agreement rate` },
+
+   { title:"8. The triplet method — three equations, three unknowns", why:"Now the algebra. Write aᵢ = E[λᵢy] = 2·accuracyᵢ − 1, the 'mean parameter' that is +1 for a perfect view, 0 for a coin and −1 for a perfectly inverted one. If two views are CONDITIONALLY INDEPENDENT given the true label, then E[λᵢλⱼ] = aᵢ·aⱼ — the correlation between two views factorises into their individual qualities. Take three views i, j, k and you have three such equations with three unknowns, and the solution is a plain quotient: aᵢ = √(E[λᵢλⱼ]·E[λᵢλₖ] / E[λⱼλₖ]). Every unknown on the right is an observed agreement rate. That is the whole trick: you have recovered each view's accuracy from unlabeled data. With more than three views you average over all triplets containing i, which cuts the variance a lot. The square root only gives magnitudes, so signs are pinned relative to a reference view and then oriented globally by assuming most of your prompts are better than random — still no labels.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">E[λᵢλⱼ] = aᵢ aⱼ<br>E[λᵢλₖ] = aᵢ aₖ<br>E[λⱼλₖ] = aⱼ aₖ<br>&#8595;<br><b>aᵢ = √( Eᵢⱼ·Eᵢₖ / Eⱼₖ )</b></div>',
+     code:`// average |a_i| over every triplet containing i
+for (j != i) for (k > j, k != i)
+  vals.push( sqrt( abs( (E[i][j]*E[i][k]) / E[j][k] ) ) );
+a_i  = mean(vals);                 // magnitude
+acc  = (1 + a_i) / 2;              // back to a 0..1 accuracy` },
+
+   { title:"9. Log-odds weighting is the optimal vote, not a heuristic", why:"Having estimated each view's accuracy, the temptation is to weight by accuracy. Do not — the right weight is the LOG-ODDS, wᵢ = log(aᵢ / (1 − aᵢ)), and it falls straight out of the maths rather than being tuned. Under conditional independence the posterior over the true label is a naive-Bayes product, and taking logs turns that product into a sum of exactly these terms; sign(Σ wᵢλᵢ) is then the maximum-a-posteriori label. The behaviour is worth pausing on. A view at 0.50 gets weight 0 and is silently ignored, which is correct. A view at 0.90 gets roughly three times the weight of one at 0.70, not 1.3 times — confident views should dominate super-linearly. And a view BELOW 0.50 gets a NEGATIVE weight, so its vote is flipped and used rather than discarded: an anti-correlated labeler is genuinely informative. Clamp accuracy away from 0 and 1 or a single view earns infinite weight and becomes a dictator.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">a = 0.90 &#8594; w = +2.20<br>a = 0.70 &#8594; w = +0.85<br>a = 0.50 &#8594; w = &nbsp;0.00<br>a = 0.35 &#8594; w = <b>−0.62</b> (flip it)<br><br>ŷ = sign( Σ wᵢ λᵢ )</div>',
+     code:`const w = acc.map(a => Math.log(a / (1 - a)));
+pred[q] = Math.sign( sum_i( w[i] * L[i][q] ) );   // ties -> +1
+// equal accuracies -> equal weights -> exactly majority vote.` },
+
+   { title:"10. Conditional independence — the assumption, and what breaks it", why:"Everything in steps 8 and 9 rests on one assumption: given the true label, the views' errors are independent. Reality is messier. Two prompts that are paraphrases of each other share a failure mode, so they agree far more than their accuracies alone would predict — and the estimator, which can only see agreement, reads that as competence and inflates BOTH their accuracies. The ensemble then over-weights a bloc that is really one view voting twice, and a genuinely independent third view gets crowded out. Flip the 'Correlated prompts' toggle in LOOK: two views become 90% copies of the open-ended view, the estimation error jumps, and the aggregate loses ground — sometimes below plain majority. Two fixes. Cheap: compute the agreement matrix, drop any view agreeing above ~0.90 with one you already kept. Proper: model the dependency structure explicitly, which is what the structured weak-supervision literature (Snorkel, FlyingSquid) exists for.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">two paraphrases &#8594; same errors<br>&#8594; agreement 0.95<br>&#8594; estimator: “both excellent!”<br><b>&#8594; a bloc of one, voting twice</b></div>',
+     code:`// the cheap guard: prune near-duplicates before aggregating
+const A = pairwiseProducts(L).A;
+keep = keep.filter(j => A[i][j] <= 0.90);
+// the proper fix: fit a dependency graph over the labelers.` },
+
+   { title:"11. Why this is unsupervised — and what it costs", why:"The property that makes AMA worth the trouble is that aggregate(L) has ONE argument: the label matrix. It never receives gold labels, so you can run it on live traffic where no labels exist, and it will still work out which of your prompts to trust. Prove it to yourself in LOOK by hiding the gold column — every score stays identical, because hiding it only removes the colouring YOU were reading. Note one honest asterisk: 'best single prompt' on the scoreboard is an ORACLE baseline. You can only know which prompt is best if you have labels, which is exactly the situation AMA is built for. The cost is straightforward and real: k times the API calls, k times the tokens, and k times the failure surface. Latency need not suffer if you fan the views out in parallel, and caching by (view, item) makes re-runs nearly free — but the bill is k× and there is no way around it.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">aggregate(L)  — one argument<br>no gold, ever<br><br>cost: <b>k× calls, k× tokens</b><br>latency: fan out, do not loop</div>',
+     code:`function aggregate(L){          // <- the ONLY argument
+  const pp = pairwiseProducts(L);
+  const t  = tripletEstimate(pp.E);
+  const w  = logOddsWeights(t.acc);
+  return { pred: weightedVote(L, w), acc: t.acc, w: w };
+}` },
+
+   { title:"12. When to reach for AMA — and when not to", why:"Try things in this order. ONE good prompt first, always: it is 1x cost and it very often clears the bar. If your errors look like sampling noise — the model gets it right most of the time and flakes at temperature — reach for DAY 3 SELF-CONSISTENCY: one prompt, k samples, majority vote. Note precisely what it cannot do: sampling the same prompt again cannot fix that prompt's own bias, so it climbs and then flattens at that prompt's ceiling, which you can watch happen in the LOOK comparison. AMA is the answer when the errors are the PROMPT'S, not the sampler's — many formats, one vote each, weighted by learned reliability. They compose: sample each view a few times, take per-view majorities, then weak-supervise across views. And know the exit: the paper's actual purpose was to make a SMALL open model match a much larger one without fine-tuning, and to generate programmatic training data. Once you have labels — including labels AMA produced for you — distilling them into a fine-tune is cheaper at inference time than paying k× forever. Next: LLM-as-judge, for when the right answer is fuzzy and there is no label to vote on at all.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 prompt &#8594; try first (1×)<br>self-consistency &#8594; sampling noise (k×)<br><b>AMA &#8594; prompt bias (k×)</b><br>fine-tune &#8594; once you have labels</div>',
+     code:`# self-consistency: ONE prompt, k samples  -> fixes sampling noise
+# AMA:              k prompt FORMATS         -> fixes prompt bias
+# both:             k views x m samples      -> per-view majority,
+#                                               then weak supervision` }
+  ];
+
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach(function(s, i){
+    const bn = document.createElement("button");
+    bn.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    bn.innerHTML = '<div class="font-semibold">' + s.title + '</div>';
+    bn.onclick = function(){ show(i); };
+    stepsEl.appendChild(bn);
+  });
+  function show(i){
+    curStep = i;
+    const s = STEPS[i];
+    document.getElementById("concept").innerHTML = '<div class="fade-in w-full flex items-center justify-center">' + s.concept + '</div>';
+    document.getElementById("why").innerHTML = '<span class="fade-in inline-block">' + s.why + '</span>';
+    document.getElementById("code").textContent = s.code;
+    stepsEl.querySelectorAll("button").forEach(function(bn, idx){
+      bn.className = (idx === i)
+        ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+        : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    });
+  }
+  prevB.onclick = function(){ show(Math.max(0, curStep - 1)); };
+  nextBtn.onclick = function(){ show(Math.min(STEPS.length - 1, curStep + 1)); };
+  let tm = null;
+  autoB.onclick = function(){
+    if (tm){ clearInterval(tm); tm = null; autoB.textContent = "▶ Auto-play"; return; }
+    autoB.textContent = "⏸ Pause"; show(0);
+    tm = setInterval(function(){
+      if (curStep >= STEPS.length - 1){ clearInterval(tm); tm = null; autoB.textContent = "▶ Replay"; return; }
+      show(curStep + 1);
+    }, 3200);
+  };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = {
+  hashStr: hashStr, mulberry32: mulberry32, rngFor: rngFor, clamp: clamp, mean: mean,
+  ITEMS: ITEMS, GOLD: GOLD, VIEWS: VIEWS, viewById: viewById,
+  simulateMatrix: simulateMatrix, pairwiseProducts: pairwiseProducts,
+  tripletEstimate: tripletEstimate, logOddsWeights: logOddsWeights,
+  weightedVote: weightedVote, majorityVote: majorityVote, aggregate: aggregate,
+  accuracyOf: accuracyOf, perViewAccuracy: perViewAccuracy, posRate: posRate,
+  simulateSC: simulateSC, runBenchmark: runBenchmark
+};
+</script>
+</body>
+</html>
