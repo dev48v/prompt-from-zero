@@ -1,0 +1,1532 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 61 — Chain-of-Symbol Prompting (CoS)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; max-width:100%; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+  .btn.on { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+
+  /* ===== score tiles ===== */
+  .tile { border-radius:14px; padding:12px 14px; border:1px solid #e2e8f0; background:#fff; }
+  .tile .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+  .tile .v { font-size:28px; font-weight:900; color:#0f172a; line-height:1.15; }
+  .tile .s { font-size:11px; font-weight:600; color:#94a3b8; }
+  .tile.win { border-color:#8b5cf6; background:#faf5ff; }
+  .tile.win .v { color:#6d28d9; }
+  .tile.lose { border-color:#fecaca; background:#fef2f2; }
+  .tile.lose .v { color:#b91c1c; }
+
+  /* ===== prompt panes ===== */
+  .ptext { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:9px 10px; font-family:ui-monospace, Menlo, monospace; font-size:10.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; overflow-x:auto; max-height:340px; overflow-y:auto; }
+  .ptext .hl { color:#c4b5fd; }
+  .ptext .cm { color:#6ee7b7; }
+  .ptext .bad { color:#fca5a5; }
+  .ptext .gd  { color:#86efac; }
+
+  .scroll { overflow:auto; max-width:100%; min-width:0; -webkit-overflow-scrolling:touch; }
+  .minw0 { min-width:0; }
+
+  table.sb { width:100%; border-collapse:collapse; font-size:12px; }
+  table.sb th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#64748b; padding:5px 7px; border-bottom:1px solid #e2e8f0; white-space:nowrap; }
+  table.sb td { padding:6px 7px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#0f172a; white-space:nowrap; }
+  table.sb tr:last-child td { border-bottom:none; }
+  .num.bad { color:#b91c1c; font-weight:900; }
+  .num.ok  { color:#15803d; font-weight:900; }
+  .num.mid { color:#a16207; font-weight:900; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.55; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+
+  .trace { font-size:11px; line-height:1.5; border-left:3px solid #e2e8f0; padding:5px 9px; margin-bottom:5px; background:#f8fafc; border-radius:0 8px 8px 0; }
+  .trace.ok  { border-left-color:#22c55e; }
+  .trace.no  { border-left-color:#ef4444; background:#fef2f2; }
+  .trace .h  { font-size:9.5px; font-weight:900; text-transform:uppercase; letter-spacing:.04em; color:#7c3aed; }
+  .rel { font-family:ui-monospace, Menlo, monospace; font-size:10.5px; }
+
+  svg.chart, svg.world { width:100%; height:auto; display:block; }
+  input[type=range] { accent-color:#8b5cf6; }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 md:sticky md:top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-3 top-3 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 pl-[68px] md:pl-[76px] flex flex-wrap items-center justify-between gap-3">
+    <div class="flex-1 min-w-0">
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 61</div>
+      <h1 class="text-lg md:text-xl font-bold">🔣 Chain-of-Symbol prompting (CoS) — Hu et al., 2023. Chain-of-thought is words, and words are a <em>terrible</em> encoding of a spatial world: &ldquo;the hall, which lies west of the pantry, has a door on its north side leading to the study&rdquo; forces a reader to resolve <strong>which</strong>, resolve <strong>its</strong>, and hold a coordinate frame in working memory — and every one of those resolutions is a place to be wrong. CoS says: stop describing the world and <strong>serialize</strong> it. Define a tiny symbol table once, emit <span class="mono">hall(1,0) study(1,1)</span> and <span class="mono">hall/study</span>, and ask the model to reason in those same symbols. The prompt gets shorter, but the real win is that the <em>state stops being ambiguous</em>. Everything below is computed in your browser at run time: a random world generator, two serializers driven off the <em>same</em> state object, two real parsers, a BFS planner that gives provably-shortest ground truth, a hand-written tokenizer, and a live diff of parsed-vs-true. The solver half is an <strong>honest simulation</strong> with its assumptions printed on screen — the paper's real measured numbers are cited separately, and never mixed in.</h1>
+    </div>
+    <div class="flex flex-wrap gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-4 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-xl md:text-2xl font-bold mb-1">Prose is a <span class="text-rose-500">lossy encoding</span> of a world. Symbols are a <span class="text-violet-600">serialization</span> of one.</h2>
+        <p class="text-slate-500 text-sm md:text-base mb-4">One randomly generated world. Two serializers off the same state object. Two real parsers. A BFS planner for ground truth. <b>Every number recomputes as you move a slider.</b></p>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div class="tile" id="tileTok"></div>
+        <div class="tile win" id="tileCut"></div>
+        <div class="tile" id="tileParse"></div>
+        <div class="tile" id="tileSim"></div>
+      </div>
+      <div id="narr" class="mb-3"></div>
+
+      <!-- ===== controls ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎛 Controls — <span class="normal-case font-normal text-slate-400">each one forces a full regenerate + reparse + re-benchmark</span></div>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+          <button class="btn btn-p" id="ctlSeed">🎲 New world</button>
+          <span class="text-xs font-bold text-slate-500">seed <span class="mono text-violet-700" id="seedLbl"></span></span>
+        </div>
+        <div class="grid md:grid-cols-2 gap-x-6 gap-y-3">
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Rooms: <span class="mono text-violet-700" id="roomsLbl">8</span></span>
+            <input type="range" id="roomsSlider" min="4" max="14" step="1" value="8" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Prose verbosity: <span class="mono text-violet-700" id="verbLbl"></span></span>
+            <input type="range" id="verbSlider" min="0" max="3" step="1" value="2" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Attention span L: <span class="mono text-violet-700" id="spanLbl">600</span> tokens</span>
+            <input type="range" id="spanSlider" min="150" max="2000" step="50" value="600" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Worlds per size: <span class="mono text-violet-700" id="worldsLbl">8</span> &nbsp;·&nbsp; trials each: <span class="mono text-violet-700">24</span></span>
+            <input type="range" id="worldsSlider" min="3" max="20" step="1" value="8" class="w-full" />
+          </label>
+        </div>
+        <div class="mt-3">
+          <div class="text-xs font-bold text-slate-600 mb-1">Symbol scheme <span class="font-normal text-slate-400">— all three parse losslessly; they do not cost the same</span></div>
+          <div class="flex flex-wrap gap-2" id="schemeBtns"></div>
+          <div class="text-[11px] text-slate-500 mt-2" id="schemeNote"></div>
+        </div>
+      </div>
+
+      <!-- ===== world + plan ===== -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-violet-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🗺 The world — <span class="normal-case font-normal text-slate-400">a real graph, not a picture. Both prompts are generated from it.</span></div>
+          <div id="worldSvg" class="scroll"></div>
+          <div class="flex flex-wrap gap-2 mt-3 items-center">
+            <button class="btn" id="planPrev">← Step</button>
+            <button class="btn" id="planNext">Step →</button>
+            <button class="btn btn-p" id="planPlay">▶ Walk the plan</button>
+          </div>
+          <div id="planTxt" class="mt-2"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧾 What each parser recovered</div>
+          <div id="diffTable" class="scroll"></div>
+          <div id="planGrade" class="mt-3"></div>
+        </div>
+      </div>
+
+      <!-- ===== prompt viewer ===== -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-rose-200 p-4 min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-xs uppercase font-bold text-rose-600 tracking-wider">📝 Natural-language prompt</div>
+            <div class="text-[10px] font-black text-slate-400" id="nlMeta"></div>
+          </div>
+          <div class="ptext" id="nlPrompt"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-violet-200 p-4 min-w-0">
+          <div class="flex items-center justify-between gap-2 mb-2">
+            <div class="text-xs uppercase font-bold text-violet-600 tracking-wider">🔣 Chain-of-Symbol prompt</div>
+            <div class="text-[10px] font-black text-slate-400" id="cosMeta"></div>
+          </div>
+          <div class="ptext" id="cosPrompt"></div>
+        </div>
+      </div>
+
+      <!-- ===== parser trace ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🔍 Sentence-by-sentence: what the prose parser did, and where it guessed</div>
+        <p class="text-[11px] text-slate-500 mb-2 leading-relaxed">The prose parser applies three documented shortcuts, the same ones a hurried reader takes: <b>H1</b> resolve <span class="mono">which</span>/<span class="mono">its</span> to the nearest preceding room noun · <b>H2</b> resolve <span class="mono">it</span> to the most recently mentioned room · <b>H3</b> read <span class="mono">your left</span> allocentrically unless a facing was declared in the previous sentence. Each is right sometimes. Green = the relation it extracted is genuinely in the world; red = it is not.</p>
+        <div id="nlTrace" style="max-height:360px;" class="scroll"></div>
+      </div>
+
+      <!-- ===== charts ===== -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📉 Prompt tokens vs world size — <span class="normal-case font-normal text-slate-400">hand-written tokenizer, rules printed below</span></div>
+          <div id="chartTok"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 min-w-0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📈 <span class="text-amber-600">SIMULATED</span> solve rate vs world size</div>
+          <div id="chartAcc"></div>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🧪 The benchmark, per world size</div>
+        <div class="scroll"><table class="sb" id="benchTable"></table></div>
+      </div>
+
+      <div class="callout warn mb-3"><b>⚠️ Be clear about which half of this page is which.</b> The world generator, both serializers, both parsers, the BFS planner, the diff and the tokenizer are <b>real code</b> — the parse accuracy and the token counts above are measured, not stored. The <b>solve rate</b> is a <b>simulation</b>: there is no model on this page. Its assumptions, in full — <b>A1</b> a fact must be recalled at the moment the plan step using it is emitted; <b>A2</b> recall probability is <span class="mono">floor + (1−floor)·e<sup>−d/L</sup></span> where <span class="mono">d</span> is the token distance from where the fact is stated to the end of the prompt, <span class="mono">floor = 0.75</span>, and <span class="mono">L</span> is the slider above; <b>A3</b> a fact the parser misread is wrong no matter what; <b>A4</b> a trial succeeds only if every fact on the shortest path survives A1–A3. Those constants are toy parameters, they are on screen, and you can move them. Nothing about the shape of that curve is evidence of anything — the evidence is below, and it is somebody else's.</div>
+
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">📚 What the paper actually measured — <span class="normal-case font-normal text-slate-400">cited, static, not computed here</span></div>
+        <p class="text-sm text-slate-600 leading-relaxed">Hu, Chen, Wu, Ru, Wan, Sun, Cheng, Wong — <em>&ldquo;Chain-of-Symbol Prompting Elicits Planning in Large Language Models&rdquo;</em> (2023). They build <b>SPP</b>, a spatial-planning benchmark of three simulated environments (Brick World, NLVR-based Manipulation, Natural Language Navigation), and compare chain-of-thought written in natural language against the same chains written in condensed symbols. On Brick World with ChatGPT they report accuracy rising from <b>31.8% to 92.6%</b>, and prompt tokens falling by up to <b>65.8%</b>. They also report that the gain is not uniform: it depends on the number of demonstrations and on the model, and CoS is a <em>representation</em> change, not a reasoning upgrade. Read the paper for the per-environment tables — do not quote my simulator.</p>
+      </div>
+
+      <div class="mt-4 bg-violet-50 border border-violet-200 rounded-2xl p-4 text-sm text-violet-900">
+        <strong>🔑 The point is not brevity — it is that the symbolic form has exactly one reading.</strong> Slide verbosity to <b>0</b>: the prose becomes a flat list of &ldquo;The X is east of the Y.&rdquo; sentences, and the prose parser scores <b>100%</b> — because there is nothing left to resolve. Every point it loses above that comes from a genuine ambiguity that <em>a human writer would produce naturally</em>: a relative clause, an egocentric direction, a pronoun three sentences from its antecedent. The symbolic form never dips, at any verbosity, because there is no antecedent to find and no frame to carry. The token saving is real and it is nice; the disambiguation is the reason the technique works.
+      </div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">CoS = define a symbol table once, serialize the state into it, and make the model's intermediate steps symbolic too.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-4 md:p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2 min-w-0">
+      <h3 class="font-bold text-lg mb-3">How Chain-of-Symbol works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4 min-w-0">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700 text-sm md:text-base leading-relaxed">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-2xl md:text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Chain-of-Symbol is not a wording trick, and you cannot bolt it on at the end. It is a decision about <em>what your prompt is made of</em>: you stop generating prose about a state and start serializing the state itself. That means the work happens in your code, before the API call — a state object, a symbol table, a serializer, and a strict parser for the model's symbolic answer. Below is exactly what this page runs, in the order you would write it.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Model the world as a state object first. The prompt is a <em>view</em> of it.</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The single most common mistake is writing the prompt by hand and letting the world exist only inside that string. Then you cannot check it, diff it, or re-serialize it. Build the state in code — rooms with coordinates, an edge list, object placements, a start — and treat both the prose version and the symbolic version as <em>renderings</em> of that one object. They can never drift, and you get a ground truth for free.</p>
+        <div class="relative"><pre>// STEP 1 - the state. Everything else is a function of this.
+const world = {
+  rooms:   [ {id:0, name:"kitchen", x:0, y:0},
+             {id:1, name:"hall",    x:1, y:0},
+             {id:2, name:"pantry",  x:1, y:1} ],
+  doors:   [ [0,1], [1,2] ],              // sorted, [min,max]
+  objects: [ {name:"key", room:2} ],
+  start:   0,
+  goal:    "key"
+};
+// Canonical order everywhere (rooms by id, doors sorted, objects by name)
+// so that serialize -&gt; parse -&gt; serialize is byte-identical.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Write the symbol table — once, at the top, and keep it tiny</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A symbol the model has to infer is worse than the word it replaced. Define every glyph in one short header line before any data, use the fewest distinct symbols that cover your relations, and never redefine one mid-prompt. Two or three lines of table buy you an entire prompt of unambiguous data — and the model can copy the table's own notation straight into its answer, which is what makes the answer parseable.</p>
+        <div class="relative"><pre># STEP 2 - the symbol table. This is the whole contract.
+# a(x,y)=room at grid cell   a/b=door between a and b
+# @a=you are here            a:o=object o is in room a
+# *o=the object to find
+
+# Rules for choosing symbols:
+#   - one concept per symbol, no overloading
+#   - ASCII you would find in code: ( ) , / : @ * - &gt;
+#   - avoid rare glyphs (see step 8) - they tokenize badly
+#   - never use a symbol that also appears inside your data</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">The serializer: state &rarr; symbols, deterministic and sorted</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Sort everything. A serializer that emits doors in hash order gives you a different prompt for the same world on every run, which destroys prompt caching and makes your evals non-reproducible. Emit one line per <em>kind</em> of fact — cells, then edges, then state — so the model can find a fact by shape rather than by reading prose.</p>
+        <div class="relative"><pre>// STEP 3 - serializeCoS. Same shape as the page's real one.
+function serializeCoS(w, S){                 // S = the scheme (delimiters)
+  const nm = r =&gt; S.pre + S.nameOf(r) + S.post;
+  const cells = w.rooms.map(r =&gt; nm(r) + S.L + r.x + S.CS + r.y + S.R);
+  const doors = w.doors.map(d =&gt;
+       nm(w.rooms[d[0]]) + S.DOOR + nm(w.rooms[d[1]]));
+  const objs  = w.objects.map(o =&gt; nm(w.rooms[o.room]) + S.OS + o.name);
+  return [ symbolTable(S),
+           cells.join(" "),
+           doors.join(" "),
+           S.HERE + nm(w.rooms[w.start]) + " " + objs.join(" ")
+             + " " + S.GOAL + w.goal ].join("\n");
+}
+// Two rooms, one line each, no adjectives, no clauses, no pronouns.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Make the model's <em>intermediate steps</em> symbolic too — that is the &ldquo;chain&rdquo;</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Halfway CoS is the most common way to get none of the benefit: people symbolize the input and then let the model narrate its reasoning in English. The chain is where the state is being updated step by step, so the chain is exactly where ambiguity does the damage. Show one worked example in the symbol language and the model will copy the format — that is all the demonstration has to do.</p>
+        <div class="relative"><pre>// STEP 4 - one demonstration, in the answer language you want back.
+const DEMO =
+`Example:
+@kitchen -&gt; kitchen/hall -&gt; @hall -&gt; hall/pantry -&gt; @pantry  DONE`;
+
+// Each arrow is a state transition; each door symbol is the edge used.
+// The model is now doing symbol rewriting, not prose composition -
+// and every intermediate state is a token you can check against
+// the world you serialized.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Parse the answer strictly, and fail loudly</h3></div>
+        <p class="text-sm text-slate-600 mb-3">A symbolic answer is worth having because it is <em>machine-checkable</em>. Do not regex out the room names and shrug at the rest — validate every transition against the world you serialized, so a hallucinated door is caught in your code and never reaches a user. If parsing fails, that is a signal worth logging: it usually means your symbol table was ambiguous, not that the model is bad.</p>
+        <div class="relative"><pre>// STEP 5 - parse + VALIDATE. The validation is the point.
+function parsePlan(txt, w){
+  const path = [], seen = txt.match(/@([a-z]+)/g) || [];
+  for (const t of seen) path.push(t.slice(1));
+  if (!path.length) throw new Error("no @room tokens in answer");
+  if (path[0] !== w.rooms[w.start].name) throw new Error("wrong start");
+  for (let i = 0; i + 1 &lt; path.length; i++){
+    if (!hasDoor(w, path[i], path[i+1]))
+      throw new Error("hallucinated door " + path[i] + "/" + path[i+1]);
+  }
+  return path;                       // now provably walkable in the real world
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Keep a ground-truth planner in code — and notice what it tells you</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Once the world is a real graph, BFS gives you the provably shortest plan in ten lines. That is your grader. It is also an uncomfortable question: if you can compute the answer exactly, why are you asking a model at all? The honest answer is that CoS is for the cases where the <em>state extraction</em> is the hard part and the search is easy — you use the model to read a messy human description into symbols, and then you plan in code.</p>
+        <div class="relative"><pre>// STEP 6 - BFS. Deterministic neighbour order = reproducible plans.
+function planBFS(w){
+  const adj = adjacency(w), prev = w.rooms.map(() =&gt; -1);
+  const seen = w.rooms.map(() =&gt; false), q = [w.start];
+  seen[w.start] = true;
+  for (let h = 0; h &lt; q.length; h++)
+    for (const v of adj[q[h]])
+      if (!seen[v]){ seen[v] = true; prev[v] = q[h]; q.push(v); }
+  // walk prev[] back from the goal room -&gt; shortest path, always
+}
+// Grade three ways: OPTIMAL (== BFS length),
+// VALID-BUT-LONGER (walkable, not shortest), INVALID (uses a fake door).</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Measure three things, not one</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Token count is the number everyone reports and the least interesting of the three. Measure <b>round-trip fidelity</b> (serialize &rarr; parse &rarr; deep-equal the original state), <b>answer parse rate</b> (what fraction of responses your strict parser accepts), and only then <b>task accuracy</b>. A CoS rollout that saves 60% of tokens and drops your parse rate to 80% is a regression wearing a nice hat.</p>
+        <div class="relative"><pre># STEP 7 - the three numbers, in priority order.
+
+# 1. ROUND-TRIP FIDELITY  (must be 100%, it is your own code)
+assert canon(parseCoS(serializeCoS(w))) == canon(w)
+
+# 2. ANSWER PARSE RATE    (strict parser accepts the model's reply)
+parse_rate = accepted / total          # target: &gt; 0.98
+
+# 3. TASK ACCURACY        (optimal / valid / invalid, vs BFS)
+optimal_rate, valid_rate, invalid_rate
+
+# and only then:
+# 4. tokens_cos / tokens_nl - the headline that sells it internally</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-violet-200 p-4 md:p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">The tokenizer trap — count, do not assume</h3></div>
+        <p class="text-sm text-slate-600 mb-3">&ldquo;Symbolic&rdquo; feels like it must be shorter, so people reach for beautiful rare glyphs and quietly make the prompt <em>more</em> expensive. Tokenizers are trained on text; common ASCII punctuation is cheap, and a rare Unicode glyph frequently falls back to several byte-level pieces. Flip the scheme selector in LOOK to <b>exotic glyphs</b> and watch the token count go the wrong way — that is the whole lesson, live.</p>
+        <div class="relative"><pre># STEP 8 - always measure the scheme, never guess it.
+
+kitchen(0,0)      # names + coords   - readable, no legend
+K(0,0)            # letters + legend - usually the cheapest
+&#x27E8;K&#x27E9;&#x27E6;0,0&#x27E7;         # exotic glyphs    - looks symbolic, costs MORE
+
+# The test that settles it, before you ship the scheme:
+for scheme in SCHEMES:
+    n = count_tokens(serialize(world, scheme))
+    print(scheme.id, n)      # use the real tokenizer for YOUR model
+# tiktoken / the provider's count-tokens endpoint. Not your intuition.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-violet-200 p-4 md:p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">Know when to fall back to words</h3></div>
+        <p class="text-sm text-slate-600 mb-3">CoS strips out exactly the thing that makes an LLM useful on some tasks: the meaning carried by the words. If the task needs world knowledge — that a kitchen has a fridge, that a &ldquo;cellar&rdquo; is probably below ground, that &ldquo;fragile&rdquo; changes how you handle a box — symbolizing it deletes the prior you were relying on. Symbolize the <em>structure</em>, keep the words that carry <em>semantics</em>. A hybrid prompt is usually the right answer.</p>
+        <div class="relative"><pre># STEP 9 - the decision, honestly.
+
+USE CoS when:
+  - the state is combinatorial and gets restated every turn
+  - relations are the payload (adjacency, order, containment, coords)
+  - you can check the answer in code afterwards
+  - prompts are long enough that attention distance is real
+
+DO NOT use CoS when:
+  - the answer depends on what the words MEAN, not how they relate
+  - the state is small enough to state plainly in three sentences
+  - your users read the prompt (symbols are hostile to humans)
+
+# HYBRID is usually correct:
+#   symbols for the graph, plain words for the properties.
+#   pantry(1,1) pantry:fragile-crate  &lt;- keep "fragile", it is the prior.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-violet-200 p-4 md:p-6" style="background:#faf5ff;">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">📋</div><h3 class="font-bold text-lg">Ship checklist</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Everything above, in the order that catches problems earliest. The first three are code you own and must be perfect before a single API call is made; the rest are measurements.</p>
+        <div class="relative"><pre># SHIP CHECKLIST - Chain-of-Symbol
+
+[ ] state object exists in code, canonically ordered
+[ ] symbol table: one line, defined once, no overloading
+[ ] serialize -&gt; parse -&gt; deep-equal round-trip test, 100% or stop
+[ ] tokenizer comparison across &gt;= 2 schemes, with the REAL tokenizer
+[ ] one worked demonstration, in the answer language
+[ ] strict answer parser that throws, plus a validator vs the world
+[ ] BFS/exact solver in code as the grader
+[ ] eval: round-trip, parse rate, optimal/valid/invalid, tokens
+[ ] fallback path to natural language when parse rate drops
+[ ] logged: every parse failure, with the raw response attached</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-4 md:p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 61 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Chain-of-Symbol prompting</strong> — Hu et al., 2023 — which starts from a specific failure: chain-of-thought on <em>spatial and planning</em> tasks writes the world state out in natural language, and natural language is a bad encoding of a world. Prose forces the reader to resolve pronouns, chase relative clauses, and carry a coordinate frame across sentences, and each of those is a place to be wrong. CoS replaces the wordy description with a <strong>compact symbolic serialization</strong> — a symbol table defined once, then coordinates, edges and markers — and, crucially, asks the model to write its <em>intermediate steps</em> in those same symbols, so the chain itself becomes symbol rewriting rather than prose composition. On this page you watched a real world get serialized two ways from one state object, parsed back by two real parsers, and diffed against ground truth: the symbolic round-trip is lossless at every setting, while the prose parser loses points to genuine ambiguities that any human writer would produce — and recovers to <strong>100% at verbosity 0</strong>, which is the proof that the failures are ambiguity, not a broken parser. The token saving is real, but it is the <em>second</em> benefit; the first is that a symbolic state has exactly one reading. You also saw the two traps: the <strong>tokenizer trap</strong>, where pretty rare glyphs cost more tokens than the words they replaced (flip to the glyph scheme and watch the count rise), and the <strong>semantics trap</strong>, where symbolizing a task that needed world knowledge in the words deletes the prior you were relying on. Symbolize the structure; keep the words that mean something. <strong>👉 Next up — LLM-as-judge: when the &ldquo;right answer&rdquo; is fuzzy (tone, helpfulness, faithfulness), grade outputs with a model against a rubric instead of an exact string.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ==== COS-CORE-START ====
+// Pure, DOM-free logic (node-testable). Nothing in this block touches the DOM:
+// world generation, both serializers, both parsers, BFS planning, the diff,
+// the tokenizer and the (clearly-labelled) degradation simulator all run
+// headlessly under node, which is how the test script checks them.
+
+function hashStr(s){
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function mulberry32(a){
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function rngFor(seed, tag){ return mulberry32(hashStr(String(seed) + "|" + String(tag))); }
+function clamp(x, lo, hi){ return x < lo ? lo : (x > hi ? hi : x); }
+function pct(x){ return (100 * x).toFixed(1) + "%"; }
+function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+function pickFrom(rng, arr){ return arr[Math.floor(rng() * arr.length)]; }
+
+// ------------------------------------------------------------------
+// Vocabulary. Room names and letters are index-aligned and unique.
+// ------------------------------------------------------------------
+const ROOM_NAMES = ["kitchen","hall","pantry","cellar","study","attic","garage","foyer",
+                    "library","workshop","larder","gallery","vault","atrium","terrace","annex"];
+const LETTERS    = ["K","H","P","C","S","A","G","F","L","W","R","Y","V","T","E","X"];
+const OBJECTS    = ["key","lantern","ledger"];
+const FILLER = [
+  "The floor here is bare stone.",
+  "A draught runs along the skirting.",
+  "Dust has settled on every surface.",
+  "Someone left a lamp burning low.",
+  "The air smells faintly of tallow.",
+  "A clock ticks somewhere out of sight.",
+  "Nothing here is worth carrying.",
+  "The paint is peeling in long strips."
+];
+
+// Screen coordinates: y grows DOWNWARD, so north is -y. Documented once.
+const DIRS = [ {d:"north",dx:0,dy:-1}, {d:"south",dx:0,dy:1},
+               {d:"east", dx:1,dy:0},  {d:"west", dx:-1,dy:0} ];
+const OPP  = { north:"south", south:"north", east:"west", west:"east" };
+const CW   = ["north","east","south","west"];
+const SIDES = ["ahead","right","behind","left"];
+
+function dirBetween(a, b){
+  if (b.x === a.x + 1 && b.y === a.y) return "east";
+  if (b.x === a.x - 1 && b.y === a.y) return "west";
+  if (b.y === a.y + 1 && b.x === a.x) return "south";
+  if (b.y === a.y - 1 && b.x === a.x) return "north";
+  return null;
+}
+function relSide(facing, absDir){
+  return SIDES[((CW.indexOf(absDir) - CW.indexOf(facing)) + 4) % 4];
+}
+function absFromSide(facing, side){
+  return CW[(CW.indexOf(facing) + SIDES.indexOf(side)) % 4];
+}
+function doorKey(a, b){ return Math.min(a,b) + "-" + Math.max(a,b); }
+
+// ------------------------------------------------------------------
+// WORLD GENERATOR - a real graph, grown by random accretion on a grid
+// so it is always connected, then sprinkled with extra doors so that
+// shortest-path search is a genuine search and not a corridor walk.
+// ------------------------------------------------------------------
+function makeWorld(seed, n, extraDoorP){
+  n = clamp(n | 0, 4, 16);
+  const rng = rngFor(seed, "world|" + n);
+  const W = Math.ceil(Math.sqrt(n)) + 1;
+  const occ = {}, rooms = [], doors = [];
+  const ck = function(x, y){ return x + "," + y; };
+  const sx = Math.floor(W / 2), sy = Math.floor(W / 2);
+  rooms.push({ id:0, name:ROOM_NAMES[0], x:sx, y:sy }); occ[ck(sx, sy)] = 0;
+
+  while (rooms.length < n){
+    const cands = [];
+    for (let i = 0; i < rooms.length; i++){
+      const r = rooms[i];
+      for (let k = 0; k < DIRS.length; k++){
+        const nx = r.x + DIRS[k].dx, ny = r.y + DIRS[k].dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= W) continue;
+        if (occ[ck(nx, ny)] !== undefined) continue;
+        cands.push({ x:nx, y:ny, parent:r.id });
+      }
+    }
+    if (!cands.length) break;
+    cands.sort(function(a, b){ return (a.x - b.x) || (a.y - b.y) || (a.parent - b.parent); });
+    const c = cands[Math.floor(rng() * cands.length)];
+    const id = rooms.length;
+    rooms.push({ id:id, name:ROOM_NAMES[id], x:c.x, y:c.y });
+    occ[ck(c.x, c.y)] = id;
+    doors.push([Math.min(id, c.parent), Math.max(id, c.parent)]);
+  }
+
+  const has = {};
+  doors.forEach(function(d){ has[d[0] + "-" + d[1]] = 1; });
+  const p = (extraDoorP === undefined) ? 0.28 : extraDoorP;
+  for (let i = 0; i < rooms.length; i++) for (let j = i + 1; j < rooms.length; j++){
+    if (has[i + "-" + j]) continue;
+    if (dirBetween(rooms[i], rooms[j]) === null) continue;
+    if (rng() < p){ doors.push([i, j]); has[i + "-" + j] = 1; }
+  }
+  doors.sort(function(a, b){ return (a[0] - b[0]) || (a[1] - b[1]); });
+
+  let mnx = Infinity, mny = Infinity;
+  rooms.forEach(function(r){ if (r.x < mnx) mnx = r.x; if (r.y < mny) mny = r.y; });
+  rooms.forEach(function(r){ r.x -= mnx; r.y -= mny; });
+
+  const start = Math.floor(rng() * rooms.length);
+  const w0 = { rooms:rooms, doors:doors };
+  const dist = bfsDistances(w0, start);
+  let goalRoom = start, best = -1;
+  for (let i = 0; i < rooms.length; i++){ if (dist[i] > best){ best = dist[i]; goalRoom = i; } }
+
+  const objects = [{ name:OBJECTS[0], room:goalRoom }];
+  const others = rooms.map(function(r){ return r.id; }).filter(function(i){ return i !== goalRoom; });
+  for (let k = 1; k < OBJECTS.length && others.length; k++){
+    objects.push({ name:OBJECTS[k], room:others.splice(Math.floor(rng() * others.length), 1)[0] });
+  }
+  objects.sort(function(a, b){ return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+
+  return { seed:seed, n:rooms.length, rooms:rooms, doors:doors,
+           objects:objects, start:start, goal:OBJECTS[0] };
+}
+
+function adjacency(world){
+  const adj = world.rooms.map(function(){ return []; });
+  world.doors.forEach(function(d){ adj[d[0]].push(d[1]); adj[d[1]].push(d[0]); });
+  adj.forEach(function(a){ a.sort(function(x, y){ return x - y; }); });
+  return adj;
+}
+function bfsDistances(world, s){
+  const adj = adjacency(world), dist = world.rooms.map(function(){ return Infinity; });
+  dist[s] = 0; const q = [s];
+  for (let h = 0; h < q.length; h++){
+    const u = q[h];
+    for (let i = 0; i < adj[u].length; i++){
+      const v = adj[u][i];
+      if (dist[v] === Infinity){ dist[v] = dist[u] + 1; q.push(v); }
+    }
+  }
+  return dist;
+}
+function roomOfObject(world, name){
+  for (let i = 0; i < world.objects.length; i++) if (world.objects[i].name === name) return world.objects[i].room;
+  return null;
+}
+
+// ------------------------------------------------------------------
+// THE PLANNER - BFS, deterministic neighbour order, provably shortest.
+// This is the ground truth every other number on the page is graded on.
+// ------------------------------------------------------------------
+function planBFS(world){
+  const goalRoom = roomOfObject(world, world.goal);
+  if (goalRoom === null) return null;
+  const adj = adjacency(world);
+  const prev = world.rooms.map(function(){ return -1; });
+  const seen = world.rooms.map(function(){ return false; });
+  seen[world.start] = true;
+  const q = [world.start];
+  for (let h = 0; h < q.length; h++){
+    const u = q[h];
+    if (u === goalRoom) break;
+    for (let i = 0; i < adj[u].length; i++){
+      const v = adj[u][i];
+      if (!seen[v]){ seen[v] = true; prev[v] = u; q.push(v); }
+    }
+  }
+  if (!seen[goalRoom]) return null;
+  const path = [];
+  let c = goalRoom;
+  while (c !== -1){ path.push(c); c = (c === world.start) ? -1 : prev[c]; }
+  path.reverse();
+  const moves = [], facts = [];
+  for (let i = 0; i + 1 < path.length; i++){
+    moves.push(dirBetween(world.rooms[path[i]], world.rooms[path[i+1]]));
+    facts.push(doorKey(path[i], path[i+1]));
+  }
+  return { path:path, moves:moves, facts:facts, len:path.length - 1, goalRoom:goalRoom };
+}
+
+// Canonical relation set: one entry per door, source = alphabetically first
+// room NAME, so it is comparable between the true world and any parse.
+function relationSet(world){
+  const S = {};
+  world.doors.forEach(function(d){
+    let a = world.rooms[d[0]], b = world.rooms[d[1]];
+    if (a.name > b.name){ const t = a; a = b; b = t; }
+    S[a.name + ">" + dirBetween(a, b) + ">" + b.name] = 1;
+  });
+  return S;
+}
+
+// ------------------------------------------------------------------
+// TOKENIZER - hand-written, deterministic, and fully documented so it can
+// be re-implemented independently. This is NOT a real BPE; it is an honest
+// approximation whose every rule you can read:
+//   R1 split the string on whitespace (spaces and newlines alike)
+//   R2 within a chunk, each ASCII punctuation character is one token
+//   R3 each run of digits is one token
+//   R4 an ASCII letter run of <= 4 chars is one token; longer runs split
+//      into ceil(len/4) pieces of at most 4 chars (real BPE averages ~4)
+//   R5 every NON-ASCII character costs 2 tokens, because rare glyphs fall
+//      back to byte-level pieces and rarely map to a single id
+// Consequence worth knowing: tokenize(a + " " + b) is exactly
+// tokenize(a).concat(tokenize(b)), which is what lets fact offsets be
+// computed segment by segment.
+// ------------------------------------------------------------------
+function tokenize(str){
+  const out = [];
+  String(str).split(/\s+/).forEach(function(chunk){
+    if (!chunk) return;
+    let i = 0;
+    while (i < chunk.length){
+      const c = chunk.charAt(i);
+      if (chunk.charCodeAt(i) > 127){ out.push("<u>"); out.push("<u>"); i++; continue; }
+      if (c >= "0" && c <= "9"){
+        let j = i; while (j < chunk.length && chunk.charAt(j) >= "0" && chunk.charAt(j) <= "9") j++;
+        out.push(chunk.slice(i, j)); i = j; continue;
+      }
+      if (/[A-Za-z]/.test(c)){
+        let j = i; while (j < chunk.length && /[A-Za-z]/.test(chunk.charAt(j))) j++;
+        const core = chunk.slice(i, j).toLowerCase();
+        if (core.length <= 4) out.push(core);
+        else for (let p = 0; p < core.length; p += 4) out.push(core.slice(p, p + 4));
+        i = j; continue;
+      }
+      out.push(c); i++;
+    }
+  });
+  return out;
+}
+function tokenCount(s){ return tokenize(s).length; }
+
+// Assemble segments into one string while recording, for every fact, the
+// token index at which it is FIRST stated. Real offsets, not estimates.
+function assemble(segs){
+  let text = "", total = 0;
+  const facts = {};
+  for (let i = 0; i < segs.length; i++){
+    const sg = segs[i];
+    if (i) text += sg.br ? "\n" : " ";
+    text += sg.text;
+    (sg.keys || []).forEach(function(k){ if (facts[k] === undefined) facts[k] = total; });
+    total += tokenCount(sg.text);
+  }
+  return { text:text, tokens:total, facts:facts, segs:segs };
+}
+
+// ------------------------------------------------------------------
+// SERIALIZER A - natural language. Every sentence is generated from the
+// state object; verbosity decides which sentence TEMPLATES are allowed.
+//   v0  only "The B is <dir> of the A."          - zero ambiguity
+//   v1  + "<Dir> of the A lies the B."           - still unambiguous
+//   v2  + relative-clause chains, egocentric directions
+//   v3  + long-range pronouns and filler
+// ------------------------------------------------------------------
+function serializeNL(world, verbosity, taskTail){
+  const rng = rngFor(world.seed, "nl|" + world.n + "|" + verbosity);
+  const segs = [];
+  const S = function(text, keys, br){ segs.push({ text:text, keys:keys || [], br:!!br }); };
+  const names = world.rooms.map(function(r){ return r.name; });
+
+  S("There are " + world.n + " rooms: " + names.join(", ") + ".");
+  S("You are standing in the " + world.rooms[world.start].name + ".");
+  S("Find the " + world.goal + " and bring it back here.");
+
+  const mentioned = names.slice();
+  mentioned.push(world.rooms[world.start].name);
+
+  const done = {};
+  const byRoom = world.rooms.map(function(){ return []; });
+  world.doors.forEach(function(d){ byRoom[d[0]].push(d); byRoom[d[1]].push(d); });
+  const otherEnd = function(d, id){ return d[0] === id ? d[1] : d[0]; };
+  const dirOf = function(a, b){ return dirBetween(world.rooms[a], world.rooms[b]); };
+  let fillI = 0;
+
+  for (let di = 0; di < world.doors.length; di++){
+    const d = world.doors[di], k = doorKey(d[0], d[1]);
+    if (done[k]) continue;
+    const A = world.rooms[d[0]], B = world.rooms[d[1]];
+    const roll = rng();
+    let tpl = 0;
+    if (verbosity >= 1 && roll < 0.34) tpl = 1;
+    else if (verbosity >= 2 && roll < 0.56) tpl = 2;
+    else if (verbosity >= 2 && roll < 0.76) tpl = 3;
+    else if (verbosity >= 3 && roll < 0.90) tpl = 4;
+
+    if (tpl === 2){
+      // Needs a SECOND undone door sharing one endpoint, so the sentence
+      // can chain two facts and put a pronoun between them.
+      let host = d[0], guest = d[1];
+      const free = function(h){
+        return byRoom[h].filter(function(x){
+          const kk = doorKey(x[0], x[1]); return !done[kk] && kk !== k;
+        })[0];
+      };
+      let second = free(host);
+      if (!second){ host = d[1]; guest = d[0]; second = free(host); }
+      if (second){
+        const HOST = world.rooms[host], GUEST = world.rooms[guest];
+        const C = world.rooms[otherEnd(second, host)];
+        const k2 = doorKey(second[0], second[1]);
+        S("The " + HOST.name + ", which lies " + dirOf(guest, host) + " of the " + GUEST.name +
+          ", has a door on its " + dirOf(host, C.id) + " side leading to the " + C.name + ".", [k, k2]);
+        done[k] = 1; done[k2] = 1;
+        mentioned.push(HOST.name, GUEST.name, C.name);
+      } else tpl = 0;
+    }
+
+    if (tpl === 3){
+      const F = pickFrom(rng, CW);
+      S("You turn to face " + F + ".");
+      const gap = (verbosity >= 3) ? (rng() < 0.6 ? 1 : 0) : (rng() < 0.3 ? 1 : 0);
+      for (let g = 0; g < gap; g++){ S(FILLER[fillI++ % FILLER.length]); }
+      const phrase = { ahead:"straight ahead", right:"to your right",
+                       behind:"behind you", left:"to your left" }[relSide(F, dirOf(d[0], d[1]))];
+      S("From the " + A.name + ", the " + B.name + " lies " + phrase + ".", [k]);
+      done[k] = 1; mentioned.push(A.name, B.name);
+    }
+
+    if (tpl === 4){
+      // Long-range pronoun: make A the topic, mention a DIFFERENT room in
+      // between, then refer back with "it". Genuine discourse anaphora.
+      let dist = null;
+      for (let t = 0; t < 8; t++){
+        const cand = world.rooms[(d[0] + 1 + Math.floor(rng() * (world.n - 1))) % world.n];
+        if (cand.id !== d[0] && cand.id !== d[1]){ dist = cand; break; }
+      }
+      if (dist){
+        S("The " + A.name + " is the largest room in the house.");
+        S("A corridor from the " + dist.name + " runs past it.");
+        S("It also opens " + dirOf(d[0], d[1]) + " onto the " + B.name + ".", [k]);
+        done[k] = 1; mentioned.push(A.name, dist.name, B.name);
+      } else tpl = 0;
+    }
+
+    if (tpl === 1){
+      S(cap(dirOf(d[0], d[1])) + " of the " + A.name + " lies the " + B.name + ".", [k]);
+      done[k] = 1; mentioned.push(A.name, B.name);
+    }
+    if (tpl === 0){
+      S("The " + B.name + " is " + dirOf(d[0], d[1]) + " of the " + A.name + ".", [k]);
+      done[k] = 1; mentioned.push(A.name, B.name);
+    }
+    if (verbosity >= 1 && rng() < 0.12 * verbosity) S(FILLER[fillI++ % FILLER.length]);
+  }
+
+  world.objects.forEach(function(o){
+    S("A " + o.name + " rests in the " + world.rooms[o.room].name + ".");
+    mentioned.push(world.rooms[o.room].name);
+  });
+  if (taskTail !== false){
+    S("Move only through doorways.", [], true);
+    S("List the rooms you walk through, in order, shortest route first.", [], true);
+    S("Plan:", [], true);
+  }
+  return assemble(segs);
+}
+
+// ------------------------------------------------------------------
+// SERIALIZER B - Chain-of-Symbol. Same state object, different rendering.
+// The scheme parameterises only the DELIMITERS and the room naming, so
+// all three schemes share one serializer and one parser.
+// ------------------------------------------------------------------
+const SCHEMES = [
+  { id:"names", label:"names + coords", icon:"🔤", legend:false,
+    pre:"", post:"", L:"(", R:")", CS:",", DOOR:"/", HERE:"@", GOAL:"*", OS:":",
+    note:"Readable and needs no legend, but every long room name still costs several tokens of its own." },
+  { id:"letters", label:"letters + legend", icon:"🔡", legend:true,
+    pre:"", post:"", L:"(", R:")", CS:",", DOOR:"/", HERE:"@", GOAL:"*", OS:":",
+    note:"One capital per room, defined once in a legend line. Usually the cheapest scheme that still parses cleanly." },
+  { id:"glyphs", label:"exotic glyphs", icon:"◆", legend:true,
+    pre:"⟨", post:"⟩", L:"⟦", R:"⟧", CS:",", DOOR:"◆", HERE:"▶", GOAL:"★", OS:":",
+    note:"Looks maximally symbolic and is the classic mistake: rare glyphs fall off the tokenizer's happy path and cost MORE than the words they replaced." }
+];
+function schemeById(id){ for (let i = 0; i < SCHEMES.length; i++) if (SCHEMES[i].id === id) return SCHEMES[i]; return SCHEMES[0]; }
+function symOf(scheme, room){ return scheme.legend ? LETTERS[room.id] : room.name; }
+function wrap(scheme, s){ return scheme.pre + s + scheme.post; }
+function symbolTable(S){
+  return "# " + wrap(S,"a") + S.L + "x" + S.CS + "y" + S.R + "=room at cell  " +
+         wrap(S,"a") + S.DOOR + wrap(S,"b") + "=door  " +
+         S.HERE + wrap(S,"a") + "=start  " +
+         wrap(S,"a") + S.OS + "o=object in a  " +
+         S.GOAL + "o=goal";
+}
+function serializeCoS(world, scheme, taskTail){
+  const S = scheme;
+  const segs = [];
+  const push = function(text, keys, br){ segs.push({ text:text, keys:keys || [], br:!!br }); };
+  push("Answer in the same symbols. Move only along " + S.DOOR + " edges.");
+  push(symbolTable(S), [], true);
+  if (S.legend){
+    push(world.rooms.map(function(r){ return wrap(S, LETTERS[r.id]) + "=" + r.name; }).join(" "), [], true);
+  }
+  world.rooms.forEach(function(r, i){
+    push(wrap(S, symOf(S, r)) + S.L + r.x + S.CS + r.y + S.R, [], i === 0);
+  });
+  world.doors.forEach(function(d, i){
+    push(wrap(S, symOf(S, world.rooms[d[0]])) + S.DOOR + wrap(S, symOf(S, world.rooms[d[1]])),
+         [doorKey(d[0], d[1])], i === 0);
+  });
+  const state = [S.HERE + wrap(S, symOf(S, world.rooms[world.start]))]
+    .concat(world.objects.map(function(o){ return wrap(S, symOf(S, world.rooms[o.room])) + S.OS + o.name; }))
+    .concat([S.GOAL + world.goal]).join(" ");
+  push(state, [], true);
+  if (taskTail !== false){
+    push("Example: " + S.HERE + wrap(S,"a") + " -> " + wrap(S,"a") + S.DOOR + wrap(S,"b") +
+         " -> " + S.HERE + wrap(S,"b") + " DONE", [], true);
+    push("Plan:", [], true);
+  }
+  return assemble(segs);
+}
+
+function esc(s){ return String(s).replace(/[.*+?^${}()|[\]\\\/\-]/g, "\\$&"); }
+
+// PARSER B - exact. Reads a CoS serialization back into a world object.
+function parseCoS(text, scheme){
+  const S = scheme;
+  const RP = esc(S.pre) + "([A-Za-z_]+)" + esc(S.post);
+  const cellRe = new RegExp(RP + esc(S.L) + "(-?\\d+)" + esc(S.CS) + "(-?\\d+)" + esc(S.R), "g");
+  const doorRe = new RegExp(RP + esc(S.DOOR) + RP, "g");
+  const hereRe = new RegExp(esc(S.HERE) + RP);
+  const goalRe = new RegExp(esc(S.GOAL) + "([a-z]+)");
+  const objRe  = new RegExp(RP + esc(S.OS) + "([a-z]+)", "g");
+  const legRe  = new RegExp(RP + "=([a-z]+)", "g");
+
+  const lines = String(text).split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
+  const legend = {}, rooms = [], idOf = {}, doors = [], objects = [];
+  let start = null, goal = null, sawLegend = false;
+
+  lines.forEach(function(ln){
+    if (ln.charAt(0) === "#") return;
+    if (!sawLegend && S.legend && ln.indexOf("=") !== -1 && ln.indexOf(S.L) === -1){
+      let m; legRe.lastIndex = 0;
+      while ((m = legRe.exec(ln))) legend[m[1]] = m[2];
+      sawLegend = true; return;
+    }
+    if (ln.indexOf(S.L) !== -1){
+      let m; cellRe.lastIndex = 0;
+      while ((m = cellRe.exec(ln))){
+        const nm = S.legend ? legend[m[1]] : m[1];
+        if (nm === undefined) continue;
+        idOf[m[1]] = rooms.length;
+        rooms.push({ id:rooms.length, name:nm, x:parseInt(m[2], 10), y:parseInt(m[3], 10) });
+      }
+      return;
+    }
+    if (ln.indexOf(S.HERE) !== -1){
+      // Only the first RESOLVABLE @room line is the state line; the worked
+      // example later in the prompt uses placeholder symbols and is ignored.
+      let m = ln.match(hereRe);
+      if (!m || idOf[m[1]] === undefined) return;
+      if (start === null) start = idOf[m[1]];
+      m = ln.match(goalRe); if (m && goal === null) goal = m[1];
+      objRe.lastIndex = 0;
+      while ((m = objRe.exec(ln))) if (idOf[m[1]] !== undefined) objects.push({ name:m[2], room:idOf[m[1]] });
+      return;
+    }
+    if (ln.indexOf(S.DOOR) !== -1){
+      let m; doorRe.lastIndex = 0;
+      while ((m = doorRe.exec(ln))){
+        const a = idOf[m[1]], b = idOf[m[2]];
+        if (a === undefined || b === undefined) continue;
+        doors.push([Math.min(a, b), Math.max(a, b)]);
+      }
+    }
+  });
+  doors.sort(function(a, b){ return (a[0] - b[0]) || (a[1] - b[1]); });
+  objects.sort(function(a, b){ return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+  return { seed:null, n:rooms.length, rooms:rooms, doors:doors, objects:objects,
+           start:start, goal:goal };
+}
+
+// Canonical projection used for the lossless round-trip assertion.
+function canon(w){
+  return JSON.stringify({
+    rooms: w.rooms.map(function(r){ return [r.id, r.name, r.x, r.y]; }),
+    doors: w.doors,
+    objects: w.objects.map(function(o){ return [o.name, o.room]; }),
+    start: w.start, goal: w.goal
+  });
+}
+
+// ------------------------------------------------------------------
+// PARSER A - natural language, with three documented shortcuts. These are
+// exactly the shortcuts a hurried reader takes, and each is right some of
+// the time. A better parser would score better; the point is that the
+// SYMBOLIC form needs no resolution at all.
+//   H1 "which" / "its"  -> nearest preceding room noun
+//   H2 "it"             -> most recently mentioned room
+//   H3 "your left"      -> allocentric, unless a facing was declared in
+//                          the immediately preceding sentence
+// ------------------------------------------------------------------
+function parseNL(text){
+  const sentences = (String(text).match(/[^.]*\./g) || []).map(function(s){ return s.trim(); }).filter(Boolean);
+  const rels = {}, objects = {}, known = {};
+  const trace = [];
+  let start = null, facing = null, facingAge = 99;
+  const mentioned = [];
+
+  function addRel(a, dir, b, out){
+    if (!a || !b || a === b || !dir) return;
+    let s = a, t = b, dd = dir;
+    if (a > b){ s = b; t = a; dd = OPP[dir]; }
+    const key = s + ">" + dd + ">" + t;
+    rels[key] = 1; out.push(key);
+  }
+
+  sentences.forEach(function(sent){
+    const out = [], heur = [];
+    const prevLast = mentioned.length ? mentioned[mentioned.length - 1] : null;
+    let m;
+
+    m = sent.match(/There are \d+ rooms:\s*([^.]+)\./);
+    if (m){
+      m[1].split(/,\s*/).forEach(function(nm){ nm = nm.trim(); if (nm){ known[nm] = 1; mentioned.push(nm); } });
+      trace.push({ s:sent, out:[], heur:[], kind:"roster" }); facingAge++; return;
+    }
+    m = sent.match(/You are standing in the ([a-z]+)/);
+    if (m){ start = m[1]; mentioned.push(m[1]);
+      trace.push({ s:sent, out:[], heur:[], kind:"start" }); facingAge++; return; }
+    m = sent.match(/You turn to face (north|south|east|west)/);
+    if (m){ facing = m[1]; facingAge = 0;
+      trace.push({ s:sent, out:[], heur:[], kind:"facing" }); facingAge++; return; }
+    m = sent.match(/A ([a-z]+) rests in the ([a-z]+)/);
+    if (m){ objects[m[1]] = m[2]; mentioned.push(m[2]);
+      trace.push({ s:sent, out:[], heur:[], kind:"object" }); facingAge++; return; }
+
+    // room-noun occurrences, in order, for the nearest-antecedent rule
+    const nouns = [];
+    const nre = /\b[Tt]he ([a-z]+)\b/g;
+    let nm2;
+    while ((nm2 = nre.exec(sent))) if (known[nm2[1]]) nouns.push({ name:nm2[1], at:nm2.index });
+    const nearestBefore = function(pos){
+      let best = null;
+      for (let i = 0; i < nouns.length; i++) if (nouns[i].at < pos) best = nouns[i];
+      return best ? best.name : null;
+    };
+
+    // C1 - "The B is <dir> of the A."   (explicit, unambiguous)
+    let re = /[Tt]he ([a-z]+) is (north|south|east|west) of the ([a-z]+)/g;
+    while ((m = re.exec(sent))) addRel(m[3], m[2], m[1], out);
+    // C2 - "<Dir> of the A lies the B."
+    re = /(north|south|east|west) of the ([a-z]+) lies the ([a-z]+)/gi;
+    while ((m = re.exec(sent))) addRel(m[2], m[1].toLowerCase(), m[3], out);
+    // C3 - ", which lies <dir> of the X"   -> H1
+    re = /, which lies (north|south|east|west) of the ([a-z]+)/g;
+    while ((m = re.exec(sent))){ heur.push("H1"); addRel(m[2], m[1], nearestBefore(m.index), out); }
+    // C4 - "has a door on its <dir> side leading to the Y"  -> H1
+    re = /has a door on its (north|south|east|west) side leading to the ([a-z]+)/g;
+    while ((m = re.exec(sent))){ heur.push("H1"); addRel(nearestBefore(m.index), m[1], m[2], out); }
+    // C5 - "It also opens <dir> onto the Z."  -> H2
+    re = /\b[Ii]t also opens (north|south|east|west) onto the ([a-z]+)/g;
+    while ((m = re.exec(sent))){ heur.push("H2"); addRel(prevLast, m[1], m[2], out); }
+    // C6 - "From the A, the B lies <phrase>."  -> H3
+    re = /From the ([a-z]+), the ([a-z]+) lies (straight ahead|behind you|to your left|to your right)/g;
+    while ((m = re.exec(sent))){
+      const side = { "straight ahead":"ahead", "behind you":"behind",
+                     "to your left":"left", "to your right":"right" }[m[3]];
+      const f = (facingAge <= 1 && facing) ? facing : "north";
+      heur.push(facingAge <= 1 ? "H3✓" : "H3");
+      addRel(m[1], absFromSide(f, side), m[2], out);
+    }
+
+    nouns.forEach(function(nn){ mentioned.push(nn.name); });
+    trace.push({ s:sent, out:out, heur:heur, kind:out.length ? "relation" : "filler" });
+    facingAge++;
+  });
+
+  return { rels:rels, objects:objects, start:start, trace:trace, rooms:Object.keys(known) };
+}
+
+// Diff a parse against the truth. Non-empty diff == a genuinely wrong world.
+function diffParse(world, got){
+  const truth = relationSet(world);
+  const missing = [], spurious = [], objBad = [];
+  Object.keys(truth).forEach(function(k){ if (!got.rels[k]) missing.push(k); });
+  Object.keys(got.rels).forEach(function(k){ if (!truth[k]) spurious.push(k); });
+  world.objects.forEach(function(o){
+    if (got.objects[o.name] !== world.rooms[o.room].name) objBad.push(o.name);
+  });
+  const startBad = got.start !== world.rooms[world.start].name;
+  return { missing:missing, spurious:spurious, objBad:objBad, startBad:startBad,
+           ok: !missing.length && !spurious.length && !objBad.length && !startBad };
+}
+// The symbolic parse expressed in the same shape, so both go through the
+// identical diff. It is exact by construction; the assertion proves it.
+function symbolicAsParse(world, scheme){
+  const w2 = parseCoS(serializeCoS(world, scheme).text, scheme);
+  const rels = relationSet(w2), objects = {};
+  w2.objects.forEach(function(o){ objects[o.name] = w2.rooms[o.room].name; });
+  return { rels:rels, objects:objects, start:(w2.start === null ? null : w2.rooms[w2.start].name),
+           trace:[], rooms:w2.rooms.map(function(r){ return r.name; }), world:w2 };
+}
+
+// Plan on the world a parser THINKS it read, then grade it in the real one.
+function planFromParse(world, got){
+  const names = {}, adj = {};
+  Object.keys(got.rels).forEach(function(k){
+    const p = k.split(">"); names[p[0]] = 1; names[p[2]] = 1;
+    (adj[p[0]] = adj[p[0]] || []).push(p[2]);
+    (adj[p[2]] = adj[p[2]] || []).push(p[0]);
+  });
+  const goalRoom = got.objects[world.goal];
+  const s = got.start;
+  if (!s || !goalRoom || !names[s] || !names[goalRoom]) return { grade:"invalid", path:null };
+  const prev = { }, seen = { }; seen[s] = 1;
+  const q = [s];
+  for (let h = 0; h < q.length; h++){
+    const u = q[h];
+    if (u === goalRoom) break;
+    const nb = (adj[u] || []).slice().sort();
+    for (let i = 0; i < nb.length; i++) if (!seen[nb[i]]){ seen[nb[i]] = 1; prev[nb[i]] = u; q.push(nb[i]); }
+  }
+  if (!seen[goalRoom]) return { grade:"invalid", path:null };
+  const path = []; let c = goalRoom;
+  while (c){ path.push(c); c = (c === s) ? null : prev[c]; }
+  path.reverse();
+  // grade against the REAL world
+  const realDoors = {};
+  world.doors.forEach(function(d){
+    realDoors[world.rooms[d[0]].name + "|" + world.rooms[d[1]].name] = 1;
+    realDoors[world.rooms[d[1]].name + "|" + world.rooms[d[0]].name] = 1;
+  });
+  const truePlan = planBFS(world);
+  const trueGoal = world.rooms[truePlan.goalRoom].name;
+  if (path[path.length - 1] !== trueGoal) return { grade:"invalid", path:path };
+  for (let i = 0; i + 1 < path.length; i++)
+    if (!realDoors[path[i] + "|" + path[i+1]]) return { grade:"invalid", path:path };
+  return { grade: (path.length - 1 === truePlan.len) ? "optimal" : "valid", path:path };
+}
+
+// ------------------------------------------------------------------
+// SIMULATED SOLVER - clearly labelled everywhere it is shown. There is no
+// model on this page. Assumptions, in full:
+//   A1 a fact must be recalled at the moment the plan step using it is emitted
+//   A2 p(recall) = floor + (1 - floor) * exp(-d / L), d = token distance from
+//      where the fact is stated to the end of the prompt
+//   A3 a fact the parser misread is wrong regardless of recall
+//   A4 a trial succeeds only if every fact on the shortest path survives
+// floor and L are toy parameters. They are printed on screen and adjustable.
+// ------------------------------------------------------------------
+const SIM_FLOOR = 0.75;
+function simulateTrial(planFacts, factPos, totalTokens, parsedOK, span, rng){
+  if (!parsedOK) return false;
+  for (let i = 0; i < planFacts.length; i++){
+    const pos = factPos[planFacts[i]];
+    if (pos === undefined) return false;
+    const d = totalTokens - pos;
+    const p = SIM_FLOOR + (1 - SIM_FLOOR) * Math.exp(-d / span);
+    if (rng() >= p) return false;
+  }
+  return true;
+}
+
+// One world, fully analysed. Everything the UI shows comes from here.
+function analyse(seed, n, verbosity, scheme, span, trials){
+  const world = makeWorld(seed, n);
+  const plan  = planBFS(world);
+  const nl    = serializeNL(world, verbosity);
+  const cos   = serializeCoS(world, scheme);
+  const nlP   = parseNL(nl.text);
+  const cosP  = symbolicAsParse(world, scheme);
+  const nlD   = diffParse(world, nlP);
+  const cosD  = diffParse(world, cosP);
+  const rng   = rngFor(seed, "sim|" + n + "|" + verbosity + "|" + scheme.id + "|" + span);
+  let nlHit = 0, cosHit = 0;
+  const T = trials || 24;
+  for (let t = 0; t < T; t++){
+    if (simulateTrial(plan.facts, nl.facts,  nl.tokens,  nlD.ok,  span, rng)) nlHit++;
+    if (simulateTrial(plan.facts, cos.facts, cos.tokens, cosD.ok, span, rng)) cosHit++;
+  }
+  return { world:world, plan:plan, nl:nl, cos:cos, nlP:nlP, cosP:cosP, nlD:nlD, cosD:cosD,
+           nlSolve:nlHit / T, cosSolve:cosHit / T, trials:T };
+}
+
+// The live benchmark: every size, several worlds each, all recomputed.
+function runBenchmark(seed, sizes, worldsPer, verbosity, scheme, span, trials){
+  const rows = [];
+  let tNL = 0, tCoS = 0, pNL = 0, pCoS = 0, sNL = 0, sCoS = 0, cnt = 0;
+  sizes.forEach(function(n){
+    let a = 0, b = 0, c = 0, d = 0, e = 0, f = 0;
+    for (let w = 0; w < worldsPer; w++){
+      const r = analyse(seed + 1000 * w + n, n, verbosity, scheme, span, trials);
+      a += r.nl.tokens; b += r.cos.tokens;
+      c += r.nlD.ok ? 1 : 0; d += r.cosD.ok ? 1 : 0;
+      e += r.nlSolve; f += r.cosSolve;
+    }
+    const row = { n:n, nlTok:a / worldsPer, cosTok:b / worldsPer,
+                  nlParse:c / worldsPer, cosParse:d / worldsPer,
+                  nlSolve:e / worldsPer, cosSolve:f / worldsPer };
+    rows.push(row);
+    tNL += a; tCoS += b; pNL += c; pCoS += d; sNL += e; sCoS += f; cnt += worldsPer;
+  });
+  return { rows:rows, totNlTok:tNL / cnt, totCosTok:tCoS / cnt,
+           reduction: tNL ? (tNL - tCoS) / tNL : 0,
+           nlParse:pNL / cnt, cosParse:pCoS / cnt,
+           nlSolve:sNL / cnt, cosSolve:sCoS / cnt, worlds:cnt };
+}
+// ==== COS-CORE-END ====
+
+function copy(btn){ const pre = btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(function(){ btn.textContent = o; }, 1500); }
+function escapeHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+
+// ============================================================
+// Browser mount - all DOM wiring lives here.
+// ============================================================
+function mount(){
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(function(t){ t.onclick = function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  }; });
+
+  const VERB_LABEL = ["0 · terse, unambiguous", "1 · natural", "2 · chatty", "3 · florid"];
+  const SIZES = [4,5,6,7,8,9,10,11,12];
+  const state = { seed:611, n:8, verb:2, span:600, worlds:8, scheme:"letters", step:0 };
+  const el = function(id){ return document.getElementById(id); };
+
+  function tile(node, k, v, s, cls){
+    node.className = "tile " + (cls || "");
+    node.innerHTML = '<div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div>';
+  }
+
+  // ---------- inline SVG world ----------
+  function worldSVG(world, plan, upto){
+    const cell = 62, pad = 18, box = 48;
+    let mx = 0, my = 0;
+    world.rooms.forEach(function(r){ if (r.x > mx) mx = r.x; if (r.y > my) my = r.y; });
+    const W = (mx + 1) * cell + pad * 2, H = (my + 1) * cell + pad * 2;
+    const cx = function(r){ return pad + r.x * cell + box / 2 + 3; };
+    const cy = function(r){ return pad + r.y * cell + box / 2 + 3; };
+    const onPath = {};
+    for (let i = 0; i + 1 < Math.min(upto + 1, plan.path.length); i++) onPath[doorKey(plan.path[i], plan.path[i+1])] = 1;
+    let s = '<svg class="world" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" style="max-width:' + Math.max(300, W) + 'px;margin:0 auto;">';
+    world.doors.forEach(function(d){
+      const a = world.rooms[d[0]], b = world.rooms[d[1]];
+      const hot = onPath[doorKey(d[0], d[1])];
+      s += '<line x1="' + cx(a) + '" y1="' + cy(a) + '" x2="' + cx(b) + '" y2="' + cy(b) +
+           '" stroke="' + (hot ? "#8b5cf6" : "#cbd5e1") + '" stroke-width="' + (hot ? 7 : 4) + '" stroke-linecap="round" />';
+    });
+    world.rooms.forEach(function(r){
+      const isStart = r.id === world.start, isGoal = r.id === plan.goalRoom;
+      const here = plan.path[Math.min(upto, plan.path.length - 1)] === r.id;
+      const fill = here ? "#ede9fe" : (isGoal ? "#fef3c7" : "#ffffff");
+      const stroke = here ? "#7c3aed" : (isGoal ? "#f59e0b" : "#94a3b8");
+      s += '<rect x="' + (pad + r.x * cell + 3) + '" y="' + (pad + r.y * cell + 3) + '" width="' + box + '" height="' + box +
+           '" rx="9" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + (here ? 3 : 1.5) + '" />';
+      s += '<text x="' + cx(r) + '" y="' + (cy(r) - 3) + '" text-anchor="middle" font-size="10" font-weight="800" fill="#0f172a">' + escapeHtml(LETTERS[r.id]) + '</text>';
+      s += '<text x="' + cx(r) + '" y="' + (cy(r) + 9) + '" text-anchor="middle" font-size="6.5" fill="#64748b">' + escapeHtml(r.name.slice(0, 8)) + '</text>';
+      s += '<text x="' + cx(r) + '" y="' + (cy(r) + 18) + '" text-anchor="middle" font-size="6" fill="#94a3b8">' + r.x + ',' + r.y + '</text>';
+      if (isStart) s += '<text x="' + (pad + r.x * cell + 9) + '" y="' + (pad + r.y * cell + 15) + '" font-size="10" font-weight="900" fill="#7c3aed">@</text>';
+      if (isGoal)  s += '<text x="' + (pad + r.x * cell + box - 8) + '" y="' + (pad + r.y * cell + 15) + '" font-size="10" fill="#b45309">★</text>';
+    });
+    return s + '</svg>';
+  }
+
+  // ---------- inline SVG line chart ----------
+  function lineChart(series, opts){
+    const W = 430, H = 200, m = { l:44, r:12, t:12, b:28 };
+    const xs = series[0].pts.map(function(p){ return p[0]; });
+    const xMin = Math.min.apply(null, xs), xMax = Math.max.apply(null, xs);
+    let yMax = opts.yMax;
+    if (yMax === undefined){ yMax = 0; series.forEach(function(sr){ sr.pts.forEach(function(p){ if (p[1] > yMax) yMax = p[1]; }); }); yMax = yMax * 1.12 || 1; }
+    const px = function(x){ return m.l + (xMax === xMin ? 0 : (x - xMin) / (xMax - xMin)) * (W - m.l - m.r); };
+    const py = function(y){ return H - m.b - (y / yMax) * (H - m.t - m.b); };
+    let s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">';
+    for (let g = 0; g <= 4; g++){
+      const y = m.t + g * (H - m.t - m.b) / 4, v = yMax * (1 - g / 4);
+      s += '<line x1="' + m.l + '" y1="' + y + '" x2="' + (W - m.r) + '" y2="' + y + '" stroke="#f1f5f9" stroke-width="1" />';
+      s += '<text x="' + (m.l - 5) + '" y="' + (y + 3) + '" text-anchor="end" font-size="8.5" fill="#94a3b8">' + opts.yFmt(v) + '</text>';
+    }
+    xs.forEach(function(x){
+      s += '<text x="' + px(x) + '" y="' + (H - 9) + '" text-anchor="middle" font-size="8.5" fill="#94a3b8">' + x + '</text>';
+    });
+    s += '<text x="' + (W / 2) + '" y="' + (H - 0.5) + '" text-anchor="middle" font-size="8" fill="#cbd5e1">' + escapeHtml(opts.xLabel) + '</text>';
+    series.forEach(function(sr){
+      let d = "";
+      sr.pts.forEach(function(p, i){ d += (i ? " L" : "M") + px(p[0]).toFixed(1) + " " + py(p[1]).toFixed(1); });
+      s += '<path d="' + d + '" fill="none" stroke="' + sr.color + '" stroke-width="2.4" stroke-linejoin="round" />';
+      sr.pts.forEach(function(p){ s += '<circle cx="' + px(p[0]).toFixed(1) + '" cy="' + py(p[1]).toFixed(1) + '" r="2.6" fill="' + sr.color + '" />'; });
+    });
+    series.forEach(function(sr, i){
+      s += '<rect x="' + (m.l + 4 + i * 118) + '" y="' + (m.t - 2) + '" width="9" height="3" fill="' + sr.color + '" />';
+      s += '<text x="' + (m.l + 17 + i * 118) + '" y="' + (m.t + 2) + '" font-size="8.5" font-weight="700" fill="#475569">' + escapeHtml(sr.name) + '</text>';
+    });
+    return s + '</svg>';
+  }
+
+  // ---------- scheme buttons ----------
+  const schemeBtns = el("schemeBtns");
+  SCHEMES.forEach(function(sc){
+    const b = document.createElement("button");
+    b.className = "btn"; b.dataset.id = sc.id;
+    b.innerHTML = sc.icon + " " + sc.label;
+    b.onclick = function(){ state.scheme = sc.id; recompute(); };
+    schemeBtns.appendChild(b);
+  });
+
+  let cur = null, bench = null, playTimer = null;
+
+  function recompute(){
+    const scheme = schemeById(state.scheme);
+    cur = analyse(state.seed, state.n, state.verb, scheme, state.span, 24);
+    bench = runBenchmark(state.seed, SIZES, state.worlds, state.verb, scheme, state.span, 24);
+    state.step = Math.min(state.step, cur.plan.path.length - 1);
+    render();
+  }
+
+  function render(){
+    const scheme = schemeById(state.scheme);
+    el("seedLbl").textContent = state.seed;
+    el("roomsLbl").textContent = state.n;
+    el("verbLbl").textContent = VERB_LABEL[state.verb];
+    el("spanLbl").textContent = state.span;
+    el("worldsLbl").textContent = state.worlds;
+    el("schemeNote").innerHTML = "<b>" + escapeHtml(scheme.label) + "</b> — " + escapeHtml(scheme.note);
+    schemeBtns.querySelectorAll("button").forEach(function(b){
+      b.className = "btn" + (b.dataset.id === state.scheme ? " on" : "");
+    });
+
+    const cut = (cur.nl.tokens - cur.cos.tokens) / cur.nl.tokens;
+    tile(el("tileTok"), "prompt tokens · this world",
+         cur.nl.tokens + " → " + cur.cos.tokens,
+         "prose → symbols, hand-written tokenizer");
+    tile(el("tileCut"), "token reduction",
+         (cut >= 0 ? "−" : "+") + Math.abs(100 * cut).toFixed(1) + "%",
+         "across all " + bench.worlds + " benchmark worlds: " + (bench.reduction >= 0 ? "−" : "+") + Math.abs(100 * bench.reduction).toFixed(1) + "%",
+         cut > 0 ? "win" : "lose");
+    tile(el("tileParse"), "world recovered exactly",
+         pct(bench.nlParse) + " / " + pct(bench.cosParse),
+         "prose parser / symbolic parser · " + bench.worlds + " worlds",
+         bench.nlParse < bench.cosParse ? "" : "win");
+    tile(el("tileSim"), "SIMULATED solve rate",
+         pct(bench.nlSolve) + " → " + pct(bench.cosSolve),
+         "toy model, assumptions below — not a measurement",
+         bench.cosSolve > bench.nlSolve ? "win" : "lose");
+
+    const dNL = cur.nlD, dCoS = cur.cosD;
+    el("narr").innerHTML = dNL.ok
+      ? '<div class="callout good"><b>This world survives the prose round-trip intact.</b> At verbosity ' + state.verb + ' the generator happened to pick only unambiguous sentence forms for this seed — press <b>🎲 New world</b> a few times, or raise verbosity, and watch a relative clause or a stranded pronoun corrupt an edge.</div>'
+      : '<div class="callout bad"><b>The prose parser reconstructed the wrong world.</b> ' +
+        dNL.missing.length + ' relation(s) lost, ' + dNL.spurious.length + ' invented' +
+        (dNL.startBad ? ', start room wrong' : '') + (dNL.objBad.length ? ', ' + dNL.objBad.length + ' object(s) misplaced' : '') +
+        '. The symbolic parser recovered ' + (dCoS.ok ? '<b>every</b> relation exactly' : 'a broken world too — that would be a bug') + '. Scroll to the sentence trace to see exactly which sentence did it.</div>';
+
+    // world + plan
+    el("worldSvg").innerHTML = worldSVG(cur.world, cur.plan, state.step);
+    const names = cur.plan.path.map(function(i){ return cur.world.rooms[i].name; });
+    el("planTxt").innerHTML =
+      '<div class="callout info"><b>Ground truth (BFS, provably shortest): ' + cur.plan.len + ' move' + (cur.plan.len === 1 ? '' : 's') + '.</b><br>' +
+      '<span class="rel">' + names.map(function(nm, i){
+        return (i <= state.step ? '<b style="color:#6d28d9">' + escapeHtml(nm) + '</b>' : escapeHtml(nm));
+      }).join(' → ') + '</span><br>' +
+      '<span class="rel" style="color:#475569">moves: ' + (cur.plan.moves.join(", ") || "—") + '</span></div>';
+
+    // diff panel
+    const rows = [
+      ["relations in the world", Object.keys(relationSet(cur.world)).length, Object.keys(relationSet(cur.world)).length],
+      ["recovered correctly", Object.keys(relationSet(cur.world)).length - dNL.missing.length, Object.keys(relationSet(cur.world)).length - dCoS.missing.length],
+      ["missing", dNL.missing.length, dCoS.missing.length],
+      ["invented", dNL.spurious.length, dCoS.spurious.length],
+      ["objects misplaced", dNL.objBad.length, dCoS.objBad.length],
+      ["start room wrong", dNL.startBad ? 1 : 0, dCoS.startBad ? 1 : 0]
+    ];
+    let h = '<table class="sb"><thead><tr><th></th><th>📝 prose</th><th>🔣 symbols</th></tr></thead><tbody>';
+    rows.forEach(function(r, i){
+      const badCls = (i >= 2) ? function(v){ return v ? "num bad" : "num ok"; } : function(){ return ""; };
+      h += '<tr><td style="font-weight:600;color:#475569;white-space:normal">' + r[0] + '</td>' +
+           '<td class="' + badCls(r[1]) + '">' + r[1] + '</td><td class="' + badCls(r[2]) + '">' + r[2] + '</td></tr>';
+    });
+    h += '</tbody></table>';
+    if (dNL.missing.length || dNL.spurious.length){
+      h += '<div class="mt-2 text-[11px] leading-relaxed">';
+      if (dNL.missing.length)  h += '<div class="text-rose-700"><b>lost:</b> <span class="rel">' + dNL.missing.map(escapeHtml).join(" · ") + '</span></div>';
+      if (dNL.spurious.length) h += '<div class="text-amber-700"><b>invented:</b> <span class="rel">' + dNL.spurious.map(escapeHtml).join(" · ") + '</span></div>';
+      h += '</div>';
+    }
+    el("diffTable").innerHTML = h;
+
+    const gNL = planFromParse(cur.world, cur.nlP), gCoS = planFromParse(cur.world, cur.cosP);
+    const gradeTxt = { optimal:'<span class="num ok">optimal</span>', valid:'<span class="num mid">walkable but longer</span>', invalid:'<span class="num bad">invalid — uses a door that does not exist</span>' };
+    el("planGrade").innerHTML =
+      '<div class="callout ' + (gNL.grade === "optimal" ? "good" : "bad") + '"><b>Plan the parsed world, then grade it in the real one.</b><br>' +
+      'From the prose parse: ' + gradeTxt[gNL.grade] + (gNL.path ? ' <span class="rel">(' + escapeHtml(gNL.path.join(" → ")) + ')</span>' : '') + '<br>' +
+      'From the symbolic parse: ' + gradeTxt[gCoS.grade] + '</div>';
+
+    // prompts
+    el("nlMeta").textContent = cur.nl.tokens + " tokens · " + cur.nl.text.length + " chars";
+    el("cosMeta").textContent = cur.cos.tokens + " tokens · " + cur.cos.text.length + " chars";
+    el("nlPrompt").innerHTML = escapeHtml(cur.nl.text);
+    el("cosPrompt").innerHTML = escapeHtml(cur.cos.text).replace(/^#.*$/m, function(m){ return '<span class="cm">' + m + '</span>'; });
+
+    // trace
+    const truth = relationSet(cur.world);
+    let t = "";
+    cur.nlP.trace.forEach(function(tr){
+      if (!tr.out.length && tr.kind === "filler"){ t += '<div class="trace" style="opacity:.55">' + escapeHtml(tr.s) + ' <span style="color:#94a3b8">— no fact</span></div>'; return; }
+      const bad = tr.out.some(function(k){ return !truth[k]; });
+      const cls = tr.out.length ? (bad ? "no" : "ok") : "";
+      t += '<div class="trace ' + cls + '">' + escapeHtml(tr.s);
+      if (tr.heur.length) t += ' <span class="h">' + tr.heur.join(" ") + '</span>';
+      if (tr.out.length){
+        t += '<div class="rel mt-1">' + tr.out.map(function(k){
+          return '<span style="color:' + (truth[k] ? "#15803d" : "#b91c1c") + '">' + escapeHtml(k) + (truth[k] ? " ✓" : " ✗") + '</span>';
+        }).join(" &nbsp; ") + '</div>';
+      }
+      t += '</div>';
+    });
+    el("nlTrace").innerHTML = t;
+
+    // charts
+    el("chartTok").innerHTML = lineChart([
+      { name:"prose", color:"#f43f5e", pts:bench.rows.map(function(r){ return [r.n, r.nlTok]; }) },
+      { name:"symbols", color:"#8b5cf6", pts:bench.rows.map(function(r){ return [r.n, r.cosTok]; }) }
+    ], { xLabel:"rooms in the world", yFmt:function(v){ return Math.round(v); } });
+    el("chartAcc").innerHTML = lineChart([
+      { name:"prose (sim)", color:"#f43f5e", pts:bench.rows.map(function(r){ return [r.n, r.nlSolve]; }) },
+      { name:"symbols (sim)", color:"#8b5cf6", pts:bench.rows.map(function(r){ return [r.n, r.cosSolve]; }) }
+    ], { xLabel:"rooms in the world", yMax:1, yFmt:function(v){ return Math.round(100 * v) + "%"; } });
+
+    // bench table
+    let bt = '<thead><tr><th>rooms</th><th>prose tok</th><th>sym tok</th><th>cut</th><th>prose parse</th><th>sym parse</th><th>prose solve*</th><th>sym solve*</th></tr></thead><tbody>';
+    bench.rows.forEach(function(r){
+      const c = (r.nlTok - r.cosTok) / r.nlTok;
+      bt += '<tr><td>' + r.n + '</td><td>' + Math.round(r.nlTok) + '</td><td>' + Math.round(r.cosTok) + '</td>' +
+            '<td class="' + (c > 0 ? "num ok" : "num bad") + '">' + (c >= 0 ? "−" : "+") + Math.abs(100 * c).toFixed(0) + '%</td>' +
+            '<td class="' + (r.nlParse < 1 ? "num bad" : "num ok") + '">' + pct(r.nlParse) + '</td>' +
+            '<td class="num ok">' + pct(r.cosParse) + '</td>' +
+            '<td class="num bad">' + pct(r.nlSolve) + '</td>' +
+            '<td class="num ok">' + pct(r.cosSolve) + '</td></tr>';
+    });
+    el("benchTable").innerHTML = bt + '</tbody>';
+  }
+
+  // ---------- controls ----------
+  el("ctlSeed").onclick = function(){ state.seed = (state.seed * 7919 + 13) % 99991; state.step = 0; recompute(); };
+  el("roomsSlider").oninput = function(){ state.n = parseInt(this.value, 10); state.step = 0; recompute(); };
+  el("verbSlider").oninput = function(){ state.verb = parseInt(this.value, 10); recompute(); };
+  el("spanSlider").oninput = function(){ state.span = parseInt(this.value, 10); recompute(); };
+  el("worldsSlider").oninput = function(){ state.worlds = parseInt(this.value, 10); recompute(); };
+  el("planPrev").onclick = function(){ state.step = Math.max(0, state.step - 1); render(); };
+  el("planNext").onclick = function(){ state.step = Math.min(cur.plan.path.length - 1, state.step + 1); render(); };
+  el("planPlay").onclick = function(){
+    if (playTimer){ clearInterval(playTimer); playTimer = null; el("planPlay").textContent = "▶ Walk the plan"; return; }
+    state.step = 0; render(); el("planPlay").textContent = "⏸ Pause";
+    playTimer = setInterval(function(){
+      if (state.step >= cur.plan.path.length - 1){ clearInterval(playTimer); playTimer = null; el("planPlay").textContent = "▶ Replay"; return; }
+      state.step++; render();
+    }, 700);
+  };
+
+  recompute();
+
+  // ============================================================
+  // UNDERSTAND - step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. Why plain chain-of-thought falls apart on spatial tasks", why:"Chain-of-thought is a genuinely great default, and it is why you reach for it on arithmetic and multi-hop questions: writing the intermediate steps out gives the model somewhere to put partial results. But on a spatial or planning task the intermediate steps are not calculations, they are a WORLD STATE — and CoT insists on writing that state in prose. Prose is a serial, ambiguous, redundant encoding of something that is fundamentally a graph. Every time the chain restates where things are, it re-renders the whole graph into sentences, and every render is another chance to drop an edge, flip a direction, or attach a pronoun to the wrong room. The failure is not that the model cannot reason — it is that it is reasoning over a representation that keeps corrupting itself. That is the observation Chain-of-Symbol (Hu et al., 2023) is built on, and it is why the fix is a representation change rather than a better instruction.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">a world is a GRAPH<br>&#8595;<br>CoT re-renders it as PROSE every step<br>&#8595;<br><b>each render is a chance to corrupt it</b></div>',
+     code:`// the chain-of-thought step, on a planning task:
+"Now I am in the hall. The hall connects to the pantry,
+ which is below it, and also to the study, which is to
+ the right of the room I came from..."
+// re-stated in words. every clause is a resolution to get wrong.` },
+
+   { title:"2. Symbols compress the STATE, not the text", why:"The pitch people hear is 'shorter prompts', and that undersells it badly enough to make the technique look like a micro-optimisation. The real move is that the symbolic form is a SERIALIZATION of a data structure, and a serialization has exactly one reading. 'kitchen/hall' is an edge in a graph; it does not need a subject, a tense, a preposition, or an antecedent. Prose, by contrast, encodes the same edge through a sentence whose meaning depends on word order, on which noun the relative clause attaches to, and on the reader's coordinate frame. So the symbolic form is not the prose with the vowels removed — it is a different KIND of object, one your code can also produce, parse, and diff. On this page the two forms come from the same state object precisely so you can see that the information content is identical while the ambiguity is not.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">“the hall, which sits east<br>of the kitchen, opens north…”<br><br><b>vs</b><br><br>kitchen/hall &nbsp; hall/study<br>hall(1,0) &nbsp; study(1,1)</div>',
+     code:`// same state, two renderings - and they cannot drift,
+// because they are both functions of ONE object.
+const nl  = serializeNL(world, verbosity);
+const cos = serializeCoS(world, scheme);
+// parse(cos) deep-equals world. parse(nl) very often does not.` },
+
+   { title:"3. Define the symbol table exactly once, before any data", why:"A symbol the model has to infer is worse than the word it replaced, because now it is guessing AND you have removed the redundancy that would have let it recover. So CoS always opens with a small legend: a(x,y) is a room at a grid cell, a/b is a door, @a is where you are, *o is what you want. Two things make this work. First, it is stated once and never restated, so it costs a fixed handful of tokens no matter how big the world gets — which is exactly why the saving grows with world size, as the token chart in LOOK shows. Second, it gives the model a notation to COPY into its own answer, which is what makes the answer machine-parseable. If you find yourself explaining a symbol twice, or overloading one glyph with two meanings, you have a bug in the scheme, not in the model.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono"># a(x,y)=room at cell<br># a/b=door &nbsp; @a=start<br># a:o=object &nbsp; *o=goal<br><br><b>fixed cost · stated once · never restated</b></div>',
+     code:`# the whole table, once, at the top:
+# a(x,y)=room at cell  a/b=door  @a=start  a:o=object  *o=goal
+
+K(0,0) H(1,0) P(1,1) C(2,1)
+K/H H/P P/C
+@K C:key H:lantern *key` },
+
+   { title:"4. The CHAIN in Chain-of-Symbol: intermediate steps must be symbolic too", why:"This is the half people skip, and skipping it throws away most of the benefit. It is tempting to symbolize the input and then let the model narrate its reasoning in English — but the chain is precisely where the state is being updated step by step, so the chain is where ambiguity does its damage. If the model writes 'I move to the room north of here, which also touches the pantry', you are back to resolving 'which' on every line. Instead you show one worked demonstration in the symbol language — @K -> K/H -> @H -> H/P -> @P DONE — and the model copies the format. Now every intermediate state is a token you can check against the world you serialized, so a hallucinated door is caught by your parser rather than by a user. Symbol rewriting also happens to be a much easier next-token problem than prose composition: the format is rigid, so the search space at each step is tiny.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">@K &#8594; K/H &#8594; @H &#8594; H/P &#8594; @P &nbsp;DONE<br><br>each arrow = a state transition<br><b>each token = checkable against the world</b></div>',
+     code:`Example:
+@kitchen -> kitchen/hall -> @hall -> hall/pantry -> @pantry  DONE
+
+// then in your code:
+for (const edge of answer.edges)
+  if (!hasDoor(world, edge)) throw new Error("hallucinated door");` },
+
+   { title:"5. Ambiguity, concretely: three ways prose loses an edge", why:"It is worth naming the failures rather than waving at 'ambiguity', because they are the same three every time and you will recognise them in your own prompts. ANAPHORA: 'the hall, which lies west of the pantry, has a door on ITS north side' — 'its' should attach to the hall, but the nearest preceding noun is the pantry, and both a cheap parser and a distracted model take the nearest one. RELATIVE DIRECTION: 'from the study, the vault is on your left' is only meaningful if you know which way you are facing, and the facing was declared three sentences ago. LONG-RANGE REFERENCE: 'it also opens east onto the cellar', where 'it' is the topic of a paragraph, not the last noun mentioned. In LOOK, each of these is generated for real and shown in the sentence trace with the heuristic that fired (H1, H2, H3) and whether the extracted relation is genuinely in the world. Slide verbosity to 0 and the prose parser hits 100% — that is the proof the failures are ambiguity and not a broken parser.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">H1 “its” &#8594; nearest noun &nbsp;<span style="color:#b91c1c">✗</span><br>H2 “it” &#8594; most recent room &nbsp;<span style="color:#b91c1c">✗</span><br>H3 “your left” &#8594; assume north &nbsp;<span style="color:#b91c1c">✗</span><br><br><b>symbols: nothing to resolve</b></div>',
+     code:`// three real sentences the generator produces, and what a
+// nearest-antecedent reader does with them:
+
+"The hall, which lies west of the pantry, has a door on its
+ north side leading to the study."   // H1 -> pantry/study  WRONG
+"From the study, the vault lies to your left."
+                                     // H3 -> assumes facing north
+"It also opens east onto the cellar."// H2 -> binds to the wrong room` },
+
+   { title:"6. The attention-distance argument", why:"There is a second, quieter reason the symbolic form helps, and it survives even if the model resolves every pronoun perfectly. A fact is stated once, near the top of the prompt, and used much later, at the moment the plan step needs it. The number of tokens between statement and use is a real quantity you can measure, and it is much smaller when the world is 40 tokens of symbols than when it is 400 tokens of prose. Long-context attention is not uniform — retrieval degrades with distance and with the amount of intervening material, which is the whole lost-in-the-middle literature. Compressing the state pulls every fact closer to its use. The page models this explicitly: it measures the true token offset of every edge in both serializations and runs a documented decay curve over it. I want to be blunt that the DECAY MODEL is a toy with two free parameters printed on screen; the token offsets it consumes are real, measured on the actual strings.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">fact stated ……… 380 tokens ……… fact used<br><span style="color:#b91c1c">prose</span><br><br>fact stated … 40 tokens … fact used<br><span style="color:#6d28d9">symbols</span></div>',
+     code:`// measured, not estimated: the real token offset of every edge
+const d = totalTokens - factPos["3-7"];       // statement -> use
+const p = floor + (1 - floor) * Math.exp(-d / L);   // TOY model, stated
+// the offsets are real; the curve over them is a simulation.` },
+
+   { title:"7. CoS vs CoT vs plain prompting — what each one actually fixes", why:"Keep these separate in your head or you will reach for the wrong one. PLAIN prompting asks for the answer and gives the model nowhere to put intermediate state; it fails on anything multi-step. CHAIN-OF-THOUGHT (Day 2) gives it that space and fixes multi-step arithmetic and reasoning beautifully — but it writes the state in prose, so on spatial and planning tasks it introduces exactly the ambiguity it was meant to help with. CHAIN-OF-SYMBOL keeps CoT's step-by-step structure and swaps the REPRESENTATION of the state. That is the whole delta: same number of steps, same decomposition, different encoding. It is therefore composable with almost everything else in this series — you can few-shot it, self-consistency it, put it behind a verifier. And it is not Day 53 Chain-of-Draft, which shortens the reasoning in natural language to save tokens; CoS changes what the reasoning is written IN, and the token saving is a side effect.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">plain &#8594; no room for state<br>CoT &#8594; state in PROSE (ambiguous)<br><b>CoS &#8594; state in SYMBOLS (exact)</b><br><br>same steps · different encoding</div>',
+     code:`# plain:  "Which rooms do I walk through?"          -> guesses
+# CoT:    "Let's think step by step..."               -> prose state
+# CoDraft:"...but keep each step under five words"    -> shorter prose
+# CoS:    "@K -> K/H -> @H ..."                       -> symbolic state` },
+
+   { title:"8. Where CoS actively HURTS", why:"This is the part that gets left out of the summaries, and it will bite you. Symbolizing a task strips out the meaning carried by the words — and on many tasks that meaning IS the prior you are paying the model for. If the question depends on a kitchen having a fridge, on a cellar being below ground, on 'fragile' changing how a box is handled, or on any commonsense association attached to a noun, then replacing that noun with 'K' deletes exactly the knowledge you needed. The same applies to anything where tone, nuance or entailment matters. The right instinct is: symbolize the STRUCTURE, keep the words that carry SEMANTICS. A hybrid prompt — pantry(1,1) and pantry:fragile-crate — is usually the correct answer, and it is not a compromise, it is the accurate description of which parts of your problem are relational and which are semantic. One more honest caveat: symbols are hostile to human readers, so if operations staff read your prompts, budget for that.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">relations &#8594; <b>symbolize</b><br>meaning-bearing words &#8594; <b>keep</b><br><br>K(1,1) K:fragile-crate<br><span style="color:#64748b">“fragile” is the prior. do not delete it.</span></div>',
+     code:`# BAD - deleted the knowledge the task needed
+R1(0,0) R2(1,0)  R1:O1 R2:O2   *O1
+# "which room would have a fridge?" -> unanswerable now
+
+# GOOD - hybrid: structure in symbols, semantics in words
+kitchen(0,0) cellar(1,0)  kitchen:fridge cellar:fragile-crate` },
+
+   { title:"9. The tokenizer trap — exotic glyphs cost MORE", why:"'Symbolic' feels like it must be shorter, so people reach for beautiful rare glyphs — arrows, mathematical brackets, box-drawing characters — and quietly make the prompt more expensive than the prose it replaced. Tokenizers are trained on text: common ASCII punctuation is cheap and often merges into neighbouring pieces, whereas a rare Unicode codepoint frequently falls back to several byte-level pieces and almost never maps to a single id. In LOOK, switch the symbol scheme to 'exotic glyphs' and watch the token count go the WRONG way while the parse stays perfect — the information content did not change at all, only the encoding's friendliness to the tokenizer. The rule is simple and unglamorous: prefer characters you would find in source code, and always measure with the real tokenizer for your model rather than trusting how compact something looks on screen.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">kitchen(0,0) &nbsp;<span style="color:#64748b">readable</span><br>K(0,0) &nbsp;<span style="color:#15803d">cheapest</span><br>&#x27E8;K&#x27E9;&#x27E6;0,0&#x27E7; &nbsp;<span style="color:#b91c1c">costs more!</span><br><br><b>measure the scheme. never guess it.</b></div>',
+     code:`import tiktoken
+enc = tiktoken.encoding_for_model("gpt-4o")
+for s in SCHEMES:
+    print(s.id, len(enc.encode(serialize(world, s))))
+# do this BEFORE you standardise on a scheme, not after.` },
+
+   { title:"10. Determinism and parseability — the underrated payoff", why:"Even where accuracy is a wash, symbolic output is worth having because it is machine-checkable. A prose answer has to be understood before it can be validated; a symbolic answer only has to be parsed, and a strict parser that throws is infinitely more useful than a lenient one that shrugs. That gives you three things a prose pipeline cannot easily have: you can validate every transition against the world you serialized and catch a hallucinated door in your own code; you can diff two runs byte-for-byte to detect drift after a model upgrade; and you can build automatic evals with no judge model in the loop, because correctness is decidable. Log every parse failure with the raw response attached — in practice a rising parse-failure rate is almost always a symbol-table problem (an overloaded glyph, a symbol that also appears inside your data), and the log tells you which.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">prose answer &#8594; needs understanding<br>symbolic answer &#8594; <b>needs only parsing</b><br><br>parse &#8594; validate &#8594; grade<br>no judge model required</div>',
+     code:`// a strict parser is a feature, not a chore
+const path = parsePlan(reply, world);   // throws on anything unexpected
+assert(path[0] === startName);
+for (const [a,b] of pairs(path)) assert(hasDoor(world, a, b));
+// correctness is now DECIDABLE. build the eval and stop guessing.` },
+
+   { title:"11. How to design a symbol scheme, in order", why:"There is a repeatable procedure and it takes about an hour. First, write the state object and decide what is relational (goes into symbols) and what is semantic (stays as words). Second, list the relation TYPES you need — adjacency, containment, order, coordinates — and give each exactly one symbol; never overload. Third, pick characters from the code-friendly ASCII set, and make sure no symbol can appear inside your data, or your parser will split on a room name containing a slash. Fourth, write the serializer with everything canonically sorted, so the same world always produces the same bytes — this matters for prompt caching and for reproducible evals. Fifth, write the parser and assert the round trip: serialize, parse, deep-equal the original. That assertion is non-negotiable; this page runs it over hundreds of random worlds and it is the reason the symbolic column reads 100%. Only then compare schemes on token count with the real tokenizer.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">1 state object<br>2 one symbol per relation type<br>3 code-friendly ASCII, no collisions<br>4 canonical sort<br>5 <b>round-trip assertion</b><br>6 compare token counts</div>',
+     code:`// step 5 is the one that catches everything:
+for (let s = 0; s < 500; s++){
+  const w = makeWorld(s, 4 + s % 11);
+  assert(canon(parseCoS(serializeCoS(w, S).text, S)) === canon(w));
+}
+// if this ever fails, your scheme is ambiguous. fix the scheme.` },
+
+   { title:"12. When to reach for CoS — and the uncomfortable question underneath", why:"Reach for CoS when the state is combinatorial and gets restated every turn, when the payload is relations rather than meanings, when prompts are long enough that attention distance is real, and when you can check the answer in code afterwards. Skip it when three plain sentences would do, or when the words carry the knowledge. Now the uncomfortable question, which the LOOK tab makes unavoidable: once your world is a proper graph in your code, BFS gives you the provably optimal plan in ten lines — so why ask a model at all? The honest answer is that CoS is most valuable where the STATE EXTRACTION is the hard part and the search is easy. Use the model to read a messy human description into your symbols, verify the extraction, then plan in code. That is a far more robust system than asking one model to both understand and search, and the symbolic interface is precisely what makes the handoff checkable. Next: LLM-as-judge, for when the right answer is fuzzy and there is nothing to parse at all.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">messy text<br>&#8595; <b>model</b> (hard part)<br>symbols<br>&#8595; <b>your code</b> (easy part)<br>provably optimal plan</div>',
+     code:`# the architecture CoS actually unlocks:
+symbols = llm_extract(messy_description)   # model does the reading
+world   = parse_strict(symbols)            # your parser validates
+plan    = bfs(world)                       # your code does the search
+# checkable at the seam. that seam is the symbol table.` }
+  ];
+
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach(function(s, i){
+    const bn = document.createElement("button");
+    bn.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    bn.innerHTML = '<div class="font-semibold">' + s.title + '</div>';
+    bn.onclick = function(){ show(i); };
+    stepsEl.appendChild(bn);
+  });
+  function show(i){
+    curStep = i;
+    const s = STEPS[i];
+    document.getElementById("concept").innerHTML = '<div class="fade-in w-full flex items-center justify-center">' + s.concept + '</div>';
+    document.getElementById("why").innerHTML = '<span class="fade-in inline-block">' + s.why + '</span>';
+    document.getElementById("code").textContent = s.code;
+    stepsEl.querySelectorAll("button").forEach(function(bn, idx){
+      bn.className = (idx === i)
+        ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+        : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    });
+  }
+  prevB.onclick = function(){ show(Math.max(0, curStep - 1)); };
+  nextBtn.onclick = function(){ show(Math.min(STEPS.length - 1, curStep + 1)); };
+  let tm = null;
+  autoB.onclick = function(){
+    if (tm){ clearInterval(tm); tm = null; autoB.textContent = "▶ Auto-play"; return; }
+    autoB.textContent = "⏸ Pause"; show(0);
+    tm = setInterval(function(){
+      if (curStep >= STEPS.length - 1){ clearInterval(tm); tm = null; autoB.textContent = "▶ Replay"; return; }
+      show(curStep + 1);
+    }, 3200);
+  };
+  show(0);
+}
+
+// ---- bootstrap (browser only) / export (node only) ----
+if (typeof document !== "undefined") mount();
+if (typeof module !== "undefined" && module.exports) module.exports = {
+  hashStr:hashStr, mulberry32:mulberry32, rngFor:rngFor, clamp:clamp,
+  ROOM_NAMES:ROOM_NAMES, LETTERS:LETTERS, OBJECTS:OBJECTS, SCHEMES:SCHEMES,
+  makeWorld:makeWorld, adjacency:adjacency, bfsDistances:bfsDistances, planBFS:planBFS,
+  relationSet:relationSet, tokenize:tokenize, tokenCount:tokenCount, assemble:assemble,
+  serializeNL:serializeNL, serializeCoS:serializeCoS, parseNL:parseNL, parseCoS:parseCoS,
+  canon:canon, diffParse:diffParse, symbolicAsParse:symbolicAsParse, planFromParse:planFromParse,
+  simulateTrial:simulateTrial, analyse:analyse, runBenchmark:runBenchmark,
+  dirBetween:dirBetween, relSide:relSide, absFromSide:absFromSide, doorKey:doorKey,
+  schemeById:schemeById, symbolTable:symbolTable
+};
+</script>
+</body>
+</html>

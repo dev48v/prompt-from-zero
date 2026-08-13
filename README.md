@@ -63,5 +63,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 59 — Assistant Prefill (response priming)](https://dev48v.infy.uk/prompt/day59-assistant-prefill.html) — `day59-assistant-prefill.html`
 - [PromptFromZero · Day 60 — AMA Prompting](https://dev48v.infy.uk/prompt/day60-ama-prompting.html) — `day60-ama-prompting.html`
 
+- [PromptFromZero · Day 61 — Chain-of-Symbol](https://dev48v.infy.uk/prompt/day61-chain-of-symbol.html) — `day61-chain-of-symbol.html`
+
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
