@@ -1,0 +1,1648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 62 — Algorithm of Thoughts (AoT)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; max-width:100%; }
+  .fade-in { animation: fadeIn .4s ease-out; }
+  @keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+  .copy-btn:hover { background:#1e293b; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  /* ===== chips / buttons ===== */
+  .btn { font-size:12px; font-weight:800; padding:8px 14px; border-radius:10px; border:1px solid #e2e8f0; background:#fff; color:#475569; cursor:pointer; transition:all .15s; }
+  .btn:hover { border-color:#c4b5fd; }
+  .btn-p { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn-p:hover { background:#7c3aed; }
+  .btn.on { background:#8b5cf6; color:#fff; border-color:#8b5cf6; }
+  .btn.sm { font-size:11px; padding:5px 10px; border-radius:8px; }
+
+  /* ===== score tiles ===== */
+  .tile { border-radius:14px; padding:12px 14px; border:1px solid #e2e8f0; background:#fff; }
+  .tile .k { font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:#64748b; }
+  .tile .v { font-size:28px; font-weight:900; color:#0f172a; line-height:1.15; }
+  .tile .s { font-size:11px; font-weight:600; color:#94a3b8; }
+  .tile.win { border-color:#8b5cf6; background:#faf5ff; }
+  .tile.win .v { color:#6d28d9; }
+  .tile.lose { border-color:#fecaca; background:#fef2f2; }
+  .tile.lose .v { color:#b91c1c; }
+
+  /* ===== prompt panes ===== */
+  .ptext { background:#0f172a; color:#e2e8f0; border-radius:8px; padding:9px 10px; font-family:ui-monospace, Menlo, monospace; font-size:10.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; overflow-x:auto; max-height:360px; overflow-y:auto; }
+  .ptext .hl  { color:#c4b5fd; }
+  .ptext .cm  { color:#6ee7b7; }
+  .ptext .bad { color:#fca5a5; }
+  .ptext .gd  { color:#86efac; }
+  .ptext .dim { color:#64748b; }
+
+  .scroll { overflow:auto; max-width:100%; min-width:0; -webkit-overflow-scrolling:touch; }
+  .minw0 { min-width:0; }
+
+  table.sb { width:100%; border-collapse:collapse; font-size:12px; }
+  table.sb th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.05em; color:#64748b; padding:5px 7px; border-bottom:1px solid #e2e8f0; white-space:nowrap; }
+  table.sb td { padding:6px 7px; border-bottom:1px solid #f1f5f9; font-weight:700; color:#0f172a; white-space:nowrap; }
+  table.sb tr:last-child td { border-bottom:none; }
+  table.sb td.wrap { white-space:normal; font-weight:600; color:#475569; }
+  .num.bad { color:#b91c1c; font-weight:900; }
+  .num.ok  { color:#15803d; font-weight:900; }
+  .num.mid { color:#a16207; font-weight:900; }
+
+  .callout { border-radius:12px; padding:11px 14px; font-size:12.5px; line-height:1.55; }
+  .callout.good { background:#f0fdf4; border:1px solid #bbf7d0; color:#166534; }
+  .callout.warn { background:#fffbeb; border:1px solid #fde68a; color:#92400e; }
+  .callout.bad  { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; }
+  .callout.info { background:#eff6ff; border:1px solid #bfdbfe; color:#1e40af; }
+
+  .chip { display:inline-block; font-family:ui-monospace, Menlo, monospace; font-size:10px; padding:3px 6px; border-radius:6px; border:1px solid #e2e8f0; background:#fff; margin:2px; white-space:nowrap; color:#475569; }
+  .chip.keep { border-color:#8b5cf6; background:#f5f3ff; color:#5b21b6; font-weight:800; }
+  .chip.cut  { border-color:#e2e8f0; background:#f8fafc; color:#94a3b8; }
+  .chip.win  { border-color:#22c55e; background:#f0fdf4; color:#166534; font-weight:800; }
+
+  .lvl { border:1px solid #e2e8f0; border-radius:12px; padding:8px 10px; margin-bottom:8px; background:#fff; }
+  .lvl h4 { font-size:10px; font-weight:900; text-transform:uppercase; letter-spacing:.05em; color:#7c3aed; margin-bottom:4px; }
+  .lvl .meta { font-size:10.5px; color:#64748b; font-weight:700; margin-bottom:5px; }
+
+  .card4 { width:44px; text-align:center; font-family:ui-monospace, Menlo, monospace; font-size:15px; font-weight:900; padding:6px 2px; border:2px solid #ddd6fe; border-radius:9px; background:#faf5ff; color:#5b21b6; }
+
+  svg.chart { width:100%; height:auto; display:block; }
+  input[type=range] { accent-color:#8b5cf6; }
+
+  @media (max-width:1023px){
+    header.sticky { position:static; }
+    .ptext { max-height:250px; font-size:9.8px; }
+    pre { font-size:11px; }
+    .tile .v { font-size:21px; }
+    .tile { padding:9px 10px; }
+  }
+</style>
+</head>
+<body class="bg-slate-50 min-h-screen">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-50">
+  <a href="../promptfromzero.php" title="back" class="absolute left-3 top-3 text-sm font-bold text-slate-500 hover:text-violet-600" style="text-decoration:none;">&larr; back</a>
+  <div class="max-w-7xl mx-auto px-4 md:px-6 py-3 pl-[68px] md:pl-[76px] flex flex-wrap items-center justify-between gap-3">
+    <div class="flex-1 min-w-0">
+      <div class="text-xs text-violet-600 font-bold uppercase tracking-wider">PromptFromZero · Day 62</div>
+      <h1 class="text-lg md:text-xl font-bold">🧭 Algorithm of Thoughts (AoT) — Sel et al., 2023. Tree-of-Thoughts works, and it works by <em>externalising the search</em>: one call to propose the next steps, another call per candidate to score it, prune, repeat — so a single Game-of-24 hand costs you hundreds of API round-trips. AoT asks a blunter question: if the model can imitate a worked example, why not show it the <strong>whole search</strong> — including the branches that failed and the explicit act of backtracking — and let it run the search <em>inside one generation</em>? The exemplar stops being a solution and becomes a <strong>search transcript</strong>. This page computes that difference rather than asserting it: an exhaustive Game-of-24 solver in <strong>exact rational arithmetic</strong> (because <span class="mono">8/(3-8/3)</span> is exactly 24 and in floats it is not), a real beam search with every generated and evaluated node counted, a real trajectory serialiser, a hand-written tokenizer measuring the actual prompt bytes on both sides, and a live crossover against a context budget you choose. It simulates the <em>search</em>, never the LLM — the paper&#39;s measured accuracy numbers are cited separately and never mixed into the live figures.</h1>
+    </div>
+    <div class="flex flex-wrap gap-2" id="tabs">
+      <button data-tab="look"       class="tab-active px-4 py-2 rounded-lg font-semibold text-sm">👁 LOOK</button>
+      <button data-tab="understand" class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build"      class="bg-slate-100 px-4 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto">
+      <div class="text-center">
+        <h2 class="text-xl md:text-2xl font-bold mb-1">ToT pays for search in <span class="text-rose-500">API calls</span>. AoT pays for it in <span class="text-violet-600">context</span>.</h2>
+        <p class="text-slate-500 text-sm md:text-base mb-4">One hand of Game of 24. An exact solver for ground truth, a real beam search with a real call counter, a real trajectory serialiser, a real tokenizer. <b>Every number below is computed in your browser, right now.</b></p>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
+        <div class="tile" id="tileSol"></div>
+        <div class="tile lose" id="tileCalls"></div>
+        <div class="tile win" id="tileTok"></div>
+        <div class="tile" id="tileCross"></div>
+      </div>
+      <div id="narr" class="mb-3 space-y-2"></div>
+
+      <!-- ===== controls ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">🎛 Controls — <span class="normal-case font-normal text-slate-400">every control re-runs the solver, both searches, both serialisers and the tokenizer</span></div>
+        <div class="flex flex-wrap items-end gap-2 mb-3">
+          <div>
+            <div class="text-xs font-bold text-slate-600 mb-1">The four cards</div>
+            <div class="flex gap-1.5" id="cardRow"></div>
+          </div>
+          <button class="btn btn-p" id="ctlRandom">🎲 Random hand</button>
+        </div>
+        <div class="flex flex-wrap gap-1.5 mb-3" id="presetBtns"></div>
+        <div class="grid md:grid-cols-2 gap-x-6 gap-y-3">
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">ToT beam width b: <span class="mono text-violet-700" id="beamLbl">5</span></span>
+            <input type="range" id="beamSlider" min="1" max="10" step="1" value="5" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">AoT branching limit: <span class="mono text-violet-700" id="branchLbl">3</span> <span class="font-normal text-slate-400">— children tried per node in the transcript</span></span>
+            <input type="range" id="branchSlider" min="1" max="6" step="1" value="3" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Context budget: <span class="mono text-violet-700" id="budgetLbl">2000</span> tokens</span>
+            <input type="range" id="budgetSlider" min="200" max="8000" step="100" value="2000" class="w-full" />
+          </label>
+          <label class="block">
+            <span class="text-xs font-bold text-slate-600">Exemplar trajectories in the AoT prompt: <span class="mono text-violet-700" id="exLbl">2</span></span>
+            <input type="range" id="exSlider" min="1" max="10" step="1" value="2" class="w-full" />
+          </label>
+        </div>
+        <div class="grid md:grid-cols-3 gap-x-6 gap-y-3 mt-3">
+          <div>
+            <div class="text-xs font-bold text-slate-600 mb-1">Evaluator strictness <span class="font-normal text-slate-400">— what &ldquo;is this state promising?&rdquo; costs</span></div>
+            <div class="flex flex-wrap gap-1.5" id="strictBtns"></div>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-600 mb-1">Trajectory verbosity</div>
+            <div class="flex flex-wrap gap-1.5" id="verbBtns"></div>
+          </div>
+          <div>
+            <div class="text-xs font-bold text-slate-600 mb-1">ToT value votes per candidate</div>
+            <div class="flex flex-wrap gap-1.5" id="voteBtns"></div>
+          </div>
+        </div>
+        <div class="text-[11px] text-slate-500 mt-2" id="ctlNote"></div>
+      </div>
+
+      <!-- ===== exact solver ===== -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3 minw0">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">① Ground truth — <span class="normal-case font-normal text-slate-400">exhaustive enumeration in exact rationals. No search is honest without it.</span></div>
+        <div id="solverHead" class="mb-2"></div>
+        <div class="grid lg:grid-cols-2 gap-3 minw0">
+          <div class="minw0">
+            <div class="text-[11px] font-bold text-slate-500 mb-1">Distinct solutions <span class="font-normal text-slate-400">(modulo commutativity and associativity of + and *)</span></div>
+            <div id="solList" class="scroll" style="max-height:210px"></div>
+          </div>
+          <div class="minw0">
+            <div class="text-[11px] font-bold text-slate-500 mb-1">The float trap — <span class="font-normal text-slate-400">the same expressions, evaluated in IEEE-754 doubles</span></div>
+            <div id="floatBox" class="scroll" style="max-height:210px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== ToT search ===== -->
+      <div class="bg-white rounded-2xl border border-rose-200 p-4 mb-3 minw0">
+        <div class="text-xs uppercase font-bold text-rose-600 tracking-wider mb-2">② Tree-of-Thoughts — <span class="normal-case font-normal text-slate-400">generate, evaluate, prune. Every chip below is one LLM round-trip in a real deployment.</span></div>
+        <div id="totStats" class="mb-2 scroll"></div>
+        <div id="totBoard" class="scroll"></div>
+        <div id="totVerdict" class="mt-2"></div>
+      </div>
+
+      <!-- ===== AoT trajectory ===== -->
+      <div class="bg-white rounded-2xl border border-violet-200 p-4 mb-3 minw0">
+        <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">③ Algorithm of Thoughts — <span class="normal-case font-normal text-slate-400">the same search, serialised into one prompt. This is the literal text.</span></div>
+        <div id="aotStats" class="mb-2 scroll"></div>
+        <div id="aotBox" class="ptext"></div>
+        <div id="aotVerdict" class="mt-2"></div>
+      </div>
+
+      <!-- ===== contrast ===== -->
+      <div class="bg-white rounded-2xl border border-amber-200 p-4 mb-3 minw0">
+        <div class="text-xs uppercase font-bold text-amber-600 tracking-wider mb-2">④ Why the failures have to stay in — <span class="normal-case font-normal text-slate-400">same search, two serialisations, two different lessons</span></div>
+        <div class="grid lg:grid-cols-2 gap-3 minw0">
+          <div class="minw0">
+            <div class="text-[11px] font-bold text-violet-700 mb-1">WITH dead ends and backtracks — teaches a procedure</div>
+            <div id="trajFull" class="ptext" style="max-height:230px"></div>
+          </div>
+          <div class="minw0">
+            <div class="text-[11px] font-bold text-rose-700 mb-1">Dead ends deleted — teaches &ldquo;produce the answer&rdquo;</div>
+            <div id="trajPruned" class="ptext" style="max-height:230px"></div>
+          </div>
+        </div>
+        <div id="trajStats" class="mt-2 scroll"></div>
+      </div>
+
+      <!-- ===== charts ===== -->
+      <div class="grid lg:grid-cols-2 gap-3 mb-3 minw0">
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 minw0">
+          <div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">⑤ The crossover — <span class="normal-case font-normal text-slate-400">AoT prompt tokens vs your context budget</span></div>
+          <div id="chartCross" class="scroll"></div>
+          <div id="crossNote" class="mt-2"></div>
+        </div>
+        <div class="bg-white rounded-2xl border border-slate-200 p-4 minw0">
+          <div class="text-xs uppercase font-bold text-rose-600 tracking-wider mb-2">⑥ Total prompt tokens vs beam width — <span class="normal-case font-normal text-slate-400">measured, not claimed</span></div>
+          <div id="chartBeam" class="scroll"></div>
+          <div id="beamNote" class="mt-2"></div>
+        </div>
+      </div>
+
+      <!-- ===== family ===== -->
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 mb-3 minw0">
+        <div class="text-xs uppercase font-bold text-slate-600 tracking-wider mb-2">⑦ AoT is not the other &ldquo;-of-Thoughts&rdquo; — <span class="normal-case font-normal text-slate-400">the distinction is <em>where the search runs</em>, and it is the whole technique</span></div>
+        <div class="scroll"><table class="sb" id="famTable"></table></div>
+      </div>
+
+      <!-- ===== honesty ===== -->
+      <div id="honest" class="mb-3"></div>
+
+      <p class="text-xs text-slate-400 mt-3 text-center">AoT = put the search trajectory, dead ends and backtracks included, inside the prompt — so the model runs the algorithm in one generation instead of you running it across hundreds of calls.</p>
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="max-w-7xl mx-auto p-4 md:p-6 grid lg:grid-cols-5 gap-6">
+    <aside class="lg:col-span-2 min-w-0">
+      <h3 class="font-bold text-lg mb-3">How Algorithm of Thoughts works</h3>
+      <p class="text-sm text-slate-500 mb-4">Click any step.</p>
+      <div id="steps" class="space-y-2"></div>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button id="prev" class="bg-slate-200 px-4 py-2 rounded-lg font-semibold text-sm">← Prev</button>
+        <button id="next-btn" class="bg-violet-600 text-white px-4 py-2 rounded-lg font-semibold text-sm">Next →</button>
+        <button id="auto" class="bg-violet-500 text-white px-4 py-2 rounded-lg font-semibold text-sm">▶ Auto-play</button>
+      </div>
+    </aside>
+    <div class="lg:col-span-3 space-y-4 min-w-0">
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CONCEPT</div><div id="concept" class="min-h-[200px] flex items-center justify-center"><div class="text-slate-400 text-sm">Click a step</div></div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">WHY</div><div id="why" class="text-slate-700 text-sm md:text-base leading-relaxed">--</div></div>
+      <div class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6"><div class="text-xs uppercase font-bold text-violet-600 tracking-wider mb-2">CODE / SNIPPET FOR THIS STEP</div><pre id="code"></pre></div>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="max-w-5xl mx-auto p-4 md:p-8">
+    <h2 class="text-2xl md:text-3xl font-bold mb-2">🔨 Build it yourself</h2>
+    <p class="text-slate-500 mb-8">Algorithm of Thoughts is not a phrase you paste at the top of a prompt. It is a pipeline you write in your own code: an exact model of the problem, a real search over it, an instrumented count of what that search would cost through an API, and a serialiser that turns one run of that search — <em>including its failures</em> — into a single in-context exemplar. Below is exactly what this page runs, in the order you would write it. Every step is testable without an LLM, which is the point: you should know your ground truth long before you spend a token.</p>
+    <ol class="space-y-6">
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">1</div><h3 class="font-bold text-lg">Exact arithmetic first. Floats will lie to you about your own ground truth.</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Game of 24 looks like it lives in integers, and it does not: the moment a division lands on a non-terminating value, a double-precision solver starts giving wrong answers about which hands are solvable. The canonical case is <span class="mono">3 3 8 8</span>, whose only solution is <span class="mono">8/(3-8/3)</span>. Evaluate it in doubles and you do not get 24 — you get 24 plus a few ulps, so a strict equality test rejects a correct solution, and a tolerance test invites false positives from the other direction. Build a two-integer rational with gcd reduction, do every operation on it, and compare numerator and denominator. It is fifteen lines and it removes an entire class of &ldquo;my solver disagrees with the internet&rdquo; bugs. The LOOK tab evaluates every complete expression both ways and prints how many correct solutions the float version throws away for the hand you picked.</p>
+        <div class="relative"><pre>// STEP 1 - exact rationals. Everything downstream depends on this.
+function gcdInt(a, b){ a = a &lt; 0 ? -a : a; b = b &lt; 0 ? -b : b;
+  while (b){ const t = a % b; a = b; b = t; } return a; }
+
+function rat(n, d){
+  if (d === 0) return null;                 // caller must handle
+  if (d &lt; 0){ n = -n; d = -d; }             // sign lives in the numerator
+  const g = gcdInt(n, d); if (g &gt; 1){ n /= g; d /= g; }
+  if (n === 0) d = 1;                       // one canonical zero
+  return { n: n, d: d };
+}
+const rAdd = (a,b) =&gt; rat(a.n*b.d + b.n*a.d, a.d*b.d);
+const rDiv = (a,b) =&gt; b.n === 0 ? null : rat(a.n*b.d, a.d*b.n);
+const rEq  = (a,b) =&gt; a.n === b.n &amp;&amp; a.d === b.d;   // never ===, never epsilon</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">2</div><h3 class="font-bold text-lg">Write the exhaustive solver before you write the prompt</h3></div>
+        <p class="text-sm text-slate-600 mb-3">You cannot evaluate a search strategy without knowing the answer. For Game of 24 the whole space is small enough to enumerate: repeatedly pick two of the remaining values, apply one of the four operators in both operand orders, and recurse until one value remains. A few thousand complete expressions per hand, milliseconds of work. Once you have this, every later claim on the page becomes checkable — did the beam keep a branch that actually leads to 24, did the bounded depth-first walk miss a solution that exists, is this hand solvable at all. Skip it and you end up grading a model against your own guesses.</p>
+        <div class="relative"><pre>// STEP 2 - enumerate every complete expression tree over the 4 cards.
+function enumerateAll(cards, visit){
+  const start = cards.map(c =&gt; ({ v: rat(c,1), ast: { t:"num", v:c } }));
+  (function rec(list){
+    if (list.length === 1){ visit(list[0]); return; }
+    for (let i = 0; i &lt; list.length; i++)
+      for (let j = i + 1; j &lt; list.length; j++){
+        const rest = list.filter((_, k) =&gt; k !== i &amp;&amp; k !== j);
+        for (const cand of moves(list[i], list[j]))   // 6 ordered moves
+          if (cand) rec(rest.concat([cand]));
+      }
+  })(start);
+}
+// 4 cards -&gt; ~7,000 complete expressions. Instant. Do it.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">3</div><h3 class="font-bold text-lg">Canonicalize, or your &ldquo;solution count&rdquo; is meaningless</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Raw enumeration reports <span class="mono">3+8</span> and <span class="mono">8+3</span> as two findings, and with four cards that inflates a count by an order of magnitude. Define the equivalence you actually mean, then implement it: flatten runs of the same commutative operator, sort the children by their own canonical keys, and leave the non-commutative operators alone. State the equivalence on screen — this page counts solutions modulo commutativity and associativity of <span class="mono">+</span> and <span class="mono">*</span>, which means <span class="mono">(a-b)+c</span> and <span class="mono">(a+c)-b</span> are still counted separately even though they are numerically equal. A count you cannot define is a number you cannot defend.</p>
+        <div class="relative"><pre>// STEP 3 - canonical key. Same key must imply same value, always.
+function canonicalize(ast){
+  if (ast.t === "num") return String(ast.v);
+  if (ast.op === "+" || ast.op === "*"){
+    const parts = [];
+    (function flat(n){                       // flatten a+b+c, a*b*c
+      if (n.t === "op" &amp;&amp; n.op === ast.op){ flat(n.l); flat(n.r); }
+      else parts.push(canonicalize(n));
+    })(ast);
+    parts.sort();                            // commutativity collapses here
+    return "(" + ast.op + " " + parts.join(" ") + ")";
+  }
+  return "(" + ast.op + " " + canonicalize(ast.l) + " " + canonicalize(ast.r) + ")";
+}
+// Note the space separator: it stops "1 23" and "12 3" colliding.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">4</div><h3 class="font-bold text-lg">Build the ToT baseline and instrument the call counter from line one</h3></div>
+        <p class="text-sm text-slate-600 mb-3">The reason to write the Tree-of-Thoughts baseline is not to beat it, it is to <em>price</em> it. Implement the standard loop — expand the frontier, score every candidate, keep the top b — but wrap it in counters that map onto real API traffic: one propose call per expanded state, one value call per candidate per vote. Do not estimate this. On this page, moving the beam slider from 1 to 10 changes the counted call total by roughly an order of magnitude, and it does so because the counter is attached to the actual loop rather than to a formula somebody wrote in a slide. The counter is what makes the AoT comparison a measurement instead of a slogan.</p>
+        <div class="relative"><pre>// STEP 4 - the ToT loop, with the meter attached.
+let generated = 0, evaluated = 0, expanded = 0;
+let frontier = [rootState];
+for (let depth = 0; depth &lt; 3; depth++){
+  const cand = [];
+  for (const s of frontier){
+    expanded++;                              // 1 propose call
+    const ex = expandState(s);               // 6 moves per unordered pair
+    generated += ex.generated;               // counted BEFORE validity
+    for (const c of ex.children) cand.push(c);
+  }
+  for (const c of cand){ c.score = scoreState(c.vals); evaluated++; }
+  cand.sort((x,y) =&gt; y.score - x.score || (x.key &lt; y.key ? -1 : 1));
+  frontier = cand.slice(0, beam);
+}
+const llmCalls = expanded + evaluated * votesPerCandidate;</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">5</div><h3 class="font-bold text-lg">Give the search an evaluator that is honestly imperfect</h3></div>
+        <p class="text-sm text-slate-600 mb-3">This is the step that decides whether your page teaches anything. If you score states with a perfect oracle — &ldquo;is 24 still reachable from here&rdquo; — the search never takes a wrong turn, the transcript has no dead ends, and the AoT exemplar you serialise out of it demonstrates nothing except a lucky straight line. That is precisely the exemplar that teaches a model to guess. So model the LLM value prompt for what it is: exact where the arithmetic is trivial, a magnitude heuristic where it is not. Then flip between oracle and heuristic and watch the dead-end count in the transcript go from zero to something. The strictness control on this page exists to make that failure visible, not to hide it.</p>
+        <div class="relative"><pre>// STEP 5 - a cheap scorer that gets things wrong, like the real one does.
+function scoreState(vals, mode){
+  if (mode === "oracle")  return reachesTarget(vals, 24) ? 1 : 0;
+  if (mode === "none")    return 0.5;             // no evaluator at all
+  if (vals.length &lt;= 2)   return reachesTarget(vals, 24) ? 1 : 0;  // trivial
+  // magnitude proxy: how near do the sum and the product land to 24?
+  const s = vals.reduce(rAdd), p = vals.reduce(rMul);
+  const best = Math.min(Math.abs(rNum(s) - 24), Math.abs(rNum(p) - 24));
+  const divisors = vals.filter(v =&gt; { const q = rDiv(rat(24,1), v);
+                                      return q &amp;&amp; q.d === 1; }).length;
+  return Math.min(1, 1 / (1 + best) + divisors * 0.08);
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">6</div><h3 class="font-bold text-lg">Run a <em>bounded</em> depth-first search and record every event</h3></div>
+        <p class="text-sm text-slate-600 mb-3">AoT does not demonstrate an exhaustive search — an exhaustive Game-of-24 search is thousands of nodes and would not fit in anybody&#39;s context window. It demonstrates a search with a small branching limit, run to completion, so the transcript is a <em>complete</em> record of a <em>deliberately narrow</em> walk. That distinction matters twice over: it is what keeps the prompt finite, and it is what makes the demonstrated behaviour honest, because the model is being shown a procedure it can actually reproduce. Record structured events rather than strings — try, dead, backtrack, exhausted, solved — so you can re-serialise the same run at three verbosity levels without re-running it.</p>
+        <div class="relative"><pre>// STEP 6 - bounded DFS. The trace is data, not text.
+function aotSearch(root, branch, mode){
+  const trace = []; let visited = 0, deadEnds = 0, found = null;
+  (function dfs(st, depth){
+    visited++;
+    if (st.vals.length === 1){
+      const win = rEq(st.vals[0], rat(24,1));
+      trace.push({ k: win ? "solve" : "dead", depth: depth, st: st });
+      if (!win) deadEnds++; else found = st;
+      return win;
+    }
+    const kids = rank(expandState(st).children, mode).slice(0, branch);
+    for (const kid of kids){
+      trace.push({ k:"try", depth: depth, move: kid.move, st: kid });
+      if (dfs(kid, depth + 1)) return true;
+      trace.push({ k:"back", depth: depth, move: kid.move });   // the lesson
+    }
+    trace.push({ k:"exhausted", depth: depth, st: st });
+    return false;
+  })(root, 0);
+  return { trace: trace, visited: visited, deadEnds: deadEnds, found: found };
+}</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">7</div><h3 class="font-bold text-lg">Serialise the trace — and keep the backtracks, they are the payload</h3></div>
+        <p class="text-sm text-slate-600 mb-3">Now turn the event list into the exemplar. Indent by depth so the tree structure is visible in the token stream, print the exact value of every move so the model has arithmetic to imitate rather than invent, mark dead ends with a reason, and give backtracking its own literal line. That last part is the one people delete because it looks like noise, and deleting it is how you turn AoT back into ordinary few-shot prompting. The contrast panel on this page renders both versions of the same run side by side with their token costs: the pruned one is genuinely cheaper and it demonstrates a completely different behaviour — a confident answer with no procedure behind it.</p>
+        <div class="relative"><pre># STEP 7 - what the serialiser emits (normal verbosity, branch = 3):
+[3 3 8 8]
+  try 8 / 3 = 8/3          -&gt; [3 8 8/3]
+    try 3 - 8/3 = 1/3      -&gt; [8 1/3]
+      8 / (1/3) = 24       SOLVED
+Answer: 8/(3-8/3) = 24
+
+# and the same run with the failures deleted:
+[3 3 8 8] -&gt; [3 8 8/3] -&gt; [8 1/3] -&gt; 24
+Answer: 8/(3-8/3) = 24
+# cheaper, and it teaches the model to produce an answer, not to search.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">8</div><h3 class="font-bold text-lg">Find your context crossover before you ship, not after</h3></div>
+        <p class="text-sm text-slate-600 mb-3">AoT&#39;s cost is a single prompt, and single prompts have a ceiling. The variables that push you into it are the branching limit, the verbosity, and the number of exemplar trajectories — and they interact, so intuition is useless here. Sweep them, tokenize the real string, and find the first configuration that exceeds the budget you actually have. On this page that sweep is live: raise the branching limit to 6 and set verbosity to full and watch the crossover marker walk left until a single exemplar no longer fits in 2,000 tokens. Measure with the tokenizer your provider actually uses before you commit; the one on this page is a documented approximation and says so.</p>
+        <div class="relative"><pre>// STEP 8 - sweep the exemplar count until the budget breaks.
+function sweepExemplars(hands, branch, mode, verbosity, budget){
+  let cum = 0, crossover = null; const pts = [];
+  hands.forEach((hand, i) =&gt; {
+    const run  = aotSearch(rootFor(hand), branch, mode);
+    cum += countTokens(aotTrajectory(run, verbosity, hand));
+    pts.push({ k: i + 1, tokens: cum });
+    if (crossover === null &amp;&amp; cum &gt; budget) crossover = i + 1;
+  });
+  return { points: pts, crossover: crossover };   // null = never crossed
+}
+// Report "no crossover within N" honestly. Do not extrapolate a curve
+// you did not measure.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+      <li class="bg-white rounded-2xl border border-slate-200 p-4 md:p-6">
+        <div class="flex items-center gap-3 mb-3"><div class="w-8 h-8 bg-violet-600 text-white rounded-full flex items-center justify-center font-bold">9</div><h3 class="font-bold text-lg">Parse the model&#39;s answer yourself. The transcript is a story; only the parser is evidence.</h3></div>
+        <p class="text-sm text-slate-600 mb-3">In-context search means the model narrates a search it may not have actually performed correctly, and a fluent transcript with a wrong final line is the most expensive failure mode there is, because it looks right. So do not grade on the narration. Take the final expression, parse it with a real precedence parser, evaluate it in the same exact rationals, assert it equals 24, and assert the multiset of leaf numbers is exactly the hand you dealt — models reuse a card or invent one far more often than they get the arithmetic wrong. This check is twenty lines, it runs offline, and it converts &ldquo;the output looked plausible&rdquo; into a hard pass or fail you can put in an eval suite.</p>
+        <div class="relative"><pre>// STEP 9 - the only thing that counts as evidence.
+function validate(answer, hand){
+  const ast = parseExpr(answer);              // precedence parser, your own
+  const val = evalExpr(ast);                  // exact rationals, step 1
+  if (!val || !rEq(val, rat(24,1)))
+    return { ok:false, why:"value is " + (val ? rStr(val) : "undefined") };
+  const leaves = leafValues(ast).slice().sort((a,b) =&gt; a - b);
+  const dealt  = hand.slice().sort((a,b) =&gt; a - b);
+  if (leaves.join(",") !== dealt.join(","))
+    return { ok:false, why:"used " + leaves.join(" ") + ", dealt " + dealt.join(" ") };
+  return { ok:true };
+}
+// Log every failure with the full transcript attached. The transcript is
+// where you find out WHICH step of the demonstrated algorithm it dropped.</pre><button class="copy-btn absolute top-2 right-2 bg-slate-700 text-white text-xs px-2 py-1 rounded" onclick="copy(this)">Copy all</button></div>
+      </li>
+
+    </ol>
+    <div class="mt-10 bg-violet-50 border border-violet-200 rounded-2xl p-4 md:p-6 text-center"><h3 class="font-bold text-lg text-violet-900">🎉 Day 62 of PromptFromZero done.</h3><p class="text-sm text-violet-700 mt-2">You learned <strong>Algorithm of Thoughts</strong> — Sel et al., 2023 — which starts from an uncomfortable fact about Tree-of-Thoughts: ToT&#39;s search is real, but it lives <em>outside</em> the model, so every node you generate and every node you evaluate is another API round-trip, and one hand of Game of 24 turns into hundreds of calls. AoT moves the search back inside the model by changing what the exemplar <em>is</em>. Instead of a worked solution, you show a worked <strong>search transcript</strong> — the branches you tried, the values they produced, the moment a branch went dead, and the literal act of backtracking — and the model imitates the algorithm rather than the answer, in a single generation. On this page nothing was asserted: an exhaustive solver in exact rational arithmetic gave ground truth (and showed you how many correct solutions a float-based solver silently discards), a real beam search counted every generated and evaluated node so the call total came from the loop rather than a formula, a real serialiser emitted the actual prompt text, and a hand-written tokenizer measured both sides and found the context crossover live. The two traps are both visible from the controls: switch the evaluator to <strong>oracle</strong> and the transcript loses its dead ends entirely, which is exactly the exemplar that teaches guessing rather than searching — and push the branching limit and verbosity up and the single AoT prompt walks straight through your context budget, because AoT does not delete the cost of search, it <em>relocates</em> it from calls into tokens. Trade calls for context deliberately, and measure the trade on your own problem. <strong>👉 Next up — self-consistency over trajectories: when one in-context search is not enough, sample several and let them vote.</strong></p></div>
+  </div>
+</section>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// Pure, DOM-free core. Nothing in this block touches document or window:
+// exact rational arithmetic, the exhaustive Game-of-24 solver, expression
+// canonicalization, the beam (Tree-of-Thoughts) search with its node meters,
+// the bounded depth-first Algorithm-of-Thoughts walk, both trajectory
+// serialisers, the tokenizer and the sweeps all run headlessly under node,
+// which is how bot10-verify-day62-prompt.mjs slices this out and grades it.
+
+function gcdInt(a, b){
+  a = a < 0 ? -a : a; b = b < 0 ? -b : b;
+  while (b){ const t = a % b; a = b; b = t; }
+  return a;
+}
+function rat(n, d){
+  if (d === undefined) d = 1;
+  if (d === 0) return null;
+  if (d < 0){ n = -n; d = -d; }
+  const g = gcdInt(n, d);
+  if (g > 1){ n = n / g; d = d / g; }
+  if (n === 0) d = 1;
+  return { n: n, d: d };
+}
+function rAdd(a, b){ return rat(a.n * b.d + b.n * a.d, a.d * b.d); }
+function rSub(a, b){ return rat(a.n * b.d - b.n * a.d, a.d * b.d); }
+function rMul(a, b){ return rat(a.n * b.n, a.d * b.d); }
+function rDiv(a, b){ if (b.n === 0) return null; return rat(a.n * b.d, a.d * b.n); }
+function rEq(a, b){ return a.n === b.n && a.d === b.d; }
+function rNum(a){ return a.n / a.d; }
+function rStr(a){ return a.d === 1 ? String(a.n) : (a.n + "/" + a.d); }
+
+function mkNum(v){ return { t: "num", v: v }; }
+function mkOp(op, l, r){ return { t: "op", op: op, l: l, r: r }; }
+
+function evalExpr(ast){
+  if (ast.t === "num") return rat(ast.v, 1);
+  const a = evalExpr(ast.l); if (!a) return null;
+  const b = evalExpr(ast.r); if (!b) return null;
+  if (ast.op === "+") return rAdd(a, b);
+  if (ast.op === "-") return rSub(a, b);
+  if (ast.op === "*") return rMul(a, b);
+  if (ast.op === "/") return rDiv(a, b);
+  return null;
+}
+function evalFloat(ast){
+  if (ast.t === "num") return ast.v;
+  const a = evalFloat(ast.l), b = evalFloat(ast.r);
+  if (ast.op === "+") return a + b;
+  if (ast.op === "-") return a - b;
+  if (ast.op === "*") return a * b;
+  return a / b;
+}
+function leafValues(ast){
+  const out = [];
+  (function walk(n){
+    if (n.t === "num"){ out.push(n.v); return; }
+    walk(n.l); walk(n.r);
+  })(ast);
+  return out;
+}
+
+// Canonical key. Two expressions share a key only if one can be turned into
+// the other by commuting and reassociating + and *, so equal key implies
+// equal value. The space separator stops "1 23" colliding with "12 3".
+function canonicalize(ast){
+  if (ast.t === "num") return String(ast.v);
+  const op = ast.op;
+  if (op === "+" || op === "*"){
+    const parts = [];
+    (function flat(n){
+      if (n.t === "op" && n.op === op){ flat(n.l); flat(n.r); return; }
+      parts.push(canonicalize(n));
+    })(ast);
+    parts.sort();
+    return "(" + op + " " + parts.join(" ") + ")";
+  }
+  return "(" + op + " " + canonicalize(ast.l) + " " + canonicalize(ast.r) + ")";
+}
+
+function precOf(op){ return (op === "+" || op === "-") ? 1 : 2; }
+function exprStr(ast){
+  if (ast.t === "num") return String(ast.v);
+  const p = precOf(ast.op);
+  let l = exprStr(ast.l), r = exprStr(ast.r);
+  if (ast.l.t === "op" && precOf(ast.l.op) < p) l = "(" + l + ")";
+  if (ast.r.t === "op"){
+    const pr = precOf(ast.r.op);
+    if (pr < p || (pr === p && (ast.op === "-" || ast.op === "/"))) r = "(" + r + ")";
+  }
+  return l + ast.op + r;
+}
+
+const TARGET24 = { n: 24, d: 1 };
+
+// ------------------------------------------------------------------
+// Exhaustive enumeration of every complete expression tree over the cards.
+// visit() receives { v: exact rational, f: float value, ast }.
+// ------------------------------------------------------------------
+function enumerateAll(cards, visit){
+  let leaves = 0;
+  const start = cards.map(function(c){ return { v: rat(c, 1), f: c, ast: mkNum(c) }; });
+  function rec(list){
+    if (list.length === 1){ leaves++; visit(list[0]); return; }
+    for (let i = 0; i < list.length; i++){
+      for (let j = 0; j < list.length; j++){
+        if (i === j) continue;
+        const a = list[i], b = list[j];
+        const rest = [];
+        for (let k = 0; k < list.length; k++) if (k !== i && k !== j) rest.push(list[k]);
+        const cand = [];
+        if (i < j){
+          cand.push({ v: rAdd(a.v, b.v), f: a.f + b.f, ast: mkOp("+", a.ast, b.ast) });
+          cand.push({ v: rMul(a.v, b.v), f: a.f * b.f, ast: mkOp("*", a.ast, b.ast) });
+        }
+        cand.push({ v: rSub(a.v, b.v), f: a.f - b.f, ast: mkOp("-", a.ast, b.ast) });
+        const dv = rDiv(a.v, b.v);
+        if (dv) cand.push({ v: dv, f: a.f / b.f, ast: mkOp("/", a.ast, b.ast) });
+        for (let c = 0; c < cand.length; c++){
+          rest.push(cand[c]); rec(rest); rest.pop();
+        }
+      }
+    }
+  }
+  rec(start);
+  return leaves;
+}
+
+// Distinct solutions, modulo commutativity and associativity of + and *.
+function solve24(cards, target){
+  const tgt = target || TARGET24;
+  const seen = {};
+  const out = [];
+  const leaves = enumerateAll(cards, function(node){
+    if (!rEq(node.v, tgt)) return;
+    const k = canonicalize(node.ast);
+    if (seen[k]) return;
+    seen[k] = 1;
+    out.push({ key: k, expr: exprStr(node.ast), ast: node.ast });
+  });
+  out.sort(function(x, y){ return x.key < y.key ? -1 : (x.key > y.key ? 1 : 0); });
+  return { solutions: out, count: out.length, solvable: out.length > 0, expressions: leaves };
+}
+
+// The float trap, measured rather than described.
+function floatAudit(cards, target){
+  const tgt = target || TARGET24;
+  const t = rNum(tgt);
+  let exactHits = 0, strictFloatHits = 0, missedByStrictFloat = 0;
+  let epsHits = 0, falsePositives = 0, worstErr = 0, worstExpr = "";
+  const examples = [];
+  enumerateAll(cards, function(node){
+    const isExact = rEq(node.v, tgt);
+    const isStrict = node.f === t;
+    const isEps = Math.abs(node.f - t) < 1e-9;
+    if (isExact){
+      exactHits++;
+      if (!isStrict){
+        missedByStrictFloat++;
+        const err = Math.abs(node.f - t);
+        if (err > worstErr){ worstErr = err; worstExpr = exprStr(node.ast); }
+        if (examples.length < 6) examples.push({ expr: exprStr(node.ast), fl: node.f, err: err });
+      }
+    }
+    if (isStrict) strictFloatHits++;
+    if (isEps) epsHits++;
+    if (isEps && !isExact) falsePositives++;
+  });
+  return { exactHits: exactHits, strictFloatHits: strictFloatHits,
+           missedByStrictFloat: missedByStrictFloat, epsHits: epsHits,
+           falsePositives: falsePositives, worstErr: worstErr,
+           worstExpr: worstExpr, examples: examples };
+}
+
+// Reachability oracle over a multiset of rationals (used by the evaluator).
+function reachesTarget(vals, target){
+  const tgt = target || TARGET24;
+  if (vals.length === 1) return rEq(vals[0], tgt);
+  for (let i = 0; i < vals.length; i++){
+    for (let j = i + 1; j < vals.length; j++){
+      const a = vals[i], b = vals[j];
+      const rest = [];
+      for (let k = 0; k < vals.length; k++) if (k !== i && k !== j) rest.push(vals[k]);
+      const outs = [rAdd(a, b), rMul(a, b), rSub(a, b), rSub(b, a), rDiv(a, b), rDiv(b, a)];
+      for (let o = 0; o < outs.length; o++){
+        if (!outs[o]) continue;
+        rest.push(outs[o]);
+        const hit = reachesTarget(rest, tgt);
+        rest.pop();
+        if (hit) return true;
+      }
+    }
+  }
+  return false;
+}
+
+// ------------------------------------------------------------------
+// State expansion. Exactly 6 moves per unordered pair, counted BEFORE the
+// validity check, so children-per-state depends only on how many values are
+// left. That is what makes the generated-node meter monotone in beam width.
+// ------------------------------------------------------------------
+function rootState(cards){
+  return { vals: cards.map(function(c){ return rat(c, 1); }),
+           asts: cards.map(function(c){ return mkNum(c); }),
+           move: "", depth: 0 };
+}
+function expandState(st){
+  const vals = st.vals, asts = st.asts;
+  const children = [];
+  let generated = 0;
+  for (let i = 0; i < vals.length; i++){
+    for (let j = i + 1; j < vals.length; j++){
+      const a = vals[i], b = vals[j], aa = asts[i], bb = asts[j];
+      const moves = [
+        ["+", rAdd(a, b), a, b, aa, bb],
+        ["-", rSub(a, b), a, b, aa, bb],
+        ["-", rSub(b, a), b, a, bb, aa],
+        ["*", rMul(a, b), a, b, aa, bb],
+        ["/", rDiv(a, b), a, b, aa, bb],
+        ["/", rDiv(b, a), b, a, bb, aa]
+      ];
+      for (let m = 0; m < moves.length; m++){
+        generated++;
+        const mv = moves[m];
+        if (!mv[1]) continue;
+        const nv = [], na = [];
+        for (let k = 0; k < vals.length; k++) if (k !== i && k !== j){ nv.push(vals[k]); na.push(asts[k]); }
+        const nast = mkOp(mv[0], mv[4], mv[5]);
+        nv.push(mv[1]); na.push(nast);
+        const op = rStr(mv[2]) + " " + mv[0] + " " + rStr(mv[3]);
+        children.push({
+          vals: nv, asts: na, depth: st.depth + 1, op: op,
+          move: op + " = " + rStr(mv[1]),
+          resultAst: nast, resultVal: mv[1]
+        });
+      }
+    }
+  }
+  return { children: children, generated: generated };
+}
+function stateKey(st){
+  const s = st.vals.map(rStr).slice();
+  s.sort();
+  return s.join(" ");
+}
+function leftStr(st){ return st.vals.map(rStr).join(" "); }
+
+// ------------------------------------------------------------------
+// The evaluator. "oracle" is a perfect judge, "heuristic" is the cheap and
+// deliberately fallible stand-in for an LLM value prompt, "none" removes the
+// evaluator entirely so the beam keeps whatever it saw first.
+// ------------------------------------------------------------------
+function scoreState(vals, mode){
+  if (mode === "none") return 0.5;
+  if (mode === "oracle") return reachesTarget(vals, TARGET24) ? 1 : 0;
+  if (vals.length <= 2) return reachesTarget(vals, TARGET24) ? 1 : 0;
+  let sum = rat(0, 1), prod = rat(1, 1);
+  for (let i = 0; i < vals.length; i++){ sum = rAdd(sum, vals[i]); prod = rMul(prod, vals[i]); }
+  let best = Math.abs(rNum(sum) - 24);
+  const dp = Math.abs(rNum(prod) - 24);
+  if (dp < best) best = dp;
+  let divisors = 0, negative = 0;
+  for (let i = 0; i < vals.length; i++){
+    const q = rDiv(TARGET24, vals[i]);
+    if (q && q.d === 1) divisors++;
+    if (vals[i].n < 0) negative = 1;
+  }
+  const raw = (1 / (1 + best) + divisors * 0.08) * (negative ? 0.5 : 1);
+  return raw > 1 ? 1 : raw;
+}
+
+// Identical resulting states (duplicate cards produce them constantly) are
+// collapsed for the in-context transcript: repeating a branch verbatim costs
+// tokens and demonstrates nothing. Order is preserved.
+function dedupeChildren(children){
+  const seen = {};
+  const out = [];
+  for (let i = 0; i < children.length; i++){
+    const k = stateKey(children[i]) + "|" + children[i].op;
+    if (seen[k]) continue;
+    seen[k] = 1;
+    out.push(children[i]);
+  }
+  return out;
+}
+function verdictFor(score, mode){
+  if (mode === "none") return "unrated";
+  if (mode === "oracle") return score >= 1 ? "sure" : "impossible";
+  if (score >= 0.6) return "sure";
+  if (score >= 0.3) return "likely";
+  return "impossible";
+}
+function rankChildren(children, mode){
+  const scored = children.map(function(c, idx){
+    return { c: c, score: scoreState(c.vals, mode),
+             near: Math.abs(rNum(c.resultVal) - 24),
+             key: stateKey(c) + "|" + c.move, idx: idx };
+  });
+  // score first; ties broken by how near the move's own result lands to 24,
+  // then by a stable string key, so the ordering is fully reproducible.
+  scored.sort(function(x, y){
+    if (y.score !== x.score) return y.score - x.score;
+    if (x.near !== y.near) return x.near - y.near;
+    if (x.key !== y.key) return x.key < y.key ? -1 : 1;
+    return x.idx - y.idx;
+  });
+  return scored;
+}
+
+// ------------------------------------------------------------------
+// Tree-of-Thoughts: beam search with every node metered.
+// ------------------------------------------------------------------
+function totSearch(cards, opts){
+  const beam = opts.beam, mode = opts.evalMode;
+  const votes = opts.votes === undefined ? 3 : opts.votes;
+  let generated = 0, evaluated = 0, expanded = 0;
+  const levels = [];
+  let frontier = [rootState(cards)];
+  let solved = null;
+  for (let depth = 1; depth <= 3; depth++){
+    const cand = [];
+    let genHere = 0;
+    for (let f = 0; f < frontier.length; f++){
+      expanded++;
+      const ex = expandState(frontier[f]);
+      genHere += ex.generated;
+      for (let c = 0; c < ex.children.length; c++) cand.push(ex.children[c]);
+    }
+    generated += genHere;
+    const ranked = rankChildren(cand, mode);
+    evaluated += ranked.length;
+    const kept = ranked.slice(0, beam);
+    const cut = ranked.slice(beam);
+    let alive = false;
+    for (let k = 0; k < kept.length; k++) if (reachesTarget(kept[k].c.vals, TARGET24)) alive = true;
+    levels.push({ depth: depth, expandedHere: frontier.length, generated: genHere,
+                  cumulative: generated, valid: ranked.length,
+                  kept: kept, cut: cut, aliveAfterPrune: alive, mode: mode });
+    frontier = kept.map(function(k){ return k.c; });
+    if (depth === 3){
+      for (let k = 0; k < kept.length; k++){
+        if (rEq(kept[k].c.vals[0], TARGET24)){ solved = kept[k].c; break; }
+      }
+    }
+  }
+  const proposeCalls = expanded;
+  const valueCalls = evaluated * votes;
+  return { levels: levels, generated: generated, evaluated: evaluated, expanded: expanded,
+           proposeCalls: proposeCalls, valueCalls: valueCalls,
+           calls: proposeCalls + valueCalls, votes: votes,
+           solved: solved, answer: solved ? exprStr(solved.asts[0]) : null };
+}
+
+// ------------------------------------------------------------------
+// The actual prompt text a ToT deployment would send, so the token count
+// comes from strings rather than from an assumption about string length.
+// ------------------------------------------------------------------
+const TOT_PROPOSE_HEADER =
+"Use numbers and basic arithmetic operations (+ - * /) to obtain 24.\n" +
+"Each step combines exactly two of the remaining numbers and replaces them\n" +
+"with the result. Propose every possible next step.\n" +
+"\n" +
+"Input: 2 8 8 14\n" +
+"Possible next steps:\n" +
+"2 + 8 = 10 (left: 8 10 14)\n" +
+"8 / 2 = 4 (left: 4 8 14)\n" +
+"14 + 2 = 16 (left: 8 8 16)\n" +
+"2 * 8 = 16 (left: 8 14 16)\n" +
+"8 - 2 = 6 (left: 6 8 14)\n" +
+"14 - 8 = 6 (left: 2 6 8)\n" +
+"14 / 2 = 7 (left: 7 8 8)\n" +
+"14 - 2 = 12 (left: 8 8 12)\n";
+
+const TOT_VALUE_HEADER =
+"Evaluate whether the remaining numbers can still reach 24.\n" +
+"Answer with one word: sure, likely, or impossible.\n" +
+"\n" +
+"10 14\n" +
+"10 + 14 = 24\n" +
+"sure\n" +
+"\n" +
+"11 12\n" +
+"11 + 12 = 23, 12 - 11 = 1, 11 * 12 = 132, 11 / 12 is not an integer\n" +
+"impossible\n" +
+"\n" +
+"4 4 10\n" +
+"10 - 4 = 6, 4 * 6 = 24\n" +
+"sure\n";
+
+function proposePrompt(st){ return TOT_PROPOSE_HEADER + "\nInput: " + leftStr(st) + "\nPossible next steps:\n"; }
+function valuePrompt(st){ return TOT_VALUE_HEADER + "\n" + leftStr(st) + "\n"; }
+
+function totPromptCost(cards, opts){
+  const beam = opts.beam, mode = opts.evalMode;
+  const votes = opts.votes === undefined ? 3 : opts.votes;
+  let tokens = 0, calls = 0, biggest = 0;
+  let frontier = [rootState(cards)];
+  for (let depth = 1; depth <= 3; depth++){
+    const cand = [];
+    for (let f = 0; f < frontier.length; f++){
+      const p = countTokens(proposePrompt(frontier[f]));
+      tokens += p; calls += 1;
+      if (p > biggest) biggest = p;
+      const ex = expandState(frontier[f]);
+      for (let c = 0; c < ex.children.length; c++) cand.push(ex.children[c]);
+    }
+    const ranked = rankChildren(cand, mode);
+    for (let r = 0; r < ranked.length; r++){
+      const v = countTokens(valuePrompt(ranked[r].c));
+      tokens += v * votes; calls += votes;
+      if (v > biggest) biggest = v;
+    }
+    frontier = ranked.slice(0, beam).map(function(k){ return k.c; });
+  }
+  return { tokens: tokens, calls: calls, biggestPrompt: biggest };
+}
+
+// ------------------------------------------------------------------
+// Algorithm of Thoughts: a bounded depth-first walk, recorded as events.
+// ------------------------------------------------------------------
+function aotSearch(cards, branch, mode){
+  const trace = [];
+  let visited = 0, deadEnds = 0, backtracks = 0, tries = 0;
+  let found = null;
+  const path = [];
+  function dfs(st){
+    visited++;
+    if (st.vals.length === 1){
+      const win = rEq(st.vals[0], TARGET24);
+      if (win){
+        trace.push({ k: "solve", depth: st.depth, left: leftStr(st), move: st.move, expr: exprStr(st.asts[0]) });
+        found = st;
+        return true;
+      }
+      deadEnds++;
+      trace.push({ k: "dead", depth: st.depth, left: leftStr(st), move: st.move,
+                   why: "one number left and it is " + rStr(st.vals[0]) + ", not 24" });
+      return false;
+    }
+    const ex = expandState(st);
+    const ranked = rankChildren(dedupeChildren(ex.children), mode);
+    const take = ranked.slice(0, branch);
+    if (take.length === 0){
+      deadEnds++;
+      trace.push({ k: "dead", depth: st.depth, left: leftStr(st), move: st.move, why: "no legal move" });
+      return false;
+    }
+    trace.push({ k: "open", depth: st.depth, left: leftStr(st),
+                 options: ranked.map(function(r){ return { move: r.c.move, left: leftStr(r.c), score: r.score, verdict: verdictFor(r.score, mode) }; }),
+                 taken: take.length });
+    for (let i = 0; i < take.length; i++){
+      const kid = take[i].c;
+      tries++;
+      path.push(kid.move);
+      trace.push({ k: "try", depth: st.depth, move: kid.move, op: kid.op, left: leftStr(kid),
+                   score: take[i].score, verdict: verdictFor(take[i].score, mode) });
+      if (dfs(kid)) return true;
+      path.pop();
+      backtracks++;
+      trace.push({ k: "back", depth: st.depth, move: kid.move, op: kid.op, left: leftStr(st) });
+    }
+    trace.push({ k: "exhausted", depth: st.depth, left: leftStr(st), tried: take.length });
+    return false;
+  }
+  const root = rootState(cards);
+  dfs(root);
+  const winPath = [];
+  if (found){
+    for (let i = 0; i < trace.length; i++){
+      const e = trace[i];
+      if (e.k === "try") winPath[e.depth] = e;
+      if (e.k === "back") winPath[e.depth] = null;
+    }
+  }
+  return { trace: trace, visited: visited, deadEnds: deadEnds, backtracks: backtracks,
+           tries: tries, found: found, solved: !!found,
+           answer: found ? exprStr(found.asts[0]) : null,
+           winPath: winPath.filter(function(x){ return !!x; }), cards: cards.slice(), branch: branch, mode: mode };
+}
+
+const AOT_HEADER =
+"Game of 24. Combine two of the remaining numbers with + - * / and replace\n" +
+"them with the result, until one number is left. That number must be 24.\n" +
+"Search out loud: try a move, follow it, and the moment a branch cannot\n" +
+"reach 24 say so and BACKTRACK to the last open choice.\n";
+
+function pad(n){ let s = ""; for (let i = 0; i < n; i++) s += "  "; return s; }
+
+// verbosity: 0 terse, 1 normal, 2 full
+function aotTrajectory(run, verbosity, opts){
+  const o = opts || {};
+  const lines = [];
+  if (o.header !== false) lines.push(AOT_HEADER);
+  lines.push("Cards: " + run.cards.join(" "));
+  lines.push("[" + run.cards.join(" ") + "]");
+  for (let i = 0; i < run.trace.length; i++){
+    const e = run.trace[i];
+    const ind = pad(e.depth + 1);
+    if (e.k === "open"){
+      if (verbosity < 2) continue;
+      const opts2 = e.options.slice(0, 12).map(function(x){ return x.move + " [" + x.verdict + "]"; });
+      lines.push(ind + "options: " + opts2.join(" | "));
+      if (e.options.length > 12) lines.push(ind + "options: " + (e.options.length - 12) + " more, all scored lower");
+      lines.push(ind + "keeping the top " + e.taken);
+    } else if (e.k === "try"){
+      if (verbosity === 0) lines.push(ind + e.move + " -> [" + e.left + "]");
+      else lines.push(ind + "try " + e.move + "  -> [" + e.left + "]" + (verbosity === 2 ? "   (" + e.verdict + ")" : ""));
+    } else if (e.k === "dead"){
+      if (verbosity === 0) lines.push(ind + "x");
+      else lines.push(ind + "dead: " + e.why);
+    } else if (e.k === "back"){
+      if (verbosity === 0) lines.push(ind + "<-");
+      else lines.push(ind + "backtrack from " + e.op);
+    } else if (e.k === "exhausted"){
+      if (verbosity === 2) lines.push(ind + "all " + e.tried + " options from [" + e.left + "] failed, backtrack");
+    } else if (e.k === "solve"){
+      lines.push(ind + "one number left and it is 24   SOLVED");
+    }
+  }
+  if (run.solved) lines.push("Answer: " + run.answer + " = 24");
+  else lines.push("No solution found within this branching limit.");
+  return lines.join("\n") + "\n";
+}
+
+// The same run with every failure deleted: the exemplar that teaches
+// "produce an answer" instead of "run a search".
+function prunedTrajectory(run, opts){
+  const o = opts || {};
+  const lines = [];
+  if (o.header !== false) lines.push(AOT_HEADER);
+  lines.push("Cards: " + run.cards.join(" "));
+  lines.push("[" + run.cards.join(" ") + "]");
+  if (run.solved){
+    for (let i = 0; i < run.winPath.length; i++){
+      const e = run.winPath[i];
+      lines.push(pad(e.depth + 1) + e.move + "  -> [" + e.left + "]");
+    }
+    lines.push("Answer: " + run.answer + " = 24");
+  } else {
+    lines.push("No solution found within this branching limit.");
+  }
+  return lines.join("\n") + "\n";
+}
+
+function traceCounts(run){
+  let tries = 0, deads = 0, backs = 0, opens = 0;
+  for (let i = 0; i < run.trace.length; i++){
+    const k = run.trace[i].k;
+    if (k === "try") tries++;
+    else if (k === "dead") deads++;
+    else if (k === "back") backs++;
+    else if (k === "open") opens++;
+  }
+  return { tries: tries, deads: deads, backs: backs, opens: opens, visited: run.visited };
+}
+
+// ------------------------------------------------------------------
+// Tokenizer. A documented approximation of byte-pair behaviour, not a real
+// BPE table: newline is its own token, other whitespace merges into the next
+// token, letter runs split into chunks of 4, digit runs into chunks of 3,
+// and every other character is one token. Exactly additive across newlines,
+// sub-additive under concatenation, monotone under append.
+// ------------------------------------------------------------------
+function isSpaceCh(c){ return c === " " || c === "\t" || c === "\r" || c === "\f" || c === "\v"; }
+function isAlphaCh(c){ return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z"); }
+function isDigitCh(c){ return c >= "0" && c <= "9"; }
+function tokenize(s){
+  const out = [];
+  let i = 0;
+  const n = s.length;
+  while (i < n){
+    const c = s.charAt(i);
+    if (c === "\n"){ out.push("\n"); i++; continue; }
+    if (isSpaceCh(c)){ i++; continue; }
+    if (isAlphaCh(c)){
+      let j = i; while (j < n && isAlphaCh(s.charAt(j))) j++;
+      for (let k = i; k < j; k += 4) out.push(s.slice(k, Math.min(k + 4, j)));
+      i = j; continue;
+    }
+    if (isDigitCh(c)){
+      let j = i; while (j < n && isDigitCh(s.charAt(j))) j++;
+      for (let k = i; k < j; k += 3) out.push(s.slice(k, Math.min(k + 3, j)));
+      i = j; continue;
+    }
+    out.push(c); i++;
+  }
+  return out;
+}
+function countTokens(s){ return tokenize(s).length; }
+
+// ------------------------------------------------------------------
+// Deterministic hands, for the exemplar sweep.
+// ------------------------------------------------------------------
+function hashStr(s){
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function mulberry32(a){
+  return function(){
+    a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+function randomHand(rng){
+  const h = [];
+  for (let i = 0; i < 4; i++) h.push(1 + Math.floor(rng() * 13));
+  h.sort(function(a, b){ return a - b; });
+  return h;
+}
+function exemplarHands(seed, k){
+  const rng = mulberry32(hashStr("aot|" + seed));
+  const out = [];
+  for (let i = 0; i < k; i++) out.push(randomHand(rng));
+  return out;
+}
+
+// ------------------------------------------------------------------
+// Sweeps. Both return measured points; neither extrapolates.
+// ------------------------------------------------------------------
+function sweepExemplars(hands, branch, mode, verbosity, budget){
+  let cum = 0, crossover = null;
+  const points = [];
+  for (let i = 0; i < hands.length; i++){
+    const run = aotSearch(hands[i], branch, mode);
+    const body = aotTrajectory(run, verbosity, { header: i === 0 });
+    cum += countTokens(body);
+    points.push({ k: i + 1, tokens: cum, hand: hands[i], solved: run.solved });
+    if (crossover === null && cum > budget) crossover = i + 1;
+  }
+  return { points: points, crossover: crossover, budget: budget };
+}
+function sweepBeam(cards, mode, votes, maxBeam, branch, verbosity){
+  const run = aotSearch(cards, branch, mode);
+  const aotTok = countTokens(aotTrajectory(run, verbosity, {}));
+  const rows = [];
+  for (let b = 1; b <= maxBeam; b++){
+    const s = totSearch(cards, { beam: b, evalMode: mode, votes: votes });
+    const c = totPromptCost(cards, { beam: b, evalMode: mode, votes: votes });
+    rows.push({ beam: b, totTokens: c.tokens, totCalls: c.calls,
+                generated: s.generated, evaluated: s.evaluated,
+                totSolved: !!s.solved, aotTokens: aotTok, aotCalls: 1 });
+  }
+  return { rows: rows, aotTokens: aotTok, aotCalls: 1, aotSolved: run.solved };
+}
+
+const ENGINE_EXPORTS = {
+  gcdInt: gcdInt, rat: rat, rAdd: rAdd, rSub: rSub, rMul: rMul, rDiv: rDiv,
+  rEq: rEq, rNum: rNum, rStr: rStr, mkNum: mkNum, mkOp: mkOp,
+  evalExpr: evalExpr, evalFloat: evalFloat, leafValues: leafValues,
+  canonicalize: canonicalize, exprStr: exprStr, precOf: precOf,
+  enumerateAll: enumerateAll, solve24: solve24, floatAudit: floatAudit,
+  reachesTarget: reachesTarget, rootState: rootState, expandState: expandState,
+  stateKey: stateKey, leftStr: leftStr, scoreState: scoreState,
+  verdictFor: verdictFor, rankChildren: rankChildren, totSearch: totSearch,
+  proposePrompt: proposePrompt, valuePrompt: valuePrompt, totPromptCost: totPromptCost,
+  aotSearch: aotSearch, aotTrajectory: aotTrajectory, prunedTrajectory: prunedTrajectory,
+  traceCounts: traceCounts, tokenize: tokenize, countTokens: countTokens,
+  hashStr: hashStr, mulberry32: mulberry32, randomHand: randomHand,
+  exemplarHands: exemplarHands, sweepExemplars: sweepExemplars, sweepBeam: sweepBeam,
+  TARGET24: TARGET24, AOT_HEADER: AOT_HEADER,
+  TOT_PROPOSE_HEADER: TOT_PROPOSE_HEADER, TOT_VALUE_HEADER: TOT_VALUE_HEADER
+};
+// ===== ENGINE:END =====
+
+function copy(btn){ const pre = btn.parentElement.querySelector("pre"); navigator.clipboard.writeText(pre.textContent); const o = btn.textContent; btn.textContent = "✓ Copied!"; setTimeout(function(){ btn.textContent = o; }, 1500); }
+function escapeHtml(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function fmtN(n){ return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+
+// ============================================================
+// Browser mount - every DOM touch lives below this line.
+// ============================================================
+function mount(){
+  const tabs = document.querySelectorAll("#tabs button");
+  const panels = document.querySelectorAll(".tab-panel");
+  tabs.forEach(function(t){ t.onclick = function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+    t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  }; });
+
+  const el = function(id){ return document.getElementById(id); };
+  const MODES = [ ["oracle", "oracle (perfect)"], ["heuristic", "heuristic (LLM-like)"], ["none", "none (no evaluator)"] ];
+  const VERBS = [ ["0", "terse"], ["1", "normal"], ["2", "full"] ];
+  const PRESETS = [ [2,4,6,11], [3,3,8,8], [1,6,8,8], [3,4,8,11], [1,5,10,12], [1,1,1,1], [4,4,10,10], [1,5,5,5], [4,9,10,13], [6,6,6,6] ];
+
+  const S = { cards: [2,4,6,11], beam: 5, branch: 3, mode: "heuristic", verb: 1,
+              votes: 3, budget: 2000, ex: 2, seed: 620 };
+
+  function tile(node, k, v, s, cls){
+    node.className = "tile " + (cls || "");
+    node.innerHTML = '<div class="k">' + k + '</div><div class="v">' + v + '</div><div class="s">' + s + '</div>';
+  }
+  function callout(kind, html){ return '<div class="callout ' + kind + '">' + html + '</div>'; }
+
+  // ---------- transcript colouring ----------
+  function colorize(txt){
+    return escapeHtml(txt).split("\n").map(function(line){
+      if (/SOLVED|^Answer:/.test(line)) return '<span class="gd">' + line + '</span>';
+      if (/dead|No solution|failed/.test(line)) return '<span class="bad">' + line + '</span>';
+      if (/backtrack|^\s*&lt;-|^\s*x$/.test(line)) return '<span class="hl">' + line + '</span>';
+      if (/^(Game of 24|Rule|Search out loud|them with|reach 24 say)/.test(line)) return '<span class="cm">' + line + '</span>';
+      if (/^\s*options:|^\s*keeping/.test(line)) return '<span class="dim">' + line + '</span>';
+      return line;
+    }).join("\n");
+  }
+
+  // ---------- SVG line chart ----------
+  function lineChart(o){
+    const W = 430, H = 200, m = { l: 48, r: 14, t: 12, b: 30 };
+    let xmin = Infinity, xmax = -Infinity, ymax = 0;
+    o.series.forEach(function(s){ s.pts.forEach(function(p){
+      if (p.x < xmin) xmin = p.x; if (p.x > xmax) xmax = p.x; if (p.y > ymax) ymax = p.y;
+    }); });
+    if (o.hline !== undefined && o.hline > ymax) ymax = o.hline;
+    if (!isFinite(xmin)) { xmin = 0; xmax = 1; }
+    ymax = ymax > 0 ? ymax * 1.15 : 1;
+    const X = function(x){ return m.l + (xmax === xmin ? 0 : (x - xmin) / (xmax - xmin)) * (W - m.l - m.r); };
+    const Y = function(y){ return H - m.b - (y / ymax) * (H - m.t - m.b); };
+    let s = '<svg class="chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">';
+    for (let g = 0; g <= 4; g++){
+      const yv = ymax * g / 4, y = Y(yv);
+      s += '<line x1="' + m.l + '" y1="' + y + '" x2="' + (W - m.r) + '" y2="' + y + '" stroke="#f1f5f9" stroke-width="1" />';
+      s += '<text x="' + (m.l - 5) + '" y="' + (y + 3) + '" text-anchor="end" font-size="8" fill="#94a3b8">' + fmtN(yv) + '</text>';
+    }
+    if (o.hline !== undefined){
+      s += '<line x1="' + m.l + '" y1="' + Y(o.hline) + '" x2="' + (W - m.r) + '" y2="' + Y(o.hline) +
+           '" stroke="#f59e0b" stroke-width="1.6" stroke-dasharray="5 3" />';
+      s += '<text x="' + (W - m.r) + '" y="' + (Y(o.hline) - 4) + '" text-anchor="end" font-size="8.5" font-weight="800" fill="#b45309">' + escapeHtml(o.hlabel || "") + '</text>';
+    }
+    o.series.forEach(function(ser){
+      let d = "";
+      ser.pts.forEach(function(p, i){ d += (i ? " L " : "M ") + X(p.x) + " " + Y(p.y); });
+      s += '<path d="' + d + '" fill="none" stroke="' + ser.color + '" stroke-width="2.4" stroke-linejoin="round" />';
+      ser.pts.forEach(function(p){ s += '<circle cx="' + X(p.x) + '" cy="' + Y(p.y) + '" r="2.6" fill="' + ser.color + '" />'; });
+    });
+    if (o.marker !== undefined && o.marker !== null){
+      s += '<line x1="' + X(o.marker) + '" y1="' + m.t + '" x2="' + X(o.marker) + '" y2="' + (H - m.b) + '" stroke="#dc2626" stroke-width="1.6" stroke-dasharray="3 3" />';
+      s += '<text x="' + (X(o.marker) + 4) + '" y="' + (m.t + 10) + '" font-size="8.5" font-weight="900" fill="#dc2626">crossover</text>';
+    }
+    s += '<line x1="' + m.l + '" y1="' + (H - m.b) + '" x2="' + (W - m.r) + '" y2="' + (H - m.b) + '" stroke="#cbd5e1" stroke-width="1" />';
+    o.series[0].pts.forEach(function(p){
+      s += '<text x="' + X(p.x) + '" y="' + (H - m.b + 12) + '" text-anchor="middle" font-size="8" fill="#94a3b8">' + p.x + '</text>';
+    });
+    s += '<text x="' + ((W + m.l) / 2) + '" y="' + (H - 3) + '" text-anchor="middle" font-size="8.5" font-weight="700" fill="#64748b">' + escapeHtml(o.xlab || "") + '</text>';
+    let lx = m.l + 4;
+    o.series.forEach(function(ser){
+      s += '<rect x="' + lx + '" y="' + (m.t + 2) + '" width="8" height="8" rx="2" fill="' + ser.color + '" />';
+      s += '<text x="' + (lx + 11) + '" y="' + (m.t + 9) + '" font-size="8.5" font-weight="700" fill="#475569">' + escapeHtml(ser.name) + '</text>';
+      lx += 11 + ser.name.length * 4.6 + 12;
+    });
+    return s + "</svg>";
+  }
+
+  // ---------- controls ----------
+  const cardRow = el("cardRow");
+  for (let i = 0; i < 4; i++){
+    const sel = document.createElement("select");
+    sel.className = "card4";
+    for (let v = 1; v <= 13; v++){
+      const op = document.createElement("option");
+      op.value = String(v); op.textContent = String(v);
+      sel.appendChild(op);
+    }
+    sel.dataset.idx = String(i);
+    sel.onchange = function(){ S.cards[Number(this.dataset.idx)] = Number(this.value); render(); };
+    cardRow.appendChild(sel);
+  }
+  function syncCards(){
+    cardRow.querySelectorAll("select").forEach(function(sel, i){ sel.value = String(S.cards[i]); });
+  }
+
+  const presetBtns = el("presetBtns");
+  PRESETS.forEach(function(p){
+    const b = document.createElement("button");
+    b.className = "btn sm";
+    b.textContent = p.join(" ");
+    b.onclick = function(){ S.cards = p.slice(); syncCards(); render(); };
+    presetBtns.appendChild(b);
+  });
+  el("ctlRandom").onclick = function(){
+    S.seed = (S.seed * 7919 + 13) % 100000;
+    S.cards = randomHand(mulberry32(hashStr("hand|" + S.seed)));
+    syncCards(); render();
+  };
+
+  function btnGroup(node, items, get, set){
+    node.innerHTML = "";
+    items.forEach(function(it){
+      const b = document.createElement("button");
+      b.className = "btn sm" + (get() === it[0] ? " on" : "");
+      b.textContent = it[1];
+      b.onclick = function(){ set(it[0]); render(); };
+      node.appendChild(b);
+    });
+  }
+
+  el("beamSlider").oninput = function(){ S.beam = Number(this.value); render(); };
+  el("branchSlider").oninput = function(){ S.branch = Number(this.value); render(); };
+  el("budgetSlider").oninput = function(){ S.budget = Number(this.value); render(); };
+  el("exSlider").oninput = function(){ S.ex = Number(this.value); render(); };
+
+  // ---------- the render pass ----------
+  function render(){
+    el("beamLbl").textContent = S.beam;
+    el("branchLbl").textContent = S.branch;
+    el("budgetLbl").textContent = fmtN(S.budget);
+    el("exLbl").textContent = S.ex;
+    btnGroup(el("strictBtns"), MODES, function(){ return S.mode; }, function(v){ S.mode = v; });
+    btnGroup(el("verbBtns"), VERBS, function(){ return String(S.verb); }, function(v){ S.verb = Number(v); });
+    btnGroup(el("voteBtns"), [["1","1 vote"],["2","2 votes"],["3","3 votes"]], function(){ return String(S.votes); }, function(v){ S.votes = Number(v); });
+
+    const cards = S.cards.slice();
+    const truth = solve24(cards);
+    const audit = floatAudit(cards);
+    const tot = totSearch(cards, { beam: S.beam, evalMode: S.mode, votes: S.votes });
+    const totCost = totPromptCost(cards, { beam: S.beam, evalMode: S.mode, votes: S.votes });
+    const run = aotSearch(cards, S.branch, S.mode);
+    const full = aotTrajectory(run, S.verb, {});
+    const pruned = prunedTrajectory(run, {});
+    const fullTok = countTokens(full), prunedTok = countTokens(pruned);
+    const tc = traceCounts(run);
+    const hands = exemplarHands(S.seed, 10);
+    const sweep = sweepExemplars(hands, S.branch, S.mode, S.verb, S.budget);
+    const beamSweep = sweepBeam(cards, S.mode, S.votes, 10, S.branch, S.verb);
+
+    // ----- tiles -----
+    tile(el("tileSol"), "distinct solutions",
+         String(truth.count),
+         truth.count ? "from " + fmtN(truth.expressions) + " complete expressions" : "unsolvable hand · " + fmtN(truth.expressions) + " checked",
+         truth.count ? "" : "lose");
+    tile(el("tileCalls"), "ToT LLM calls",
+         fmtN(tot.calls),
+         tot.expanded + " propose + " + fmtN(tot.evaluated) + " x " + S.votes + " value",
+         "lose");
+    tile(el("tileTok"), "AoT LLM calls", "1",
+         fmtN(fullTok) + " tokens in one prompt", "win");
+    const ratio = fullTok > 0 ? totCost.tokens / fullTok : 0;
+    tile(el("tileCross"), "prompt tokens, ToT vs AoT",
+         (ratio >= 1 ? ratio.toFixed(1) + "x" : (1 / ratio).toFixed(1) + "x"),
+         (ratio >= 1 ? "ToT sends " + ratio.toFixed(1) + "x more, split over " + fmtN(totCost.calls) + " calls" : "AoT sends more, in one call"),
+         ratio >= 1 ? "win" : "lose");
+
+    // ----- narrative -----
+    let narr = "";
+    if (truth.count === 0){
+      narr += callout("warn", "<b>This hand has no solution at all</b> — the exhaustive solver checked all " + fmtN(truth.expressions) +
+        " complete expressions and none evaluate to exactly 24. Both searches below are therefore <em>correctly</em> failing, and that is worth watching: the ToT beam still spends " +
+        fmtN(tot.calls) + " calls proving it, while the AoT transcript spends one prompt and ends with an explicit &ldquo;no solution&rdquo; line. Failure is not free in either scheme, but it is priced very differently.");
+    } else if (tot.solved && run.solved){
+      narr += callout("good", "<b>Both found an answer.</b> ToT returned <span class=\"mono\">" + escapeHtml(tot.answer) + "</span> after " +
+        fmtN(tot.calls) + " counted LLM calls; the AoT bounded walk returned <span class=\"mono\">" + escapeHtml(run.answer) + "</span> inside a single " +
+        fmtN(fullTok) + "-token prompt. Same problem, same search space, " + (ratio >= 1 ? ratio.toFixed(1) + "x" : (1 / ratio).toFixed(1) + "x") +
+        " difference in total prompt tokens and a " + fmtN(tot.calls) + "-to-1 difference in round trips.");
+    } else if (tot.solved && !run.solved){
+      narr += callout("bad", "<b>AoT missed it and ToT did not.</b> The bounded depth-first walk only tries the top " + S.branch +
+        " children per node under the <b>" + S.mode + "</b> evaluator, and the solution was not inside that cone — the exact solver says " +
+        truth.count + " solution" + (truth.count === 1 ? "" : "s") + " exist. This is the honest cost of moving the search into the prompt: you buy one call by narrowing the search, and a narrow search misses things. Raise the branching limit and watch both the hit rate and the token count move together.");
+    } else if (!tot.solved && run.solved){
+      narr += callout("warn", "<b>The ToT beam pruned the answer away and AoT found it.</b> At beam " + S.beam + " under the <b>" + S.mode +
+        "</b> evaluator the surviving frontier no longer contained a solving state, even though " + truth.count + " solution" + (truth.count === 1 ? "" : "s") +
+        " exist. Beam search discards on a score, and a cheap score discards good branches. Widening the beam fixes it and costs calls.");
+    } else {
+      narr += callout("bad", "<b>Neither search found the answer</b>, although the exact solver says " + truth.count + " solution" + (truth.count === 1 ? "" : "s") +
+        " exist. That is what a weak evaluator does to <em>both</em> strategies: ToT prunes the right branch away at beam " + S.beam +
+        ", AoT never enters it at branching limit " + S.branch + ". The search strategy is not the bottleneck here, the value function is.");
+    }
+    if (audit.missedByStrictFloat > 0){
+      narr += callout("info", "<b>The float trap, on this exact hand:</b> " + audit.missedByStrictFloat + " of the " + audit.exactHits +
+        " correct expressions do <em>not</em> equal 24 in IEEE-754 doubles. The worst is <span class=\"mono\">" + escapeHtml(audit.worstExpr) +
+        "</span>, which evaluates to a value " + audit.worstErr.toExponential(2) + " away from 24. A solver that tests <span class=\"mono\">value === 24</span> in floats would report " +
+        audit.strictFloatHits + " solutions instead of " + audit.exactHits + ". Exact rationals are not pedantry here, they are the difference between a correct oracle and a broken one.");
+    }
+    el("narr").innerHTML = narr;
+
+    el("ctlNote").innerHTML = "Call accounting used throughout: <b>1 propose call per expanded state</b> and <b>" + S.votes +
+      " value call" + (S.votes === 1 ? "" : "s") + " per evaluated candidate</b>, which is how the Tree-of-Thoughts reference implementation queries a model. Node generation is counted <em>before</em> the arithmetic-validity check, so a division by zero still costs a proposal — that is also what happens with a real proposer.";
+
+    // ----- solver panel -----
+    el("solverHead").innerHTML = '<div class="text-sm text-slate-600">Hand <span class="mono font-bold text-violet-700">' + cards.join(" ") +
+      '</span> &middot; enumerated <b>' + fmtN(truth.expressions) + '</b> complete expression trees &middot; <b>' + truth.count +
+      '</b> distinct solution' + (truth.count === 1 ? "" : "s") + ' after canonicalization &middot; <b>' + audit.exactHits +
+      '</b> raw expressions hit 24 exactly, so canonicalization collapsed <b>' + (audit.exactHits - truth.count) + '</b> commutative duplicates.</div>';
+
+    let sl = "";
+    if (truth.count === 0) sl = '<div class="callout bad">No expression over these four cards evaluates to exactly 24.</div>';
+    else {
+      sl = '<table class="sb"><tbody>';
+      truth.solutions.slice(0, 40).forEach(function(s, i){
+        sl += '<tr><td style="color:#94a3b8">' + (i + 1) + '</td><td class="mono">' + escapeHtml(s.expr) + '</td><td class="num ok">= 24</td></tr>';
+      });
+      sl += "</tbody></table>";
+      if (truth.solutions.length > 40) sl += '<div class="text-[11px] text-slate-400 mt-1">' + (truth.solutions.length - 40) + " more not shown.</div>";
+    }
+    el("solList").innerHTML = sl;
+
+    let fb = '<table class="sb"><tbody>';
+    fb += '<tr><td class="wrap">exact hits (rational)</td><td class="num ok">' + audit.exactHits + "</td></tr>";
+    fb += '<tr><td class="wrap">hits under strict float <span class="mono">=== 24</span></td><td class="num ' + (audit.strictFloatHits < audit.exactHits ? "bad" : "ok") + '">' + audit.strictFloatHits + "</td></tr>";
+    fb += '<tr><td class="wrap">correct solutions a strict float solver drops</td><td class="num ' + (audit.missedByStrictFloat ? "bad" : "ok") + '">' + audit.missedByStrictFloat + "</td></tr>";
+    fb += '<tr><td class="wrap">hits under float tolerance 1e-9</td><td class="num mid">' + audit.epsHits + "</td></tr>";
+    fb += '<tr><td class="wrap">false positives that tolerance lets in</td><td class="num ' + (audit.falsePositives ? "bad" : "ok") + '">' + audit.falsePositives + "</td></tr>";
+    fb += "</tbody></table>";
+    if (audit.examples.length){
+      fb += '<div class="text-[11px] text-slate-500 mt-2 font-bold">Correct expressions that floats mis-evaluate:</div><table class="sb"><tbody>';
+      audit.examples.forEach(function(e){
+        fb += '<tr><td class="mono">' + escapeHtml(e.expr) + '</td><td class="mono num bad">' + e.fl.toPrecision(18) + "</td></tr>";
+      });
+      fb += "</tbody></table>";
+    } else {
+      fb += '<div class="text-[11px] text-slate-500 mt-2">Every correct expression for this hand also lands on exactly 24 in doubles &mdash; this hand does not trip the trap, because every division in every solution happens to be exactly representable. Try <span class="mono">3 3 8 8</span>, <span class="mono">2 4 6 11</span> or <span class="mono">1 5 10 12</span>. Across all 1,820 four-card multisets from 1 to 13, only a minority trip it &mdash; which is precisely why a float solver looks fine until it does not.</div>';
+    }
+    el("floatBox").innerHTML = fb;
+
+    // ----- ToT board -----
+    el("totStats").innerHTML = '<table class="sb"><tbody><tr>' +
+      '<td>beam <b>' + S.beam + "</b></td>" +
+      "<td>expanded <b>" + tot.expanded + "</b></td>" +
+      "<td>generated <b>" + fmtN(tot.generated) + "</b></td>" +
+      "<td>evaluated <b>" + fmtN(tot.evaluated) + "</b></td>" +
+      '<td>calls <span class="num bad">' + fmtN(tot.calls) + "</span></td>" +
+      '<td>prompt tokens <span class="num bad">' + fmtN(totCost.tokens) + "</span></td>" +
+      "</tr></tbody></table>";
+
+    let board = "";
+    tot.levels.forEach(function(L){
+      board += '<div class="lvl"><h4>Depth ' + L.depth + " &middot; " + (4 - L.depth) + " numbers left</h4>";
+      board += '<div class="meta">expanded ' + L.expandedHere + " state" + (L.expandedHere === 1 ? "" : "s") + " &rarr; generated " + L.generated +
+        " candidates &rarr; " + L.valid + " arithmetically valid &rarr; evaluated " + L.valid + " &rarr; kept " + L.kept.length +
+        ", pruned " + L.cut.length + " &nbsp;·&nbsp; " + (L.aliveAfterPrune ? '<span style="color:#15803d">a solving branch survived</span>' : '<span style="color:#b91c1c">no solving branch survived this prune</span>') + "</div>";
+      L.kept.forEach(function(k){
+        const win = L.depth === 3 && rEq(k.c.vals[0], TARGET24);
+        board += '<span class="chip ' + (win ? "win" : "keep") + '">' + escapeHtml(k.c.move) + " &rarr; [" + escapeHtml(leftStr(k.c)) + "] " +
+          escapeHtml(verdictFor(k.score, S.mode)) + "</span>";
+      });
+      L.cut.slice(0, 10).forEach(function(k){
+        board += '<span class="chip cut">' + escapeHtml(k.c.move) + "</span>";
+      });
+      if (L.cut.length > 10) board += '<span class="chip cut">+' + (L.cut.length - 10) + " more pruned</span>";
+      board += "</div>";
+    });
+    el("totBoard").innerHTML = board;
+
+    el("totVerdict").innerHTML = tot.solved
+      ? callout("good", "Beam search reached <span class=\"mono\">" + escapeHtml(tot.answer) + "</span>. The bill: <b>" + fmtN(tot.calls) +
+        "</b> LLM calls and <b>" + fmtN(totCost.tokens) + "</b> prompt tokens, with the largest single prompt at only <b>" + totCost.biggestPrompt +
+        "</b> tokens. That last number is the point — ToT prompts are small, there are just an enormous number of them.")
+      : callout("bad", "Beam search did not reach 24 at beam " + S.beam + " under the <b>" + S.mode + "</b> evaluator, and it still spent <b>" +
+        fmtN(tot.calls) + "</b> calls and <b>" + fmtN(totCost.tokens) + "</b> prompt tokens finding that out. Search you pay for per node costs the same whether it succeeds or not.");
+
+    // ----- AoT -----
+    el("aotStats").innerHTML = '<table class="sb"><tbody><tr>' +
+      "<td>branching <b>" + S.branch + "</b></td>" +
+      "<td>nodes visited <b>" + tc.visited + "</b></td>" +
+      "<td>moves tried <b>" + tc.tries + "</b></td>" +
+      '<td>dead ends <span class="num ' + (tc.deads ? "mid" : "ok") + '">' + tc.deads + "</span></td>" +
+      '<td>backtracks <span class="num ' + (tc.backs ? "mid" : "ok") + '">' + tc.backs + "</span></td>" +
+      '<td>prompt tokens <span class="num ok">' + fmtN(fullTok) + "</span></td>" +
+      "<td>calls <span class=\"num ok\">1</span></td>" +
+      "</tr></tbody></table>";
+    el("aotBox").innerHTML = colorize(full);
+
+    let av = "";
+    if (S.mode === "oracle"){
+      av = callout("warn", "<b>The evaluator is a perfect oracle, so this transcript has " + tc.deads + " dead ends and " + tc.backs +
+        " backtracks.</b> A transcript with nothing to backtrack from is not an algorithm demonstration — it is a lucky straight line, and a model imitating it learns to <em>emit an answer</em>, not to search. This is the single most common way an AoT prompt gets built wrong. Switch the evaluator to <b>heuristic</b> and watch the failures appear.");
+    } else if (tc.backs === 0){
+      av = callout("warn", "<b>This run happened to find the answer without a single backtrack</b> (" + tc.deads + " dead ends, " + tc.backs +
+        " backtracks). It is a valid search trace but a poor <em>exemplar</em>: there is no failure in it for the model to imitate. Change the hand or lower the branching limit until the transcript actually has to recover from something.");
+    } else {
+      av = callout("good", "<b>" + tc.backs + " explicit backtracks and " + tc.deads + " dead ends</b> in one prompt of " + fmtN(fullTok) +
+        " tokens. That is the payload: the model is not being shown an answer, it is being shown the shape of a search — try, fail, say so, return to the last open choice, try the next one.");
+    }
+    el("aotVerdict").innerHTML = av;
+
+    // ----- contrast -----
+    el("trajFull").innerHTML = colorize(full);
+    el("trajPruned").innerHTML = colorize(pruned);
+    const saved = fullTok - prunedTok;
+    const savedPct = fullTok ? (100 * saved / fullTok) : 0;
+    el("trajStats").innerHTML = '<table class="sb"><tbody>' +
+      '<tr><th>serialisation</th><th>tokens</th><th>dead ends</th><th>backtracks</th><th>what it demonstrates</th></tr>' +
+      '<tr><td>with failures</td><td class="num mid">' + fmtN(fullTok) + '</td><td>' + tc.deads + "</td><td>" + tc.backs +
+      '</td><td class="wrap">a procedure: try, detect failure, backtrack, continue</td></tr>' +
+      '<tr><td>failures deleted</td><td class="num ok">' + fmtN(prunedTok) + "</td><td>0</td><td>0</td>" +
+      '<td class="wrap">a result: three moves and an answer, with no visible reason for any of them</td></tr>' +
+      "</tbody></table>" +
+      callout(saved > 0 ? "warn" : "info", "Deleting the failures saves <b>" + fmtN(saved) + " tokens (" + savedPct.toFixed(0) +
+      "%)</b> of this prompt, and that saving is exactly the trap. The cheaper prompt is few-shot prompting wearing an algorithm&#39;s clothes: it shows <em>what</em> the search concluded and never <em>how</em> it got there, so nothing in it teaches recovery from a wrong first move. AoT&#39;s whole claim is that the dead ends are the instruction.");
+
+    // ----- charts -----
+    const cumPts = sweep.points.map(function(p){ return { x: p.k, y: p.tokens }; });
+    el("chartCross").innerHTML = lineChart({
+      series: [{ name: "AoT prompt, cumulative", color: "#8b5cf6", pts: cumPts }],
+      hline: S.budget, hlabel: "budget " + fmtN(S.budget), marker: sweep.crossover,
+      xlab: "exemplar trajectories in the one prompt"
+    });
+    const atK = sweep.points[Math.min(S.ex, sweep.points.length) - 1];
+    el("crossNote").innerHTML = (sweep.crossover === null
+      ? callout("good", "At branching limit <b>" + S.branch + "</b>, verbosity <b>" + VERBS[S.verb][1] + "</b> and a budget of <b>" + fmtN(S.budget) +
+        "</b> tokens, <b>no crossover occurs within 10 exemplars</b> — the tenth cumulative prompt still measures " + fmtN(sweep.points[9].tokens) +
+        " tokens. Raise the branching limit or the verbosity, or lower the budget, and the marker will appear.")
+      : callout("bad", "<b>Crossover at exemplar " + sweep.crossover + ".</b> With branching limit " + S.branch + " and verbosity " + VERBS[S.verb][1] +
+        ", the cumulative AoT prompt passes your " + fmtN(S.budget) + "-token budget at the " + sweep.crossover +
+        (sweep.crossover === 1 ? "st" : sweep.crossover === 2 ? "nd" : sweep.crossover === 3 ? "rd" : "th") +
+        " trajectory (" + fmtN(sweep.points[sweep.crossover - 1].tokens) + " tokens). This is the real ceiling on AoT and it is why the technique lives or dies on how aggressively you bound the demonstrated search.")) +
+      '<div class="text-[11px] text-slate-500 mt-2">Your current setting of <b>' + S.ex + '</b> exemplar' + (S.ex === 1 ? "" : "s") + " measures <b>" +
+      fmtN(atK.tokens) + "</b> tokens, which " + (atK.tokens > S.budget ? "<b>exceeds</b>" : "fits inside") + " the budget. Hands used for the sweep are drawn from the current seed, so &ldquo;🎲 Random hand&rdquo; also redraws the sweep.</div>";
+
+    el("chartBeam").innerHTML = lineChart({
+      series: [
+        { name: "ToT total prompt tokens", color: "#e11d48", pts: beamSweep.rows.map(function(r){ return { x: r.beam, y: r.totTokens }; }) },
+        { name: "AoT single prompt", color: "#8b5cf6", pts: beamSweep.rows.map(function(r){ return { x: r.beam, y: r.aotTokens }; }) }
+      ],
+      xlab: "ToT beam width b"
+    });
+    const b1 = beamSweep.rows[0], bMax = beamSweep.rows[beamSweep.rows.length - 1];
+    el("beamNote").innerHTML = callout("info", "Measured, not assumed: at beam 1 the ToT baseline sends <b>" + fmtN(b1.totTokens) +
+      "</b> prompt tokens over <b>" + fmtN(b1.totCalls) + "</b> calls; at beam 10 it sends <b>" + fmtN(bMax.totTokens) + "</b> over <b>" +
+      fmtN(bMax.totCalls) + "</b>. The AoT line is flat at <b>" + fmtN(beamSweep.aotTokens) +
+      "</b> because beam width is not one of its parameters — its size is set by the branching limit and the verbosity instead. The two curves never cross in this range on this hand, which is the honest finding: for Game of 24, in-context search is cheaper in total tokens by a wide margin. What it is <em>not</em> is cheaper in <em>single-prompt</em> size, and that is the constraint that actually binds.") +
+      '<div class="text-[11px] text-slate-500 mt-2">ToT solved the hand at beam ' +
+      (beamSweep.rows.filter(function(r){ return r.totSolved; }).length ? beamSweep.rows.filter(function(r){ return r.totSolved; })[0].beam : "&mdash; (no beam in 1..10)") +
+      " and above; the AoT bounded walk " + (beamSweep.aotSolved ? "also solved it" : "did not solve it") + " at branching limit " + S.branch + ".</div>";
+
+    // ----- family table -----
+    el("famTable").innerHTML =
+      "<thead><tr><th>technique</th><th>where the search runs</th><th>cost per problem</th><th>what one exemplar shows</th></tr></thead><tbody>" +
+      '<tr><td>Tree-of-Thoughts <span class="text-slate-400">(Day 6)</span></td><td class="wrap">outside the model, in your loop</td><td class="wrap">one call per generated and evaluated node</td><td class="wrap">a single next step</td></tr>' +
+      '<tr><td>Graph-of-Thoughts <span class="text-slate-400">(Day 21)</span></td><td class="wrap">outside, on a DAG that also merges and refines</td><td class="wrap">one call per node plus one per merge</td><td class="wrap">a single graph operation</td></tr>' +
+      '<tr><td>Skeleton-of-Thought <span class="text-slate-400">(Day 22)</span></td><td class="wrap">nowhere &mdash; there is no search</td><td class="wrap">one outline call plus one per bullet, in parallel</td><td class="wrap">an outline and one expansion</td></tr>' +
+      '<tr><td>Thread-of-Thought <span class="text-slate-400">(Day 45)</span></td><td class="wrap">nowhere &mdash; one linear pass over long context</td><td class="wrap">one call</td><td class="wrap">summarise-as-you-go over chunks</td></tr>' +
+      '<tr><td>Buffer-of-Thoughts <span class="text-slate-400">(Day 49)</span></td><td class="wrap">outside, in a retrieval store of reusable templates</td><td class="wrap">one retrieval plus one or two calls</td><td class="wrap">a distilled thought template</td></tr>' +
+      '<tr style="background:#faf5ff"><td><b>Algorithm of Thoughts</b> <span class="text-slate-400">(today)</span></td><td class="wrap"><b>inside a single generation</b></td><td class="wrap"><b>one call, one large prompt</b></td><td class="wrap"><b>a whole search transcript, dead ends and backtracks included</b></td></tr>' +
+      "</tbody></table>";
+
+    // ----- honesty -----
+    el("honest").innerHTML = callout("warn",
+      "<b>What this page proves and what it does not.</b> Everything numbered above is computed here, in your browser, from the hand you chose: the exhaustive solver, the exact-versus-float audit, every node count, every call count, both trajectory strings and every token measurement. What is <em>simulated</em> is the model: there is no LLM on this page, so the evaluator is a hand-written stand-in and the searches are run by JavaScript rather than by generation. That means this page can honestly tell you what a search <em>costs</em>, and it cannot tell you how accurately a model would <em>reproduce</em> it. For that, Sel et al. (2023), <em>Algorithm of Thoughts: Enhancing Exploration of Ideas in Large Language Models</em>, report their own measured accuracies against standard and Tree-of-Thoughts baselines on Game of 24 and mini crosswords, using a small number of in-context trajectories rather than a per-node query loop. Those numbers are theirs, they were measured on models, and they are deliberately kept out of every figure above. The tokenizer here is a documented approximation &mdash; newline is one token, letter runs split every 4 characters, digit runs every 3, every other character counts as one &mdash; so use it for <em>ratios and crossovers</em>, and re-measure with your provider&#39;s tokenizer before you commit to an absolute budget.");
+  }
+
+  syncCards();
+  render();
+
+  // ============================================================
+  // UNDERSTAND - step engine
+  // ============================================================
+  const STEPS = [
+   { title:"1. Tree-of-Thoughts works, and it bills you per node", why:"Start with what is right about ToT, because AoT is not a refutation of it. ToT takes a problem that needs search, makes the search explicit, and gets real gains: generate candidate next steps, ask the model to score each one, keep the best few, repeat. The catch is architectural rather than conceptual. Every one of those operations is a separate round trip. On Game of 24 the reference setup issues one proposal call per state it expands and several value calls per candidate it scores, and with a beam of five that is hundreds of calls for a single four-card hand. You are paying an API round trip for each individual node of a tree that your own CPU could walk in microseconds. The model is not being used as a reasoner there so much as a very expensive branch generator and a very expensive comparator, called once per node, forever. In LOOK the counter is wired straight into the loop, so moving the beam slider moves a real number rather than an estimate.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">expand &rarr; <b>1 call</b><br>score each child &rarr; <b>1 call each</b><br>prune &rarr; repeat<br><br><b>hundreds of round trips per puzzle</b></div>',
+     code:`// what ToT actually costs, per problem:
+calls = expandedStates              // one propose call each
+      + evaluatedCandidates * votes // one value call per candidate, per vote
+
+// beam 5 on one hand of Game of 24, counted on this page:
+// 11 propose + 156 candidates x 3 votes = 479 round trips.` },
+
+   { title:"2. Game of 24 is the paper's own benchmark, and it is tiny", why:"The whole search space for four cards is a few thousand complete expressions, which is nothing. That is exactly why it is such a good benchmark for this argument: the difficulty is not the size of the space, it is that the model has to explore it, and exploring means being willing to try something, discover it fails, and go back. A single forward pass of chain-of-thought is terrible at this because CoT commits — it writes a first step and then rationalises forward from it, with no syntax for undoing. ToT solves the commitment problem by moving the branching out into your control flow. AoT asks whether the model can be taught the branching itself, in one pass, by being shown what branching looks like. The task is small enough that you can hold the ground truth in memory and grade every claim, which is why the page enumerates it exhaustively before doing anything else.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">4 cards &rarr; ~7,000 complete expressions<br>3 operations, 6 moves per pair<br><br><b>small space, hard exploration</b></div>',
+     code:`// the state is just a multiset of values.
+[3, 3, 8, 8]  ->  combine two, replace with the result
+[3, 8, 8/3]   ->  three values left
+[8, 1/3]      ->  two values left
+[24]          ->  one value. is it 24?` },
+
+   { title:"3. Exact arithmetic, before anything else", why:"This step has nothing to do with prompting and everything to do with not lying to yourself. The canonical hard hand is 3 3 8 8, whose only solution is 8/(3-8/3). In exact arithmetic 8/3 is a rational, 3 minus it is 1/3, and 8 divided by 1/3 is exactly 24. In IEEE-754 doubles, 8/3 is not representable, the subtraction loses precision, and the final division lands a handful of ulps away from 24 — so a solver written with === 24 silently declares the hand unsolvable, and a solver written with a tolerance opens the door to expressions that are near 24 without being 24. Either way your ground truth is wrong, and every downstream claim about which search found the answer is wrong with it. Two integers and a gcd fixes it permanently. The LOOK tab runs both evaluations over every complete expression and prints how many correct solutions the float version discards, live, for whichever hand you pick.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">8 / (3 - 8/3)<br><br>exact: <span style="color:#15803d">24</span><br>float: <span style="color:#b91c1c">23.999999999999989</span><br><br><b>=== 24 rejects a correct answer</b></div>',
+     code:`// numerator and denominator, reduced. Never a double.
+const rDiv = (a,b) => b.n === 0 ? null : rat(a.n*b.d, a.d*b.n);
+const rEq  = (a,b) => a.n === b.n && a.d === b.d;
+
+// 3 3 8 8 : the only solution, exactly
+// 8/3 -> {n:8,d:3};  3 - 8/3 -> {n:1,d:3};  8 / (1/3) -> {n:24,d:1}` },
+
+   { title:"4. What AoT actually changes: the exemplar becomes a transcript", why:"Here is the entire technique in one sentence — instead of showing the model a worked solution, show it a worked search. Ordinary few-shot prompting puts a problem and its answer in the context and hopes the mapping generalises. Chain-of-thought puts a problem, a linear derivation, and an answer. AoT puts a problem and the whole trajectory a searcher walked through it: the branch it tried first, what that branch produced, the moment it became clear that branch could not reach the target, the explicit return to the last open choice, and the next branch. The model is being given an algorithm in the only format it can consume, which is text it can imitate. And because the trajectory is in the prompt rather than in your control flow, the search happens inside one generation. That is the trade in full: you stop paying per node and start paying per token of demonstrated procedure.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">few-shot: problem &rarr; <b>answer</b><br>CoT: problem &rarr; <b>derivation</b> &rarr; answer<br>AoT: problem &rarr; <b>search transcript</b> &rarr; answer<br><br><b>the exemplar teaches the algorithm</b></div>',
+     code:`[3 3 8 8]
+  try 8 / 3 = 8/3        -> [3 8 8/3]
+    try 3 - 8/3 = 1/3    -> [8 1/3]
+      8 / (1/3) = 24     SOLVED
+Answer: 8/(3-8/3) = 24
+
+// one prompt. one generation. the search is IN the text.` },
+
+   { title:"5. The dead ends are the instruction, not the noise", why:"This is the step that separates a working AoT prompt from a very expensive few-shot prompt, and it is the one people get wrong, because dead ends look like waste. Take a trajectory, delete every failed branch, and what remains is a clean three-move path to the answer — shorter, cheaper, and completely different in what it demonstrates. It shows the model that the right answer appears immediately, which is a licence to guess. Keep the failures and you are showing something the model cannot get anywhere else: what it looks like to be wrong and recover. A branch that produces 40 when you needed 24, the sentence that names it as dead, and the return to the previous choice point are a template for a behaviour, and it is the behaviour that transfers. The contrast panel in LOOK renders both serialisations of the same run with their token costs so you can see exactly what the cheaper prompt bought and exactly what it deleted.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">with failures &rarr; <b>&ldquo;search, notice, backtrack&rdquo;</b><br>failures deleted &rarr; <b>&ldquo;produce the answer&rdquo;</b><br><br>same run &middot; same answer<br><b>opposite lesson</b></div>',
+     code:`// KEEP THIS:
+    try 3 + 3 = 6        -> [6 8 8]
+      try 6 * 8 = 48     -> [48 8]
+        dead: one number left and it is 40, not 24
+      backtrack from 6 * 8
+    backtrack from 3 + 3
+
+// deleting it saves tokens and deletes the technique.` },
+
+   { title:"6. Backtracking has to be a literal, syntactic move", why:"It is not enough for the trajectory to happen to contain failures; the recovery has to be something the model can copy at the token level. That means a fixed marker on every dead end, a fixed marker on every return, and enough indentation that the depth of the search is visible in the shape of the text. If your transcript says 'that did not work, let me think about this differently', a model imitating it will produce fluent hedging with no state change behind it. If your transcript says 'dead: one number left and it is 40, not 24' followed by 'backtrack from 6 * 8' and then the next sibling at the same indentation, the imitation has somewhere concrete to land. The structure is doing the work that a stack does in a real depth-first search, and the model is being asked to maintain that stack in its own output. Give it a syntax and it can; give it prose and it will drift.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">try &nbsp;&rarr; enter a branch<br>dead &rarr; the branch cannot reach 24<br>backtrack &rarr; return to the open choice<br><br><b>indentation is the stack</b></div>',
+     code:`// three event kinds, one marker each, indentation = depth.
+trace.push({ k:"try",  depth, move });   //   try 8 / 3 = 8/3
+trace.push({ k:"dead", depth, why  });   //     dead: ... is 40, not 24
+trace.push({ k:"back", depth, move });   //   backtrack from 8 / 3
+
+// serialise with two spaces per level. The model copies the shape.` },
+
+   { title:"7. AoT demonstrates a BOUNDED search, run to completion", why:"An exhaustive Game-of-24 search is thousands of nodes and will not fit in any context window, so the exemplar cannot be an exhaustive search. What AoT demonstrates instead is a search with a small branching limit — consider the few most promising children at each node, follow them depth-first, backtrack on failure — recorded completely. The distinction matters twice. It is what keeps the prompt finite, and it is what makes the demonstration honest, because the model is being shown a procedure it can actually reproduce within its own generation budget. It also means AoT can genuinely miss solutions that exist, which the LOOK tab will show you the moment the branching limit is low and the evaluator is weak: the exact solver reports solutions, the bounded walk reports none. That is not a bug in the page, it is the cost of the technique, and any honest write-up has to print it.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">branching limit 3, depth 3<br>at most 3 + 9 + 27 nodes<br><br><b>a narrow search, shown in full</b><br>not a full search, shown narrowly</div>',
+     code:`// bound the branching, then record everything.
+const kids = rank(expandState(st).children, mode).slice(0, branch);
+//                                                  ^^^^^^^^^^^^^^
+// branch = 3 keeps the prompt finite.
+// branch = 3 also means a solution ranked 4th is never seen.
+// Print that. Do not hide it behind an average.` },
+
+   { title:"8. One generation instead of hundreds of calls, and what that buys", why:"Once the search is in the prompt, the entire problem is one forward pass, and three things change at once. Latency collapses, because a hundred sequential round trips become one. Cost in total tokens usually collapses too, because ToT re-sends its few-shot header on every single one of those hundreds of calls while AoT sends its header once — the beam-width chart in LOOK measures both sides and the gap is large. And the failure mode changes shape: ToT fails by pruning, visibly, at a node you can inspect, whereas AoT fails inside a generation you cannot step through. What you lose is the ability to intervene mid-search. In ToT you can swap the evaluator, inject a constraint, or stop early; in AoT the algorithm is frozen into the exemplar at prompt-construction time. Choose deliberately, and measure the token totals on your own task rather than assuming the direction of the inequality.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ToT: <b>N</b> small prompts &times; <b>N</b> calls<br>AoT: <b>1</b> large prompt &times; <b>1</b> call<br><br>latency &darr; &nbsp; total tokens &darr;<br><b>mid-search control &darr; too</b></div>',
+     code:`// the same header, N times, versus once.
+// ToT:  a 178-token propose header or a 101-token value header rides
+//       along on every single one of ~479 calls
+// AoT:  an 85-token header + one trajectory, sent exactly once
+
+// measure it, do not assume it:
+totPromptCost(cards, {beam:5}).tokens   // sum over every real prompt
+countTokens(aotTrajectory(run, verbosity, {}))` },
+
+   { title:"9. The context budget is the real ceiling — find your crossover", why:"AoT does not remove the cost of search, it relocates it from calls into tokens, and tokens have a hard ceiling that calls do not. Three knobs push you into it and they interact multiplicatively: the branching limit decides how many siblings appear at each node, the verbosity decides how much text each node costs, and the number of exemplar trajectories multiplies the whole thing. Intuition is genuinely useless here, so sweep it. The crossover chart in LOOK builds real trajectories for a sequence of hands, tokenizes each one, accumulates, and marks the first exemplar count that passes the budget you set. Turn the branching limit to 6 and the verbosity to full and watch the marker walk left until a single trajectory no longer fits in 2,000 tokens. When it reports no crossover within ten, it says so rather than extrapolating a curve nobody measured.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">branch &times; verbosity &times; exemplars<br>&#8595;<br>one prompt, one hard limit<br><br><b>measure the crossover, never guess it</b></div>',
+     code:`// sweep until the budget breaks, and report null honestly.
+let cum = 0, crossover = null;
+hands.forEach((hand, i) => {
+  cum += countTokens(aotTrajectory(aotSearch(hand, branch, mode), verb, {}));
+  if (crossover === null && cum > budget) crossover = i + 1;
+});
+return { crossover };   // null means "never crossed within N"` },
+
+   { title:"10. Your evaluator becomes the evaluator the model imitates", why:"There is a subtle failure that only shows up once you build the pipeline. The trajectory you serialise is produced by whatever scoring function ranked the children during your search — and every judgement that function made appears in the prompt as a demonstrated judgement. If you rank with a perfect oracle, the transcript never takes a wrong turn, and the model learns 'the first thing you try is always right'. If you rank with something plausibly wrong, the transcript contains realistic mistakes and realistic recoveries, which is what you wanted to teach. This is why the strictness control on this page changes both searches at once and why the AoT panel calls out an oracle-generated transcript as a warning rather than a success. The evaluator is not a detail of your offline tooling; it is part of the prompt, indirectly, and it decides what behaviour the exemplar actually demonstrates.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">oracle ranking &rarr; 0 dead ends<br>&rarr; exemplar teaches <b>guessing</b><br><br>fallible ranking &rarr; real failures<br>&rarr; exemplar teaches <b>searching</b></div>',
+     code:`// the scorer is not offline tooling. It is IN the prompt.
+scoreState(vals, "oracle")     // perfect: transcript has no failures
+scoreState(vals, "heuristic")  // fallible: transcript has real recoveries
+
+// flip it and watch the dead-end counter in the AoT panel.` },
+
+   { title:"11. AoT is not the other -of-Thoughts techniques, and the difference is mechanical", why:"The family shares a naming convention and almost nothing else, so it is worth being precise. Tree-of-Thoughts searches a tree with your code driving one call per node. Graph-of-Thoughts generalises that to a DAG so partial results can merge and be refined, which adds operations and therefore adds calls. Skeleton-of-Thought is not a search at all — it produces an outline and then fills the bullets in parallel to cut latency. Thread-of-Thought is not a search either; it is a single linear pass that summarises as it goes, aimed at long chaotic contexts. Buffer-of-Thoughts moves the reuse outside the problem entirely, retrieving a distilled thought template from a store. Algorithm of Thoughts is the only one of the six whose defining move is to put the search itself, dead ends included, inside a single generation. If you can state where the search runs and what one exemplar contains, you can tell any two of them apart instantly.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">ToT / GoT &rarr; search in <b>your loop</b><br>SoT / ThoT &rarr; <b>no search</b><br>BoT &rarr; search reused from a <b>store</b><br><br>AoT &rarr; search <b>inside one generation</b></div>',
+     code:`// the one question that separates all six:
+//   WHERE does the branching happen?
+//     ToT, GoT  -> in your control flow, one call per node
+//     SoT, ThoT -> nowhere, there is no branching
+//     BoT       -> retrieved, not performed
+//     AoT       -> inside the model's own output` },
+
+   { title:"12. Measure before you claim — what this page proves and what it cannot", why:"Every comparative number on this page is produced by the page: the solver enumerates, the beam search counts its own nodes, the serialisers emit real strings, and the tokenizer measures them. That is deliberate, because the failure mode of a prompting write-up is to reason from a plausible story to a confident number and never check. But the same discipline requires stating the limit clearly: there is no language model here. The evaluator is a hand-written stand-in, the searches are run by JavaScript, and so the page can tell you honestly what a search costs while being unable to tell you how faithfully a model would reproduce it. The accuracy figures belong to Sel et al., they were measured against real models, and they are cited separately and kept out of every live figure. Adopt the same split in your own work — measure your costs yourself, cite accuracy to whoever actually measured it, and never let the two share an axis.",
+     concept:'<div class="bg-slate-100 p-4 rounded text-xs w-full text-center font-mono">computed here: <b>nodes, calls, tokens, solutions</b><br>simulated here: <b>the model</b><br>cited separately: <b>accuracy</b><br><br><b>never on the same axis</b></div>',
+     code:`// the honest split, in one comment block at the top of the page:
+//   REAL      exact solver, node counts, call counts, token counts
+//   SIMULATED the evaluator, and therefore the search quality
+//   CITED     Sel et al. 2023 accuracy vs standard and ToT baselines
+// Anything that mixes the three is marketing, not measurement.` }
+  ];
+
+  const stepsEl = document.getElementById("steps");
+  const prevB = document.getElementById("prev"), nextBtn = document.getElementById("next-btn"), autoB = document.getElementById("auto");
+  let curStep = 0;
+  STEPS.forEach(function(s, i){
+    const bn = document.createElement("button");
+    bn.className = "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    bn.innerHTML = '<div class="font-semibold">' + s.title + "</div>";
+    bn.onclick = function(){ show(i); };
+    stepsEl.appendChild(bn);
+  });
+  function show(i){
+    curStep = i;
+    const s = STEPS[i];
+    document.getElementById("concept").innerHTML = '<div class="fade-in w-full flex items-center justify-center">' + s.concept + "</div>";
+    document.getElementById("why").innerHTML = '<span class="fade-in inline-block">' + s.why + "</span>";
+    document.getElementById("code").textContent = s.code;
+    stepsEl.querySelectorAll("button").forEach(function(bn, idx){
+      bn.className = (idx === i)
+        ? "w-full text-left p-3 rounded-lg border-2 border-violet-500 bg-violet-50 text-sm font-semibold"
+        : "w-full text-left p-3 rounded-lg border border-slate-200 bg-white hover:border-violet-400 text-sm";
+    });
+  }
+  prevB.onclick = function(){ show(Math.max(0, curStep - 1)); };
+  nextBtn.onclick = function(){ show(Math.min(STEPS.length - 1, curStep + 1)); };
+  let tm = null;
+  autoB.onclick = function(){
+    if (tm){ clearInterval(tm); tm = null; autoB.textContent = "▶ Auto-play"; return; }
+    autoB.textContent = "⏸ Pause"; show(0);
+    tm = setInterval(function(){
+      if (curStep >= STEPS.length - 1){ clearInterval(tm); tm = null; autoB.textContent = "▶ Replay"; return; }
+      show(curStep + 1);
+    }, 3200);
+  };
+  show(0);
+}
+
+// ---- bootstrap (browser only) ----
+if (typeof document !== "undefined") mount();
+</script>
+</body>
+</html>
