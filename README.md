@@ -65,6 +65,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 
 - [PromptFromZero · Day 61 — Chain-of-Symbol](https://dev48v.infy.uk/prompt/day61-chain-of-symbol.html) — `day61-chain-of-symbol.html`
 - [PromptFromZero · Day 62 — Algorithm of Thoughts](https://dev48v.infy.uk/prompt/day62-algorithm-of-thoughts.html) — `day62-algorithm-of-thoughts.html`
+- [PromptFromZero · Day 63 — Chain-of-Agents (CoA)](https://dev48v.infy.uk/prompt/day63-chain-of-agents.html) — `day63-chain-of-agents.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

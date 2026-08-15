@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 63 — Chain-of-Agents (CoA)</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .chunk { border:1px solid #e2e8f0; border-radius:8px; padding:8px; font-size:12px; }
+  .hit { background:#dcfce7; border-color:#86efac; }
+  .lost { background:#fee2e2; border-color:#fca5a5; }
+  .bar { height:10px; border-radius:5px; background:#e2e8f0; overflow:hidden; }
+  .bar > i { display:block; height:100%; background:#4f46e5; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-indigo-700 mb-2">PROMPTFROMZERO · DAY 63</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🔗 Chain-of-Agents (Zhang et al., 2024) — the long-context pattern that does
+      <strong>not</strong> start by asking for a bigger context window. Split the document into
+      chunks that each fit comfortably; give chunk 1 to a worker; hand its
+      <strong>communication unit</strong> — a short running summary, not the text — to the worker
+      reading chunk 2; repeat; then a manager answers from the final unit alone. The
+      interesting question is not whether that works, it is
+      <strong>what it costs and where it breaks</strong>, and both are computable without an LLM.
+      This page implements the real chunker, a real token accountant, a
+      <strong>needle-in-a-haystack harness</strong> that plants a fact at a known position, and
+      three baselines to compare against — truncation, RAG-style top-k retrieval, and
+      stuffing the whole thing in. It <strong>simulates the pipeline, never the model</strong>:
+      every number below is arithmetic over real text, and the paper's accuracy figures are cited
+      separately and never mixed into the live counters.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔍 RUN IT</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<!-- ============================== LOOK ============================== -->
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-4 gap-3 mb-4">
+          <label class="text-sm">Document length (words)
+            <input id="docLen" type="range" min="800" max="20000" step="200" value="6000" class="w-full">
+            <span id="docLenV" class="font-bold tabular-nums">6000</span>
+          </label>
+          <label class="text-sm">Worker window (tokens)
+            <input id="win" type="range" min="256" max="4096" step="128" value="1024" class="w-full">
+            <span id="winV" class="font-bold tabular-nums">1024</span>
+          </label>
+          <label class="text-sm">Comm. unit budget (tokens)
+            <input id="cu" type="range" min="32" max="512" step="16" value="128" class="w-full">
+            <span id="cuV" class="font-bold tabular-nums">128</span>
+          </label>
+          <label class="text-sm">Needle position (%)
+            <input id="pos" type="range" min="0" max="100" value="50" class="w-full">
+            <span id="posV" class="font-bold tabular-nums">50</span>
+          </label>
+        </div>
+        <p class="text-sm text-slate-600">
+          A fact is planted at the chosen position: <em>"the archive key is
+          <span class="font-mono font-bold" id="needleKey">—</span>"</em>. The pipeline below is real:
+          the chunker really splits, the token counter really counts, and the propagation really
+          drops information when the communication unit runs out of budget.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">CHUNKS</p>
+          <p class="text-3xl font-black tabular-nums" id="nChunks">—</p>
+          <p class="text-xs text-slate-500">= worker calls. One per chunk, strictly sequential.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">TOKENS READ, CoA</p>
+          <p class="text-3xl font-black tabular-nums" id="tCoA">—</p>
+          <p class="text-xs text-slate-500">Sum over workers of chunk + incoming unit + instructions.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">TOKENS READ, STUFFED</p>
+          <p class="text-3xl font-black tabular-nums" id="tStuff">—</p>
+          <p class="text-xs text-slate-500">One call, whole document — if it even fits.</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">PEAK CONTEXT</p>
+          <p class="text-3xl font-black tabular-nums" id="peak">—</p>
+          <p class="text-xs text-slate-500">The number that decides whether it runs at all.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">THE CHAIN, CHUNK BY CHUNK</p>
+        <div id="chain" class="grid sm:grid-cols-2 lg:grid-cols-4 gap-2"></div>
+        <p class="text-xs text-slate-500 mt-3">
+          Green = the needle is still present in the unit leaving this worker. Red = it has been
+          squeezed out. The unit is a fixed budget, so every hop is a chance to lose something —
+          which is the honest weakness of the pattern, not a footnote.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">FOUR STRATEGIES, SAME DOCUMENT</p>
+        <table class="w-full text-sm">
+          <thead class="text-xs uppercase text-slate-500 text-left">
+            <tr><th class="py-1">strategy</th><th>calls</th><th>tokens read</th><th>peak context</th><th>found the needle</th></tr>
+          </thead>
+          <tbody id="cmp" class="tabular-nums"></tbody>
+        </table>
+        <p class="text-xs text-slate-500 mt-3">
+          "Found" is decided by the harness, not by a model: the needle is a known string, and the
+          question is only whether the strategy's final context still physically contains it.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">SWEEP EVERY POSITION</p>
+        <p class="text-sm text-slate-600 mb-3">
+          One position tells you nothing. This plants the needle at every 2% of the document and
+          reports survival for each strategy — the same shape as a needle-in-a-haystack plot, except
+          computed here rather than quoted.
+        </p>
+        <button id="sweepBtn" class="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold">Sweep 51 positions</button>
+        <pre id="sweepOut" class="mt-3 hidden"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================== UNDERSTAND ============================== -->
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Read it all, in pieces, without ever holding it all</h2>
+
+      <p>There are only three honest answers to "the document does not fit".</p>
+      <ol class="list-decimal ml-6 space-y-1">
+        <li><strong>Truncate</strong> — read the first N tokens. Cheap, and wrong whenever the answer is not at the front.</li>
+        <li><strong>Retrieve</strong> — embed, search, read the top-k chunks. Cheap and usually right, <em>if</em> the question is answerable from a few local passages.</li>
+        <li><strong>Read everything</strong> — which is what Chain-of-Agents does, one window at a time.</li>
+      </ol>
+
+      <p>CoA is worth knowing precisely because of that third case. Retrieval is a filter, and a
+      filter is exactly wrong for questions like "how many times does the narrator change their
+      mind", "summarise the argument", "which clause contradicts clause 14" — questions whose answer
+      is <em>distributed</em>. There is no top-k that contains it.</p>
+
+      <div class="bg-slate-100 rounded-xl p-4">
+        <p class="font-bold mb-1">The pattern in one line</p>
+        <p class="text-sm">worker(chunk₁, ∅) → u₁ → worker(chunk₂, u₁) → u₂ → … → uₙ → manager(uₙ, question)</p>
+      </div>
+
+      <h3 class="text-xl font-bold">The communication unit is the whole design</h3>
+      <p>Each worker passes forward a short unit — not the chunk, and not a generic summary. It is
+      "what someone reading the rest of this document needs to know from my part, given the
+      question". That conditioning matters: an unconditioned summary optimises for the wrong thing
+      and drops the one number the question was about.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm"><strong>The unit is a fixed budget, and that is a lossy channel.</strong>
+        Every hop is a chance to drop a detail. The chain view on the RUN IT tab colours each hop by
+        whether the planted fact survived it — and with a small unit budget and many chunks, you can
+        watch it disappear. Anyone who tells you CoA is lossless has not run the sweep.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">What it costs</h3>
+      <p>CoA reads <em>more</em> total tokens than stuffing, not fewer — every worker re-reads the
+      instructions and the incoming unit on top of its chunk. What collapses is <strong>peak
+      context</strong>: the largest single request. That is the number that decides whether the job
+      runs at all on a given model, and it is why the pattern exists.</p>
+      <p class="text-sm text-slate-600">Both numbers are on the RUN IT tab, side by side, computed
+      from the actual chunking rather than from a formula.</p>
+
+      <h3 class="text-xl font-bold">Sequential, and therefore slow</h3>
+      <p>Worker <em>i</em> cannot start until worker <em>i−1</em> finishes, because it needs
+      <em>u</em><sub>i−1</sub>. So latency is O(chunks) round-trips, where map-reduce over the same
+      chunks is O(1) depth. That is the real trade: CoA keeps a <em>thread</em> of understanding
+      across the document, and pays for it in wall-clock. If your question is genuinely per-chunk,
+      map-reduce is both cheaper and faster, and you should use it.</p>
+
+      <h3 class="text-xl font-bold">What this page does not do</h3>
+      <p>It does not call a model, and it does not pretend to. Every counter here is arithmetic over
+      real text: real splitting, real token counting, real propagation with a real budget. The
+      paper's reported accuracy gains over RAG and long-context baselines are a separate claim, made
+      with real models on real datasets, and mixing them into these live numbers would make both
+      meaningless.</p>
+
+    </div>
+  </div>
+</section>
+
+<!-- ============================== BUILD ============================== -->
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 Build it yourself</h2>
+      <p>Build the accounting before the prompting. Every step below is checkable with no model in
+      the loop, which means you can know what the pattern costs before you spend anything.</p>
+
+      <h3 class="text-xl font-bold">1. A token counter you control</h3>
+      <p>You do not need a real BPE to make these decisions, but you do need to stop using
+      "words × 1.3". Count something stable and state what it is.</p>
+      <pre>// deliberately simple and DECLARED: ~4 chars per token, whitespace-aware.
+function countTokens(s){
+  if (!s) return 0;
+  return Math.max(1, Math.ceil(s.length / 4));
+}</pre>
+      <p>State the assumption on screen. A number whose definition you cannot say out loud is not a
+      measurement.</p>
+
+      <h3 class="text-xl font-bold">2. Chunk on boundaries, not on offsets</h3>
+      <pre>function chunk(text, budgetTokens){
+  const sents = text.split(/(?&lt;=[.!?])\s+/);
+  const out = []; let cur = "", curT = 0;
+  for (const s of sents){
+    const t = countTokens(s);
+    if (curT + t &gt; budgetTokens &amp;&amp; cur){ out.push(cur.trim()); cur = ""; curT = 0; }
+    cur += s + " "; curT += t;
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}</pre>
+      <p>Splitting mid-sentence is how the needle gets cut in half and neither worker reports it.</p>
+
+      <h3 class="text-xl font-bold">3. The worker, as a pure function over text</h3>
+      <p>The real worker calls a model. The <em>testable</em> worker is the part around it: what goes
+      in, what budget comes out, and what happens when the budget binds.</p>
+      <pre>function worker(chunkText, incomingUnit, question, unitBudget){
+  // a real implementation prompts a model here. What we can test without one is
+  // the CHANNEL: carry forward what matters, under a hard budget.
+  const carried = selectSalient(incomingUnit + " " + chunkText, question, unitBudget);
+  return carried;                       // this is u_i
+}</pre>
+
+      <h3 class="text-xl font-bold">4. Make the loss visible, do not hide it</h3>
+      <p>The instinct is to write the unit so nothing is ever dropped. That is not possible under a
+      fixed budget, and pretending otherwise produces a demo that lies. Instead, measure it: plant a
+      known fact and check whether it survives to the end.</p>
+      <pre>const needle = "the archive key is " + key;
+const doc = plant(haystack, needle, positionPercent);
+
+let unit = "";
+for (const c of chunk(doc, windowTokens)) unit = worker(c, unit, question, unitBudget);
+
+const survived = unit.includes(key);    // no model needed to decide this</pre>
+
+      <h3 class="text-xl font-bold">5. Build the baselines before you claim a win</h3>
+      <pre>const strategies = {
+  stuff:    doc =&gt; doc,                                  // needs the whole window
+  truncate: doc =&gt; head(doc, windowTokens),
+  topk:     doc =&gt; retrieve(chunk(doc, windowTokens), question, k).join(" "),
+  coa:      doc =&gt; runChain(doc)
+};</pre>
+      <p>Then report calls, total tokens, <strong>peak</strong> tokens and survival for each. The
+      table on the RUN IT tab is exactly this, run live.</p>
+
+      <h3 class="text-xl font-bold">6. Sweep the position — one sample is not a result</h3>
+      <p>Needle-in-a-haystack plots exist because performance depends heavily on <em>where</em> the
+      fact is. Truncation looks perfect at 0% and fails everywhere else. Sweep every position and
+      report the curve, not a single number.</p>
+
+      <h3 class="text-xl font-bold">🎉 Day 63 of PromptFromZero done.</h3>
+      <p class="text-slate-600">Tomorrow: self-refine with a stopping rule — iterating a draft, and
+      knowing when to stop rather than looping forever.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Pure, DOM-free Chain-of-Agents accounting. No model is called anywhere; every
+// number is arithmetic over real text so the node harness can check it.
+const INSTRUCTION_TOKENS = 60;   // the per-worker prompt overhead, declared not guessed
+
+function countTokens(s){
+  if (!s) return 0;
+  return Math.max(1, Math.ceil(String(s).length / 4));
+}
+
+function chunkText(text, budgetTokens){
+  const sents = String(text).split(/(?<=[.!?])\s+/);
+  const out = []; let cur = "";
+  for (let i = 0; i < sents.length; i++){
+    const s = sents[i];
+    // Measure the JOINED candidate, never a running sum of per-sentence estimates.
+    // countTokens rounds up per call, so a sum of estimates drifts away from the
+    // real cost of the assembled string once the separators are counted - and the
+    // chunk quietly ends up over budget.
+    const candidate = cur ? cur + " " + s : s;
+    if (cur && countTokens(candidate) > budgetTokens){
+      out.push(cur.trim());
+      cur = s;
+    } else {
+      cur = candidate;
+    }
+  }
+  if (cur.trim()) out.push(cur.trim());
+  return out;
+}
+
+// The communication unit: a hard-budgeted carry-forward.
+//
+// Two things here are the real behaviour rather than a stand-in:
+//  (1) the budget is enforced on the STRING THAT IS ACTUALLY RETURNED, not on a
+//      running sum of per-sentence estimates - joining adds separators, and a
+//      sum-of-estimates guard lets the result creep over budget.
+//  (2) content arriving from the previous unit is scored with a DECAY. Real
+//      re-summarisation degrades: a detail that has already survived several
+//      rewrites is competing against fresh text the worker can see in full.
+//      Without this the selector is a keyword oracle, the planted fact is always
+//      ranked first, and the "lossy channel" the page talks about can never be
+//      observed - which would make the demonstration dishonest.
+const CARRY_DECAY = 0.55;   // score multiplier per hop already survived
+
+function scoreSentence(sent, qWords){
+  const low = sent.toLowerCase();
+  let hits = 0;
+  for (let k = 0; k < qWords.length; k++) if (low.indexOf(qWords[k]) >= 0) hits++;
+  return hits;
+}
+
+function selectSalient(text, question, unitBudget){
+  return carryForward("", text, question, unitBudget);
+}
+
+function carryForward(incomingUnit, chunk, question, unitBudget){
+  const qWords = String(question).toLowerCase().split(/\W+/).filter(function(w){ return w.length > 3; });
+  const split = function(t){ return String(t).split(/(?<=[.!?])\s+/).filter(function(x){ return x.trim(); }); };
+
+  const items = [];
+  const carried = split(incomingUnit);
+  for (let i = 0; i < carried.length; i++){
+    items.push({ s: carried[i], i: i, fresh: false,
+                 score: scoreSentence(carried[i], qWords) * CARRY_DECAY });
+  }
+  const fresh = split(chunk);
+  for (let i = 0; i < fresh.length; i++){
+    items.push({ s: fresh[i], i: carried.length + i, fresh: true,
+                 score: scoreSentence(fresh[i], qWords) });
+  }
+
+  items.sort(function(a, b){ return b.score - a.score || a.i - b.i; });
+
+  // fill greedily, but measure the ACTUAL joined result against the budget
+  const kept = [];
+  for (let k = 0; k < items.length; k++){
+    const trial = kept.concat([items[k]]).sort(function(a, b){ return a.i - b.i; })
+                      .map(function(x){ return x.s; }).join(" ");
+    if (countTokens(trial) > unitBudget) continue;
+    kept.push(items[k]);
+  }
+  kept.sort(function(a, b){ return a.i - b.i; });
+  return kept.map(function(x){ return x.s; }).join(" ");
+}
+
+function runChain(doc, question, windowTokens, unitBudget){
+  const chunks = chunkText(doc, windowTokens);
+  const hops = [];
+  let unit = "";
+  let totalRead = 0, peak = 0;
+  for (let i = 0; i < chunks.length; i++){
+    const inTokens = countTokens(chunks[i]) + countTokens(unit) + INSTRUCTION_TOKENS;
+    totalRead += inTokens;
+    if (inTokens > peak) peak = inTokens;
+    unit = carryForward(unit, chunks[i], question, unitBudget);
+    hops.push({ chunk: i, inTokens: inTokens, unitTokens: countTokens(unit), unit: unit });
+  }
+  // the manager reads only the final unit
+  const managerIn = countTokens(unit) + INSTRUCTION_TOKENS;
+  totalRead += managerIn;
+  if (managerIn > peak) peak = managerIn;
+  return { chunks: chunks, hops: hops, finalUnit: unit,
+           calls: chunks.length + 1, totalRead: totalRead, peak: peak };
+}
+
+function headTokens(doc, budget){
+  const chars = budget * 4;
+  return String(doc).slice(0, chars);
+}
+
+function retrieveTopK(doc, question, windowTokens, k){
+  const chunks = chunkText(doc, windowTokens);
+  const qWords = String(question).toLowerCase().split(/\W+/).filter(w => w.length > 3);
+  const scored = chunks.map(function(c, i){
+    const low = c.toLowerCase();
+    let hits = 0;
+    for (let x = 0; x < qWords.length; x++) if (low.indexOf(qWords[x]) >= 0) hits++;
+    return { c: c, i: i, hits: hits };
+  });
+  scored.sort(function(a, b){ return b.hits - a.hits || a.i - b.i; });
+  const top = scored.slice(0, k).sort(function(a, b){ return a.i - b.i; });
+  return top.map(function(x){ return x.c; }).join(" ");
+}
+
+// Deterministic haystack + a needle planted at a known percentage.
+//
+// The haystack deliberately contains DISTRACTORS - sentences that mention the
+// question's keywords without answering it. Without them the planted fact is the
+// only keyword match in the whole document, it ranks first at every hop, and the
+// "lossy channel" this page talks about can never actually be observed. Real
+// documents talk about their own subject constantly; a haystack that does not is
+// a rigged demo.
+function makeHaystack(words, rng){
+  const bank = ["river","market","letter","harvest","bridge","lantern","paper","season",
+                "quiet","travel","morning","garden","window","ledger","carriage","summer"];
+  const distractors = [
+    "The archive was moved to the east wing that spring.",
+    "Every archive request needed two signatures.",
+    "The old archive catalogue listed nothing under that name.",
+    "A key was cut for the side door and promptly lost.",
+    "The archive room stayed locked through the winter.",
+    "Nobody could recall who held the spare key."
+  ];
+  const out = [];
+  let d = 0;
+  for (let i = 0; i < words; i++){
+    out.push(bank[Math.floor(rng() * bank.length)]);
+    if (i % 12 === 11){
+      out[out.length-1] += ".";
+      if (i % 96 === 95){ out.push(distractors[d++ % distractors.length]); }
+    }
+  }
+  return out.join(" ") + ".";
+}
+
+function plantNeedle(haystack, needle, pct){
+  const sents = haystack.split(/(?<=\.)\s+/);
+  const at = Math.min(sents.length - 1, Math.max(0, Math.round((pct / 100) * (sents.length - 1))));
+  sents.splice(at, 0, needle);
+  return sents.join(" ");
+}
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// run all four strategies on one document; "found" is a substring test, no model
+function compareStrategies(doc, question, key, windowTokens, unitBudget, k){
+  const stuffTokens = countTokens(doc) + INSTRUCTION_TOKENS;
+  const trunc = headTokens(doc, windowTokens);
+  const top = retrieveTopK(doc, question, windowTokens, k === undefined ? 3 : k);
+  const coa = runChain(doc, question, windowTokens, unitBudget);
+  return {
+    stuff:    { calls: 1, totalRead: stuffTokens, peak: stuffTokens, found: doc.indexOf(key) >= 0 },
+    truncate: { calls: 1, totalRead: countTokens(trunc) + INSTRUCTION_TOKENS,
+                peak: countTokens(trunc) + INSTRUCTION_TOKENS, found: trunc.indexOf(key) >= 0 },
+    topk:     { calls: 2, totalRead: countTokens(top) + INSTRUCTION_TOKENS,
+                peak: countTokens(top) + INSTRUCTION_TOKENS, found: top.indexOf(key) >= 0 },
+    coa:      { calls: coa.calls, totalRead: coa.totalRead, peak: coa.peak,
+                found: coa.finalUnit.indexOf(key) >= 0, chain: coa }
+  };
+}
+// ===== ENGINE:END =====
+
+/* ---------------- UI ---------------- */
+const KEY = "QX-7741";
+const QUESTION = "what is the archive key";
+const NEEDLE = "The archive key is " + KEY + ".";
+document.getElementById("needleKey").textContent = KEY;
+
+function els(){
+  return {
+    docLen: +document.getElementById("docLen").value,
+    win:    +document.getElementById("win").value,
+    cu:     +document.getElementById("cu").value,
+    pos:    +document.getElementById("pos").value
+  };
+}
+
+function run(){
+  const p = els();
+  document.getElementById("docLenV").textContent = p.docLen;
+  document.getElementById("winV").textContent = p.win;
+  document.getElementById("cuV").textContent = p.cu;
+  document.getElementById("posV").textContent = p.pos;
+
+  const hay = makeHaystack(p.docLen, mulberry32(4242));
+  const doc = plantNeedle(hay, NEEDLE, p.pos);
+  const r = compareStrategies(doc, QUESTION, KEY, p.win, p.cu, 3);
+
+  document.getElementById("nChunks").textContent = r.coa.chain.chunks.length;
+  document.getElementById("tCoA").textContent = r.coa.totalRead.toLocaleString();
+  document.getElementById("tStuff").textContent = r.stuff.totalRead.toLocaleString();
+  document.getElementById("peak").textContent = r.coa.peak.toLocaleString();
+
+  const chain = document.getElementById("chain");
+  chain.innerHTML = "";
+  r.coa.chain.hops.forEach(function(h){
+    const d = document.createElement("div");
+    const alive = h.unit.indexOf(KEY) >= 0;
+    const passedYet = r.coa.chain.chunks[h.chunk].indexOf(KEY) >= 0;
+    d.className = "chunk " + (alive ? "hit" : (passedYet ? "lost" : ""));
+    d.innerHTML = "<div class='font-bold'>chunk " + (h.chunk+1) + "</div>" +
+      "<div class='text-slate-600'>in " + h.inTokens + " tok</div>" +
+      "<div class='text-slate-600'>unit " + h.unitTokens + " tok</div>" +
+      "<div class='mt-1 font-bold'>" + (alive ? "needle carried" : (passedYet ? "needle DROPPED" : "—")) + "</div>";
+    chain.appendChild(d);
+  });
+
+  const rows = [
+    ["stuff whole doc", r.stuff],
+    ["truncate to window", r.truncate],
+    ["retrieve top-3", r.topk],
+    ["chain-of-agents", r.coa]
+  ];
+  document.getElementById("cmp").innerHTML = rows.map(function(x){
+    return "<tr class='border-t border-slate-100'><td class='py-1'>" + x[0] + "</td>" +
+      "<td>" + x[1].calls + "</td><td>" + x[1].totalRead.toLocaleString() + "</td>" +
+      "<td>" + x[1].peak.toLocaleString() + "</td>" +
+      "<td class='font-bold " + (x[1].found ? "text-emerald-600'>yes" : "text-rose-600'>no") + "</td></tr>";
+  }).join("");
+}
+
+["docLen","win","cu","pos"].forEach(function(id){
+  document.getElementById(id).addEventListener("input", run);
+});
+
+document.getElementById("sweepBtn").addEventListener("click", function(){
+  const out = document.getElementById("sweepOut");
+  out.classList.remove("hidden");
+  const p = els();
+  const hay = makeHaystack(p.docLen, mulberry32(4242));
+  const tally = { stuff:0, truncate:0, topk:0, coa:0 };
+  let n = 0;
+  for (let pct = 0; pct <= 100; pct += 2){
+    const doc = plantNeedle(hay, NEEDLE, pct);
+    const r = compareStrategies(doc, QUESTION, KEY, p.win, p.cu, 3);
+    if (r.stuff.found) tally.stuff++;
+    if (r.truncate.found) tally.truncate++;
+    if (r.topk.found) tally.topk++;
+    if (r.coa.found) tally.coa++;
+    n++;
+  }
+  out.textContent =
+    "needle positions swept : " + n + "\n" +
+    "window " + p.win + " tok, unit budget " + p.cu + " tok, doc ~" + countTokens(hay) + " tok\n\n" +
+    "stuff whole doc        : " + tally.stuff + "/" + n + "   (always - if it fits)\n" +
+    "truncate to window     : " + tally.truncate + "/" + n + "\n" +
+    "retrieve top-3         : " + tally.topk + "/" + n + "\n" +
+    "chain-of-agents        : " + tally.coa + "/" + n;
+});
+
+run();
+</script>
+</body>
+</html>
