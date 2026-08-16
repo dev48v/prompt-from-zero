@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 64 — Self-verification</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  .cell { border:1px solid #e2e8f0; padding:6px 8px; font-size:12px; text-align:center; }
+  .ok { background:#dcfce7; } .bad { background:#fee2e2; } .warn { background:#fef3c7; }
+  canvas { width:100%; height:auto; border:1px solid #e2e8f0; border-radius:8px; background:#fff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-indigo-700 mb-2">PROMPTFROMZERO · DAY 64</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🔁 Self-verification — asking a model to check its own answer sounds circular, and mostly is:
+      "are you sure?" measures confidence, not correctness. What is <em>not</em> circular is
+      <strong>backward verification</strong> — take the produced answer, substitute it back into the
+      problem, mask one of the original givens, and ask the model to <strong>reconstruct that
+      given</strong>. If the answer is wrong, the reconstruction usually disagrees with the number
+      that was actually there, and the disagreement is a check <em>anyone</em> can run — including
+      code, with no model in the loop. This page builds the whole apparatus over linear word
+      problems: a generator that knows the ground truth, a solver that makes realistic mistakes at a
+      rate you control, a real backward-substitution verifier, and then the part that matters —
+      a <strong>confusion matrix</strong> showing that verification does not make things better for
+      free. It costs one extra call per candidate, it rejects correct answers as well as wrong ones,
+      and at some error rates the filtered output is <em>worse</em> than the unfiltered one. All
+      computed live; the paper's accuracy figures are cited separately and never mixed in.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔁 RUN IT</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-5xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-4 gap-3">
+          <label class="text-sm">solver error rate
+            <input id="err" type="range" min="0" max="60" value="30" class="w-full">
+            <span id="errV" class="font-bold tabular-nums">30%</span>
+          </label>
+          <label class="text-sm">verifier error rate
+            <input id="verr" type="range" min="0" max="40" value="10" class="w-full">
+            <span id="verrV" class="font-bold tabular-nums">10%</span>
+          </label>
+          <label class="text-sm">candidates per problem
+            <input id="k" type="range" min="1" max="8" value="1" class="w-full">
+            <span id="kV" class="font-bold tabular-nums">1</span>
+          </label>
+          <label class="text-sm">problems
+            <input id="n" type="number" min="200" max="20000" step="200" value="4000" class="w-full border border-slate-300 rounded px-2 py-1">
+          </label>
+        </div>
+        <p class="text-sm text-slate-600 mt-3">
+          Every problem is generated with its answer known, so correctness is a fact rather than a
+          judgement. The solver is a stand-in for a model: it solves correctly most of the time and
+          makes plausible arithmetic slips otherwise.
+        </p>
+      </div>
+
+      <div class="grid md:grid-cols-4 gap-4">
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">ACCURACY, NO VERIFIER</p>
+          <p class="text-3xl font-black tabular-nums" id="accRaw">—</p>
+          <p class="text-xs text-slate-500">answer every problem, take what you get</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">PRECISION, VERIFIED</p>
+          <p class="text-3xl font-black tabular-nums text-emerald-600" id="accVer">—</p>
+          <p class="text-xs text-slate-500">of the answers it still shows, how many are right</p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">CORRECT ANSWERS DELIVERED</p>
+          <p class="text-3xl font-black tabular-nums" id="deliv">—</p>
+          <p class="text-xs text-slate-500">
+            precision &times; coverage &mdash; <strong>the number that matters</strong>. Compare it to
+            the first card, not to precision. Coverage: <span id="cov">—</span>
+          </p>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-4">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">CALLS PER PROBLEM</p>
+          <p class="text-3xl font-black tabular-nums" id="calls">—</p>
+          <p class="text-xs text-slate-500">the bill: solve + one verify per candidate</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">CONFUSION MATRIX — WHAT VERIFICATION ACTUALLY DOES</p>
+        <table class="w-full max-w-lg mx-auto">
+          <tr><td class="cell"></td><td class="cell font-bold">verifier says PASS</td><td class="cell font-bold">verifier says FAIL</td></tr>
+          <tr><td class="cell font-bold">answer correct</td><td class="cell ok" id="cTP">—</td><td class="cell warn" id="cFN">—</td></tr>
+          <tr><td class="cell font-bold">answer wrong</td><td class="cell bad" id="cFP">—</td><td class="cell ok" id="cTN">—</td></tr>
+        </table>
+        <p class="text-xs text-slate-500 mt-3 text-center">
+          The amber cell is the cost nobody mentions: <strong>correct answers thrown away</strong>.
+          The red cell is wrong answers that got through anyway.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">WHERE IT STOPS HELPING</p>
+        <canvas id="cv" width="900" height="300"></canvas>
+        <p class="text-xs text-slate-500 mt-2">
+          <span class="font-bold" style="color:#0f172a">Black</span> = unfiltered accuracy.
+          <span class="font-bold" style="color:#059669">Green</span> = correct answers actually
+          <em>delivered</em> after verification (precision &times; coverage).
+          <span class="font-bold" style="color:#94a3b8">Grey</span> = precision alone &mdash; plotted
+          only to show why it is the wrong measure: it sits above black almost everywhere, because
+          any verifier better than chance rejects proportionally more wrong answers than right ones.
+          <strong>Where green crosses below black, verification is costing you more correct answers
+          than it saves</strong> &mdash; and it does so long before precision gives any warning.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">A SINGLE PROBLEM, END TO END</p>
+        <pre id="trace"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">"Are you sure?" is not a check</h2>
+
+      <p>Ask a model to review its own answer and it will usually agree with itself, because the
+      thing that produced the answer is the thing being asked to judge it, with the answer sitting
+      right there in the context. You are measuring <strong>confidence</strong>, and confidence is
+      not correlated with correctness in the way you need.</p>
+
+      <p>What breaks the circularity is changing the <em>question</em>, not the tone.</p>
+
+      <div class="bg-slate-100 rounded-xl p-4">
+        <p class="font-bold mb-2">Backward verification</p>
+        <p class="text-sm">Substitute the produced answer back into the problem, mask one of the
+        original numbers, and ask for that number. Compare the reconstruction against the value that
+        was actually given.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Why this is different in kind</h3>
+      <p>The forward task is "given a, b, c → find x". The backward task is "given x, b, c → find a",
+      and <em>a is already known</em>. So the check does not need a judgement about quality; it needs
+      an equality. That is why code can run it, and why it does not simply inherit the solver's
+      original mistake.</p>
+      <p>The mechanism is closer to <strong>plugging your answer back in</strong> than to
+      proofreading — the thing you were told to do in school, for exactly this reason.</p>
+
+      <h3 class="text-xl font-bold">It is not free, and this is the part that gets skipped</h3>
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">Verification throws away <strong>correct</strong> answers too. Every
+        false-negative is a problem you could have answered and now refuse to. Papers report the
+        accuracy gain; the amber cell of the confusion matrix is the price, and the RUN IT tab shows
+        both together because reporting one without the other is how a technique gets oversold.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Precision, coverage, and the number people quote</h3>
+      <p>After filtering you have two different numbers and they are easy to confuse:</p>
+      <ul class="list-disc ml-6 space-y-1">
+        <li><strong>Precision</strong> — of the answers you still give, what fraction are right.</li>
+        <li><strong>Coverage</strong> — what fraction of problems you still answer at all.</li>
+      </ul>
+      <p>A verifier that rejects almost everything reports magnificent precision. Quote precision
+      alone and any filter looks like a breakthrough; you can reach 100% by answering one question.</p>
+
+      <h3 class="text-xl font-bold">Where it stops helping</h3>
+      <p>The verifier has its own error rate. Once the solver is good enough, most of what the
+      verifier rejects is <em>correct</em>, and filtering costs more accuracy than it recovers. Move
+      the sliders and watch the green line meet the black one: past that point you are paying an
+      extra call to make the output worse.</p>
+      <p>The same happens from the other direction. If the solver is very unreliable, the verifier is
+      reconstructing from a wrong answer often enough that its own judgement degrades.</p>
+
+      <h3 class="text-xl font-bold">Verification composes with sampling</h3>
+      <p>Generate k candidates, verify each, return the first that passes. That is where the
+      technique earns its keep — it turns "one shot, hope" into "several shots, filtered", which is
+      exactly self-consistency with a cheaper aggregator than majority voting. The slider shows the
+      cost: k candidates means k+1 calls per problem, every time.</p>
+
+      <h3 class="text-xl font-bold">What this page is</h3>
+      <p>A simulation of the <em>pipeline</em>, not of a model. The solver and the verifier are
+      stand-ins with error rates you set, so every number here is arithmetic over known ground truth.
+      Real measured accuracy for RCoT and similar methods belongs to the papers and is cited
+      separately — mixing the two would make both meaningless.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 Build it yourself</h2>
+
+      <h3 class="text-xl font-bold">1. Generate problems whose answer you know</h3>
+      <pre>function makeProblem(rng){
+  const rate  = 2 + Math.floor(rng() * 12);      // pens per box
+  const boxes = 2 + Math.floor(rng() * 9);
+  const extra = Math.floor(rng() * 20);
+  return {
+    text: `A box holds ${rate} pens. Priya buys ${boxes} boxes and is given ${extra} more. How many?`,
+    givens: { rate, boxes, extra },
+    answer: rate * boxes + extra
+  };
+}</pre>
+      <p>Ground truth is not an opinion here, which is what makes every later number countable.</p>
+
+      <h3 class="text-xl font-bold">2. A solver that fails the way models fail</h3>
+      <pre>function solve(p, rng, errorRate){
+  if (rng() &gt;= errorRate) return p.answer;
+  // realistic slips, not random noise
+  const slips = [
+    p.givens.rate * p.givens.boxes,                       // forgot the extra
+    p.givens.rate + p.givens.boxes + p.givens.extra,      // added instead
+    p.givens.rate * (p.givens.boxes + p.givens.extra),    // grouped wrongly
+    p.answer + (rng() &lt; 0.5 ? 1 : -1) * p.givens.rate     // off by one box
+  ];
+  return slips[Math.floor(rng() * slips.length)];
+}</pre>
+      <p>Random noise would be trivially detectable. Plausible-but-wrong is the case that matters.</p>
+
+      <h3 class="text-xl font-bold">3. Backward verification, as arithmetic</h3>
+      <pre>// Mask `boxes`. Given the candidate answer, reconstruct it and compare.
+function verify(p, candidate, rng, verifierErrorRate){
+  const reconstructed = (candidate - p.givens.extra) / p.givens.rate;
+  let agrees = Number.isInteger(reconstructed)
+            &amp;&amp; reconstructed === p.givens.boxes;
+  if (rng() &lt; verifierErrorRate) agrees = !agrees;   // the verifier is fallible too
+  return agrees;
+}</pre>
+      <p>Note the integer test. A wrong answer often reconstructs to a fraction, which is a stronger
+      signal than a mismatch — the given was a count, so a non-integer is impossible, not merely
+      different.</p>
+
+      <h3 class="text-xl font-bold">4. Report FOUR numbers, never one</h3>
+      <pre>let tp = 0, fp = 0, tn = 0, fn = 0;
+for (const p of problems){
+  const cand = solve(p, rng, errorRate);
+  const correct = cand === p.answer;
+  const passed  = verify(p, cand, rng, verifierErrorRate);
+  if ( correct &amp;&amp;  passed) tp++;      // kept, and right
+  if (!correct &amp;&amp;  passed) fp++;      // kept, and WRONG
+  if ( correct &amp;&amp; !passed) fn++;      // thrown away, and it was RIGHT
+  if (!correct &amp;&amp; !passed) tn++;      // correctly rejected
+}
+const precision = tp / (tp + fp);
+const coverage  = (tp + fp) / problems.length;</pre>
+      <p>Precision without coverage is the oldest way to make a filter look good. Print both or
+      neither.</p>
+
+      <h3 class="text-xl font-bold">5. Sample k, verify each, take the first pass</h3>
+      <pre>function solveVerified(p, rng, k, errorRate, verifierErrorRate){
+  for (let i = 0; i &lt; k; i++){
+    const cand = solve(p, rng, errorRate);
+    if (verify(p, cand, rng, verifierErrorRate))
+      return { answer: cand, calls: 2 * (i + 1) };
+  }
+  return { answer: null, calls: 2 * k };            // refused
+}</pre>
+
+      <h3 class="text-xl font-bold">6. Sweep, because a single setting proves nothing</h3>
+      <p>Vary the solver's error rate and plot precision against unfiltered accuracy. The crossing
+      point is the honest answer to "should I use this" — and it depends on your solver, not on the
+      paper's.</p>
+
+      <h3 class="text-xl font-bold">7. Write the prompt so the check stays backward</h3>
+      <pre>Original problem, with one number replaced by X:
+  "A box holds 7 pens. Priya buys X boxes and is given 4 more.
+   She has 46 in total. What is X?"
+
+Answer with a number only.</pre>
+      <p>The forward answer must not appear as "the answer" anywhere in that prompt — it appears as a
+      <em>given</em>. Leak the framing and you are back to asking "are you sure?".</p>
+
+      <h3 class="text-xl font-bold">🎉 Day 64 of PromptFromZero done.</h3>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Pure, DOM-free self-verification simulation. No model is called; the solver and
+// verifier are stand-ins with error rates, so every figure is arithmetic over
+// known ground truth.
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    let t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+function makeProblem(rng){
+  const rate = 2 + Math.floor(rng() * 12);
+  const boxes = 2 + Math.floor(rng() * 9);
+  const extra = Math.floor(rng() * 20);
+  return {
+    text: "A box holds " + rate + " pens. Priya buys " + boxes +
+          " boxes and is given " + extra + " more. How many pens does she have?",
+    givens: { rate: rate, boxes: boxes, extra: extra },
+    answer: rate * boxes + extra
+  };
+}
+
+// Plausible slips, not random noise - random noise would be trivially detectable.
+function solve(p, rng, errorRate){
+  if (rng() >= errorRate) return p.answer;
+  const g = p.givens;
+  const slips = [
+    g.rate * g.boxes,
+    g.rate + g.boxes + g.extra,
+    g.rate * (g.boxes + g.extra),
+    p.answer + (rng() < 0.5 ? 1 : -1) * g.rate
+  ];
+  return slips[Math.floor(rng() * slips.length)];
+}
+
+// Backward verification: reconstruct a MASKED given from the candidate answer
+// and compare it against what was actually there.
+function reconstructBoxes(p, candidate){
+  return (candidate - p.givens.extra) / p.givens.rate;
+}
+
+function verify(p, candidate, rng, verifierErrorRate){
+  const r = reconstructBoxes(p, candidate);
+  // a non-integer reconstruction is impossible for a count: a stronger signal
+  // than a mere mismatch
+  let agrees = Number.isInteger(r) && r === p.givens.boxes;
+  if (rng() < verifierErrorRate) agrees = !agrees;
+  return agrees;
+}
+
+function solveVerified(p, rng, k, errorRate, verifierErrorRate){
+  for (let i = 0; i < k; i++){
+    const cand = solve(p, rng, errorRate);
+    if (verify(p, cand, rng, verifierErrorRate))
+      return { answer: cand, calls: 2 * (i + 1), refused: false };
+  }
+  return { answer: null, calls: 2 * k, refused: true };
+}
+
+// The four numbers. Reporting fewer than four is how a filter gets oversold.
+function experiment(seed, n, errorRate, verifierErrorRate, k){
+  const rng = mulberry32(seed);
+  let tp = 0, fp = 0, tn = 0, fn = 0;
+  let rawCorrect = 0, answered = 0, correctAnswered = 0, calls = 0;
+  for (let i = 0; i < n; i++){
+    const p = makeProblem(rng);
+
+    // unfiltered baseline: one solve, take it
+    const solo = solve(p, rng, errorRate);
+    if (solo === p.answer) rawCorrect++;
+
+    // the same problem through the verified pipeline
+    const r = solveVerified(p, rng, k, errorRate, verifierErrorRate);
+    calls += r.calls;
+    if (!r.refused){
+      answered++;
+      if (r.answer === p.answer) correctAnswered++;
+    }
+
+    // single-candidate confusion matrix, for the k=1 view of the mechanism
+    const cand = solve(p, rng, errorRate);
+    const correct = cand === p.answer;
+    const passed = verify(p, cand, rng, verifierErrorRate);
+    if (correct && passed) tp++;
+    else if (!correct && passed) fp++;
+    else if (correct && !passed) fn++;
+    else tn++;
+  }
+  return {
+    n: n,
+    rawAccuracy: rawCorrect / n,
+    precision: answered ? correctAnswered / answered : 0,
+    coverage: answered / n,
+    // The number that can actually cross. PRECISION almost always beats raw
+    // accuracy - any verifier better than chance rejects proportionally more
+    // wrong answers than right ones, so precision rising proves nothing on its
+    // own. What matters is how many correct answers you END UP WITH per problem
+    // asked: precision x coverage. Filtering earns its call only while this
+    // exceeds the raw accuracy you would have had by just answering everything.
+    deliveredCorrect: correctAnswered / n,
+    callsPerProblem: calls / n,
+    tp: tp, fp: fp, tn: tn, fn: fn
+  };
+}
+// ===== ENGINE:END =====
+
+/* ---------------- UI ---------------- */
+function cfg(){
+  return {
+    err: (+document.getElementById("err").value) / 100,
+    verr: (+document.getElementById("verr").value) / 100,
+    k: +document.getElementById("k").value,
+    n: +document.getElementById("n").value
+  };
+}
+const pct = x => (100 * x).toFixed(1) + "%";
+
+function run(){
+  const c = cfg();
+  document.getElementById("errV").textContent = (100 * c.err).toFixed(0) + "%";
+  document.getElementById("verrV").textContent = (100 * c.verr).toFixed(0) + "%";
+  document.getElementById("kV").textContent = c.k;
+
+  const r = experiment(4242, c.n, c.err, c.verr, c.k);
+  document.getElementById("accRaw").textContent = pct(r.rawAccuracy);
+  document.getElementById("accVer").textContent = pct(r.precision);
+  document.getElementById("cov").textContent = pct(r.coverage);
+  document.getElementById("deliv").textContent = pct(r.deliveredCorrect);
+  document.getElementById("calls").textContent = r.callsPerProblem.toFixed(2);
+
+  document.getElementById("cTP").textContent = r.tp.toLocaleString();
+  document.getElementById("cFP").textContent = r.fp.toLocaleString();
+  document.getElementById("cFN").textContent = r.fn.toLocaleString();
+  document.getElementById("cTN").textContent = r.tn.toLocaleString();
+
+  trace(c);
+  draw(c);
+}
+
+function trace(c){
+  const rng = mulberry32(99);
+  const p = makeProblem(rng);
+  const wrong = p.givens.rate * p.givens.boxes;          // forgot the extra
+  const rw = reconstructBoxes(p, wrong);
+  const rr = reconstructBoxes(p, p.answer);
+  document.getElementById("trace").textContent =
+    "problem      : " + p.text + "\n" +
+    "true answer  : " + p.answer + "\n\n" +
+    "CANDIDATE A (correct)   : " + p.answer + "\n" +
+    "  mask `boxes`, reconstruct: (" + p.answer + " - " + p.givens.extra + ") / " + p.givens.rate + " = " + rr + "\n" +
+    "  given was " + p.givens.boxes + "  ->  agrees  ->  PASS\n\n" +
+    "CANDIDATE B (forgot the extra) : " + wrong + "\n" +
+    "  mask `boxes`, reconstruct: (" + wrong + " - " + p.givens.extra + ") / " + p.givens.rate + " = " + rw.toFixed(4) + "\n" +
+    "  given was " + p.givens.boxes + "  ->  " +
+    (Number.isInteger(rw) ? "disagrees" : "not even an integer, and a count cannot be fractional") +
+    "  ->  FAIL";
+}
+
+function draw(c){
+  const cv = document.getElementById("cv"), ctx = cv.getContext("2d");
+  const W = cv.width, H = cv.height;
+  ctx.clearRect(0, 0, W, H);
+  const pts = [];
+  for (let e = 0; e <= 60; e += 3){
+    const r = experiment(7, 1500, e / 100, c.verr, c.k);
+    pts.push({ e: e / 100, raw: r.rawAccuracy, prec: r.precision, deliv: r.deliveredCorrect });
+  }
+  const x = v => (v / 0.6) * (W - 40) + 30;
+  const y = v => H - 24 - v * (H - 44);
+  ctx.strokeStyle = "#e2e8f0";
+  [0, .25, .5, .75, 1].forEach(function(g){
+    ctx.beginPath(); ctx.moveTo(30, y(g)); ctx.lineTo(W - 10, y(g)); ctx.stroke();
+    ctx.fillStyle = "#94a3b8"; ctx.font = "10px sans-serif";
+    ctx.fillText((100 * g) + "%", 2, y(g) + 3);
+  });
+  [["prec", "#94a3b8"], ["raw", "#0f172a"], ["deliv", "#059669"]].forEach(function(spec){
+    ctx.strokeStyle = spec[1]; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach(function(p, i){
+      const px = x(p.e), py = y(p[spec[0]]);
+      i ? ctx.lineTo(px, py) : ctx.moveTo(px, py);
+    });
+    ctx.stroke();
+  });
+  ctx.fillStyle = "#64748b"; ctx.font = "11px sans-serif";
+  ctx.fillText("solver error rate →", W - 150, H - 6);
+}
+
+["err","verr","k","n"].forEach(function(id){
+  document.getElementById(id).addEventListener("input", run);
+});
+run();
+</script>
+</body>
+</html>
