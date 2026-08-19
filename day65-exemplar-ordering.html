@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 65 — Exemplar ordering</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; background:#4f46e5; }
+  .chip { display:inline-block; padding:2px 8px; border-radius:99px; font-size:11px; font-weight:800; }
+  .chip.pos { background:#dcfce7; color:#166534; }
+  .chip.neg { background:#fee2e2; color:#991b1b; }
+  .hist { display:flex; align-items:flex-end; gap:2px; height:110px; }
+  .hist div { flex:1; background:#6366f1; border-radius:2px 2px 0 0; min-height:1px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-violet-700 mb-2">PROMPTFROMZERO · DAY 65</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🔀 Exemplar ordering — the same few-shot examples, shuffled, and the answer changes. Sixty-four
+      days of this series have treated a prompt as a <em>set</em> of demonstrations. It is a
+      <strong>sequence</strong>, and three separate biases ride on the order: <strong>recency</strong>
+      (the last example weighs most), <strong>majority label</strong> (an unbalanced set drags the
+      prediction toward whichever label appears more), and <strong>common token</strong> (a label
+      that is simply a more likely string wins ties). This page implements a calibrated classifier
+      whose biases are declared rather than emergent, then enumerates <strong>all 720 permutations
+      of a 6-shot prompt</strong> and shows the accuracy spread — best order against worst, on
+      identical content. It also implements <strong>contextual calibration</strong> (Zhao et&nbsp;al.
+      2021): estimate the bias by feeding a content-free input, divide it out, and watch the spread
+      collapse. Then the finding that rewrote this page — I set out to show that calibration
+      <em>helps but does not eliminate</em>, measured it, and got <strong>exact</strong>
+      elimination. That is not a bug: a bias which is an additive constant in logit space is
+      precisely what a content-free probe measures, so dividing it out is exact. What survives
+      calibration is only the bias a content-free input <strong>cannot exhibit</strong> — the part
+      that needs content to exist at all. Both halves are on the page, and both are asserted.
+      Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔬 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-sm text-slate-600 mb-4">
+          A sentiment classifier with three declared biases. Nothing here is emergent — every
+          coefficient is a slider, which is what makes the effects measurable instead of anecdotal.
+        </p>
+        <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
+          <label class="text-sm">recency weight <span id="vRec" class="font-bold tabular-nums float-right">0.55</span>
+            <input id="sRec" type="range" min="0" max="100" value="55"></label>
+          <label class="text-sm">majority-label pull <span id="vMaj" class="font-bold tabular-nums float-right">0.60</span>
+            <input id="sMaj" type="range" min="0" max="100" value="60"></label>
+          <label class="text-sm">common-token prior <span id="vTok" class="font-bold tabular-nums float-right">0.35</span>
+            <input id="sTok" type="range" min="-100" max="100" value="35"></label>
+          <label class="text-sm">true signal strength <span id="vSig" class="font-bold tabular-nums float-right">1.20</span>
+            <input id="sSig" type="range" min="10" max="300" value="120"></label>
+          <label class="text-sm">input-dependent bias <span id="vInt" class="font-bold tabular-nums float-right">0.30</span>
+            <input id="sInt" type="range" min="0" max="150" value="30"></label>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">ALL 720 ORDERINGS OF THE SAME 6 EXAMPLES</p>
+          <div class="hist mb-2" id="hist"></div>
+          <p class="text-xs text-slate-500 mb-3" id="histAxis"></p>
+          <table class="num w-full">
+            <tbody>
+              <tr><td>permutations evaluated</td><td id="nPerm" class="font-bold">720</td></tr>
+              <tr><td>best ordering</td><td id="pBest" class="font-bold text-emerald-600">—</td></tr>
+              <tr><td>worst ordering</td><td id="pWorst" class="font-bold text-rose-600">—</td></tr>
+              <tr><td>spread (best − worst)</td><td id="pSpread" class="font-black">—</td></tr>
+              <tr><td>mean / std dev</td><td id="pMean">—</td></tr>
+            </tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2">
+            Identical examples, identical test set, identical model. The only thing that changed is
+            the order the demonstrations appear in the prompt.
+          </p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">CONTEXTUAL CALIBRATION</p>
+          <p class="text-sm text-slate-600 mb-3">
+            Feed a <strong>content-free</strong> input — literally "N/A" — and whatever the model
+            predicts is pure bias, because there is nothing to classify. Divide it out.
+          </p>
+          <pre id="calib" style="margin:0 0 10px"></pre>
+          <table class="num w-full">
+            <thead><tr><th>&nbsp;</th><th>uncalibrated</th><th>calibrated</th></tr></thead>
+            <tbody>
+              <tr><td>mean accuracy</td><td id="cU">—</td><td id="cC" class="font-bold">—</td></tr>
+              <tr><td>spread across orderings</td><td id="sU">—</td><td id="sC" class="font-bold">—</td></tr>
+              <tr><td>worst ordering</td><td id="wU">—</td><td id="wC" class="font-bold">—</td></tr>
+            </tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="calibNote"></p>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">THE MAJORITY-LABEL TRAP</p>
+          <p class="text-sm text-slate-600 mb-3">
+            A 6-shot prompt that happens to be 5 positives and 1 negative. Same examples, same
+            model, and the prediction is dragged toward the majority — on a balanced test set.
+          </p>
+          <table class="num w-full">
+            <thead><tr><th>prompt composition</th><th>accuracy</th><th>predicted positive</th></tr></thead>
+            <tbody id="major"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2">
+            Balance your demonstrations before you tune anything else. It is free and it moves more
+            than most prompt wording does.
+          </p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHERE IN THE PROMPT DOES IT MATTER?</p>
+          <p class="text-sm text-slate-600 mb-3">
+            The measured influence of each slot on the final prediction, position 1 (first) to 6
+            (last, nearest the query).
+          </p>
+          <div id="slots" class="space-y-2"></div>
+          <p class="text-xs text-slate-500 mt-2">
+            Measured by swapping the label at each position and recording how far the prediction
+            moves — an ablation, not a theory about attention.
+          </p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">A SINGLE PROMPT, RENDERED</p>
+        <pre id="prompt" style="margin:0"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">A prompt is a sequence, and you have been treating it as a set</h2>
+
+      <p>Sixty-four techniques into this series, few-shot prompting has been described the way
+      everyone describes it: pick some good examples, put them in, done. Pick <em>which</em>
+      examples has had a whole day to itself (dynamic few-shot, Day 58). Pick <em>what order</em>
+      has had none, and it moves the number more than most rewording does.</p>
+
+      <p>Lu et al. (2021) found accuracy swings from near-random to near state-of-the-art across
+      permutations of the <strong>same</strong> examples. Not different examples. The same ones, in
+      a different order.</p>
+
+      <h3 class="text-xl font-bold">Three biases, and they are separable</h3>
+
+      <p>The instinct is to call this "the model is weird". It is not weird, it is three named
+      effects that Zhao et al. (2021) isolated, and this page implements them as three separate
+      dials so you can see which one is doing the damage:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Recency bias.</strong> The example nearest the query counts most. Put your
+        negatives last and the model leans negative.</li>
+        <li><strong>Majority-label bias.</strong> An unbalanced demonstration set drags predictions
+        toward whichever label appears more — even when the test set is balanced.</li>
+        <li><strong>Common-token bias.</strong> A label that is simply a more probable string wins
+        the close calls. "Positive" versus "Negative" is not a fair coin to a language model.</li>
+      </ul>
+
+      <p>Turn any one of them to zero on the page and the corresponding structure in the
+      permutation histogram disappears. That is the argument for them being three things rather
+      than one vague thing.</p>
+
+      <h3 class="text-xl font-bold">720 permutations, because 6! is small enough to be exhaustive</h3>
+
+      <p>Six examples have 720 orderings, which is cheap enough to enumerate rather than sample. So
+      the page does not report "we tried a few orders and it varied" — it reports the
+      <strong>full distribution</strong>, the exact best ordering, the exact worst, and the spread
+      between them.</p>
+
+      <p>Exhaustive matters here because the interesting question is the <em>tail</em>. A mean over
+      sampled orderings hides the fact that some specific arrangement of your examples is much
+      worse than the rest, and in production you did not sample — you picked one and shipped it.</p>
+
+      <h3 class="text-xl font-bold">Contextual calibration: measure the bias directly</h3>
+
+      <p>The fix is better than it sounds. If you feed the prompt a <strong>content-free</strong>
+      input — the string "N/A", or an empty string — then whatever the model predicts is
+      <em>entirely</em> bias, because there was nothing to classify.</p>
+
+      <pre>p_cf = model(prompt, "N/A")          // pure bias, no content
+W    = diag(1 / p_cf)                // the correction
+p̂    = normalize(W · model(prompt, x))</pre>
+
+      <p>One extra call per prompt, not per query — the correction is a property of the prompt, so
+      you compute it once and reuse it. That is what makes this practical rather than a paper trick.</p>
+
+      <h3 class="text-xl font-bold">And the part the summaries leave out</h3>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm"><strong>This page was rewritten by its own measurement.</strong> I
+        expected "calibration helps but does not eliminate". With three constant biases in the
+        model it eliminated the ordering spread <em>exactly</em> — 100%, to floating-point. Chasing
+        that produced the real rule.</p>
+      </div>
+
+      <p>A content-free probe measures exactly one thing: <strong>the bias a content-free input
+      exhibits</strong>. Any bias that is an additive constant in logit space shows up in full at
+      the probe, so dividing it out is not an approximation — it is exact.</p>
+
+      <p>A second attempt made the bias stronger on <em>ambiguous</em> inputs, expecting a residual.
+      That failed too, and more sharply: "N/A" is the most ambiguous input there is, so the probe
+      saw that term at full strength and removed it as well.</p>
+
+      <p>What survives is only bias that <strong>needs content to exist</strong>. On this page that
+      is a product term — the last exemplar changes how strongly the input's own evidence is read.
+      At the probe it contributes exactly zero, so calibration cannot see it, and it stays
+      order-dependent. Turn its slider to zero and the residual goes to zero with it.</p>
+
+      <p>So the honest advice is not "calibrate and stop worrying", and it is not "calibration only
+      helps a bit" either. It is: <strong>calibration removes constant bias completely and
+      interaction bias not at all</strong>. Balance the labels, calibrate, and then still evaluate
+      more than one ordering — because you only get to ship one order, and the part calibration
+      cannot reach is the part that depends on your actual inputs.</p>
+
+      <h3 class="text-xl font-bold">What to actually do on Monday</h3>
+
+      <ol class="list-decimal pl-6 space-y-1">
+        <li>Balance the labels in your demonstrations. Free, and it is the largest single effect
+        here.</li>
+        <li>Evaluate a handful of orderings on a dev set and pick one. Not the first one you wrote.</li>
+        <li>Add contextual calibration if you control the decoding — one content-free call per
+        prompt.</li>
+        <li>Report the spread, not just the mean. A technique with a 20-point spread across
+        orderings is a technique with a 20-point risk.</li>
+      </ol>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. The biases are declared, not discovered</h3>
+      <pre>function score(prompt, x, cfg){
+  let s = cfg.signal * x.polarity;                       // the actual content
+
+  prompt.forEach((ex, i) =&gt; {
+    const recency = Math.pow(cfg.recencyDecay, prompt.length - 1 - i);
+    s += cfg.recency * recency * ex.polarity;            // nearest example weighs most
+  });
+
+  const maj = prompt.reduce((a, e) =&gt; a + Math.sign(e.polarity), 0) / prompt.length;
+  s += cfg.majority * maj;                               // unbalanced set pulls
+  s += cfg.commonToken;                                  // one label is simply likelier
+
+  return s;
+}</pre>
+      <p>This is a stand-in, and the page says so on the tin. Simulating an <em>LLM</em> would be
+      dishonest; simulating three published, named biases with the coefficients on screen is a
+      model of the mechanism — you can set any of them to zero and watch the corresponding effect
+      vanish, which is the only claim being made.</p>
+
+      <h3 class="text-xl font-bold">2. Permutations, generated properly</h3>
+      <pre>function* permutations(arr){
+  if (arr.length &lt;= 1) { yield arr; return; }
+  for (let i = 0; i &lt; arr.length; i++){
+    const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+    for (const p of permutations(rest)) yield [arr[i]].concat(p);
+  }
+}</pre>
+      <p>A generator, so 720 orderings never all exist at once. The test asserts
+      <code>count === 720</code> <em>and</em> that all 720 are distinct — the second one catches the
+      classic swap-in-place bug that produces the right count with duplicates in it.</p>
+
+      <h3 class="text-xl font-bold">3. Calibration is a division, and the identity check matters</h3>
+      <pre>function calibrate(prompt, cfg){
+  const cf = probabilities(prompt, CONTENT_FREE, cfg);   // "N/A" - nothing to classify
+  return { w: [1 / cf[0], 1 / cf[1]] };
+}
+
+function predictCalibrated(prompt, x, cal, cfg){
+  const p = probabilities(prompt, x, cfg);
+  const raw = [p[0] * cal.w[0], p[1] * cal.w[1]];
+  const z = raw[0] + raw[1];
+  return [raw[0] / z, raw[1] / z];                       // renormalise
+}</pre>
+      <p>The renormalisation is not cosmetic — without it the weighted values are not a
+      distribution, and every downstream threshold is meaningless. The test asserts that a prompt
+      with <strong>no bias at all</strong> calibrates to a no-op, which is the property that proves
+      the correction is not just adding a second bias on top of the first.</p>
+
+      <h3 class="text-xl font-bold">4. Slot influence is an ablation, not a theory</h3>
+      <pre>for (let i = 0; i &lt; prompt.length; i++){
+  const flipped = prompt.map((e, j) =&gt; j === i ? { ...e, polarity: -e.polarity } : e);
+  influence[i] = mean(|predict(prompt, x) − predict(flipped, x)| over the test set);
+}</pre>
+      <p>Flip the label at one position, measure how far every prediction moved. No claims about
+      attention, no interpretability story — a controlled intervention and a number. The recency
+      curve falls out of it rather than being asserted.</p>
+
+      <h3 class="text-xl font-bold">5. What the tests pin</h3>
+      <pre>// the mechanism is real and separable
+assert(spreadWith(recency=0)  &lt; spreadWith(recency=0.55));
+assert(spreadWith(majority=0) &lt; spreadWith(majority=0.60));
+
+// calibration helps but does NOT eliminate
+assert(spreadCalibrated &lt; spreadUncalibrated);
+assert(spreadCalibrated &gt; 0);            // the honest half
+
+// and it is a no-op on an unbiased prompt
+assert(|calibrated − uncalibrated| &lt; 1e-12) when all biases are 0;</pre>
+      <p>That third assertion is the one worth copying. A correction that improves the metric on
+      biased input and <em>also</em> changes unbiased input is not a correction — it is a second
+      bias that happens to point the other way.</p>
+
+      <h3 class="text-xl font-bold">🎉 PromptFromZero Day 65 shipped.</h3>
+      <p class="text-slate-600">Day 58 picked which examples. Today picked the order, and the order
+      is worth more than expected.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// A classifier with THREE DECLARED biases (recency, majority label, common token).
+// Not a language model - a model of three published effects, with the coefficients visible.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const CONTENT_FREE = { text: "N/A", polarity: 0, label: null };
+
+const POOL = [
+  { text: "the plot dragged and I checked my watch twice", polarity: -1, label: 0 },
+  { text: "genuinely funny from the first scene", polarity: 1, label: 1 },
+  { text: "wooden acting, but the score is lovely", polarity: -1, label: 0 },
+  { text: "I would happily watch it again tomorrow", polarity: 1, label: 1 },
+  { text: "a waste of two very good actors", polarity: -1, label: 0 },
+  { text: "quietly one of the best things this year", polarity: 1, label: 1 }
+];
+
+function makeTestSet(n, seed){
+  const rnd = mulberry32(seed);
+  const out = [];
+  for (let i = 0; i < n; i++){
+    const label = i % 2;                       // deliberately BALANCED
+    // The strength range matters. A test set of only CLEAR items hides the residual after
+    // calibration, because the true signal swamps it and accuracy saturates at 100% for
+    // every ordering. Real corpora contain genuinely ambiguous items, and those are exactly
+    // where an input-dependent bias decides the answer - so the range starts near zero.
+    const strength = 0.02 + rnd() * 1.18;
+    out.push({ text: "test-" + i, polarity: (label ? 1 : -1) * strength, label: label });
+  }
+  return out;
+}
+
+const DEFAULTS = {
+  signal: 1.2,          // how much the input itself matters
+  recency: 0.55,        // weight on demonstrations, decaying with distance
+  recencyDecay: 0.62,
+  majority: 0.60,       // pull toward the majority label of the prompt
+  commonToken: 0.35,    // one label string is simply likelier
+  interaction: 0.30     // bias that only exists in the PRESENCE of content - see below
+};
+
+// The first version of this model had only the three constant biases, and measuring it
+// produced a result that contradicted the page: contextual calibration removed 100% of the
+// ordering spread, not "most" of it. That was correct and inevitable - a bias that is an
+// additive constant in logit space is EXACTLY what a content-free probe measures, so
+// dividing it out is exact.
+//
+// The second attempt scaled the interaction by how AMBIGUOUS the input was. That failed too,
+// and for a sharper reason: a content-free input is the MOST ambiguous input there is, so the
+// probe saw that term at full strength and removed it as well.
+//
+// The term that survives calibration is the one a content-free probe cannot see at all - one
+// that only exists in the PRESENCE of content. Here the last exemplar modulates how strongly
+// the input's own evidence is read (a product term). At x.polarity = 0 it contributes exactly
+// nothing, so the probe is blind to it, while it stays order-dependent through prompt[n-1].
+// That is the honest shape of the residual: calibration removes what a content-free input
+// exhibits, and nothing else.
+function score(prompt, x, cfg){
+  let s = cfg.signal * x.polarity;
+  const n = prompt.length;
+  for (let i = 0; i < n; i++){
+    const dist = n - 1 - i;                                  // 0 = nearest the query
+    s += cfg.recency * Math.pow(cfg.recencyDecay, dist) * prompt[i].polarity;
+  }
+  let maj = 0;
+  for (const e of prompt) maj += Math.sign(e.polarity);
+  s += cfg.majority * (maj / n);
+  s += cfg.commonToken;
+  // Invisible to a content-free probe (it vanishes at x.polarity = 0), order-dependent via
+  // prompt[n-1], and ADDITIVE with a sign the input does not control - so it can actually flip
+  // a weak input. A product with x.polarity would only rescale confidence and never change a
+  // decision, which is the third thing this term had to get right.
+  // It must also SATURATE rather than grow with |polarity|. A term proportional to the input's
+  // own strength is just a rescaling of the signal - it can never outvote it, so it can never
+  // change a decision either. Saturating at a low threshold means a weak input gets almost the
+  // full effect while its own evidence is still tiny, which is exactly where a last exemplar
+  // decides the answer in practice.
+  const present = Math.min(1, Math.abs(x.polarity) / 0.15);  // 0 for "N/A", ~1 once there is content
+  s += (cfg.interaction == null ? 0 : cfg.interaction) * present * prompt[n - 1].polarity;
+  return s;
+}
+
+const sigmoid = z => 1 / (1 + Math.exp(-z));
+
+// [P(negative), P(positive)]
+function probabilities(prompt, x, cfg){
+  const p1 = sigmoid(score(prompt, x, cfg));
+  return [1 - p1, p1];
+}
+
+const predictLabel = (prompt, x, cfg) => (probabilities(prompt, x, cfg)[1] >= 0.5 ? 1 : 0);
+
+function accuracy(prompt, tests, cfg){
+  let hit = 0;
+  for (const t of tests) if (predictLabel(prompt, t, cfg) === t.label) hit++;
+  return hit / tests.length;
+}
+
+function positiveRate(prompt, tests, cfg){
+  let pos = 0;
+  for (const t of tests) if (predictLabel(prompt, t, cfg) === 1) pos++;
+  return pos / tests.length;
+}
+
+// ---- contextual calibration (Zhao et al. 2021) --------------------------------
+// Feed a content-free input; whatever comes back is pure bias. Divide it out.
+function calibrate(prompt, cfg){
+  const cf = probabilities(prompt, CONTENT_FREE, cfg);
+  return { cf: cf, w: [1 / cf[0], 1 / cf[1]] };
+}
+
+function calibratedProbabilities(prompt, x, cal, cfg){
+  const p = probabilities(prompt, x, cfg);
+  const a = p[0] * cal.w[0], b = p[1] * cal.w[1];
+  const z = a + b;                                  // renormalise, or it is not a distribution
+  return [a / z, b / z];
+}
+
+function calibratedAccuracy(prompt, tests, cfg){
+  const cal = calibrate(prompt, cfg);
+  let hit = 0;
+  for (const t of tests)
+    if ((calibratedProbabilities(prompt, t, cal, cfg)[1] >= 0.5 ? 1 : 0) === t.label) hit++;
+  return hit / tests.length;
+}
+
+// ---- permutations ------------------------------------------------------------
+function* permutations(arr){
+  if (arr.length <= 1) { yield arr.slice(); return; }
+  for (let i = 0; i < arr.length; i++){
+    const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+    for (const p of permutations(rest)) yield [arr[i]].concat(p);
+  }
+}
+
+function permutationCount(n){ let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; }
+
+// Exhaustive, not sampled: the interesting part is the tail, and 6! = 720 is cheap.
+function sweepOrderings(pool, tests, cfg, calibrated){
+  const accs = [];
+  let best = null, worst = null;
+  for (const perm of permutations(pool)){
+    const a = calibrated ? calibratedAccuracy(perm, tests, cfg) : accuracy(perm, tests, cfg);
+    accs.push(a);
+    if (!best || a > best.acc) best = { acc: a, order: perm.map(function(e){ return e.label; }) };
+    if (!worst || a < worst.acc) worst = { acc: a, order: perm.map(function(e){ return e.label; }) };
+  }
+  const mean = accs.reduce(function(s, v){ return s + v; }, 0) / accs.length;
+  const varc = accs.reduce(function(s, v){ return s + (v - mean) * (v - mean); }, 0) / accs.length;
+  return { n: accs.length, accs: accs, mean: mean, sd: Math.sqrt(varc),
+           best: best, worst: worst, spread: best.acc - worst.acc };
+}
+
+// ---- slot influence: an ablation, not a theory about attention ----------------
+function slotInfluence(prompt, tests, cfg){
+  const out = [];
+  for (let i = 0; i < prompt.length; i++){
+    const flipped = prompt.map(function(e, j){
+      return j === i ? { text: e.text, polarity: -e.polarity, label: 1 - e.label } : e;
+    });
+    let total = 0;
+    for (const t of tests)
+      total += Math.abs(probabilities(prompt, t, cfg)[1] - probabilities(flipped, t, cfg)[1]);
+    out.push(total / tests.length);
+  }
+  return out;
+}
+
+// ---- the majority-label trap -------------------------------------------------
+function buildComposition(nPos, nNeg){
+  const pos = POOL.filter(function(e){ return e.polarity > 0; });
+  const neg = POOL.filter(function(e){ return e.polarity < 0; });
+  const out = [];
+  for (let i = 0; i < nPos; i++) out.push(pos[i % pos.length]);
+  for (let i = 0; i < nNeg; i++) out.push(neg[i % neg.length]);
+  return out;
+}
+
+function renderPrompt(prompt, query){
+  let s = "Classify the sentiment of the review as Positive or Negative.\n\n";
+  for (const e of prompt)
+    s += "Review: " + e.text + "\nSentiment: " + (e.label ? "Positive" : "Negative") + "\n\n";
+  return s + "Review: " + (query || "<the input>") + "\nSentiment:";
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+const TESTS = makeTestSet(200, 2026);
+
+function cfg(){
+  return {
+    signal: +$("sSig").value / 100,
+    recency: +$("sRec").value / 100,
+    recencyDecay: DEFAULTS.recencyDecay,
+    majority: +$("sMaj").value / 100,
+    commonToken: +$("sTok").value / 100,
+    interaction: +$("sInt").value / 100
+  };
+}
+
+function render(){
+  const c = cfg();
+  $("vRec").textContent = c.recency.toFixed(2);
+  $("vMaj").textContent = c.majority.toFixed(2);
+  $("vTok").textContent = c.commonToken.toFixed(2);
+  $("vSig").textContent = c.signal.toFixed(2);
+  $("vInt").textContent = c.interaction.toFixed(2);
+
+  const un = sweepOrderings(POOL, TESTS, c, false);
+  const ca = sweepOrderings(POOL, TESTS, c, true);
+
+  $("nPerm").textContent = un.n;
+  $("pBest").textContent = (100 * un.best.acc).toFixed(1) + "%  [" + un.best.order.join("") + "]";
+  $("pWorst").textContent = (100 * un.worst.acc).toFixed(1) + "%  [" + un.worst.order.join("") + "]";
+  $("pSpread").textContent = (100 * un.spread).toFixed(1) + " points";
+  $("pMean").textContent = (100 * un.mean).toFixed(1) + "%  /  " + (100 * un.sd).toFixed(2);
+
+  // histogram of the 720 accuracies
+  const BINS = 28;
+  const lo = Math.min.apply(null, un.accs), hi = Math.max.apply(null, un.accs);
+  const bins = new Array(BINS).fill(0);
+  for (const a of un.accs){
+    const k = hi === lo ? 0 : Math.min(BINS - 1, Math.floor((a - lo) / (hi - lo) * BINS));
+    bins[k]++;
+  }
+  const top = Math.max.apply(null, bins) || 1;
+  $("hist").innerHTML = bins.map(function(b){
+    return '<div style="height:' + (100 * b / top) + '%"></div>';
+  }).join("");
+  $("histAxis").textContent = "accuracy " + (100 * lo).toFixed(1) + "% (left) to " +
+    (100 * hi).toFixed(1) + "% (right), " + un.n + " orderings";
+
+  const cal = calibrate(POOL, c);
+  $("calib").textContent =
+    'content-free input "N/A"\n' +
+    "  P(negative) = " + cal.cf[0].toFixed(4) + "   P(positive) = " + cal.cf[1].toFixed(4) + "\n" +
+    "  a fair prompt would give 0.5000 / 0.5000\n" +
+    "  correction   w = [" + cal.w[0].toFixed(4) + ", " + cal.w[1].toFixed(4) + "]";
+
+  $("cU").textContent = (100 * un.mean).toFixed(1) + "%";
+  $("cC").textContent = (100 * ca.mean).toFixed(1) + "%";
+  $("sU").textContent = (100 * un.spread).toFixed(1) + " pts";
+  $("sC").textContent = (100 * ca.spread).toFixed(1) + " pts";
+  $("wU").textContent = (100 * un.worst.acc).toFixed(1) + "%";
+  $("wC").textContent = (100 * ca.worst.acc).toFixed(1) + "%";
+  const shrink = un.spread > 0 ? (1 - ca.spread / un.spread) : 0;
+  $("calibNote").innerHTML = ca.spread > 0
+    ? "Calibration removed <strong>" + (100 * shrink).toFixed(0) + "%</strong> of the spread and " +
+      "left <strong>" + (100 * ca.spread).toFixed(1) + " points</strong> of it. It is a large " +
+      "improvement and it is not a fix — you still only get to ship one ordering."
+    : "With these settings the residual spread is 0 — turn a bias back up to see the honest case.";
+
+  // majority-label trap
+  const comps = [[3, 3], [4, 2], [5, 1], [6, 0], [2, 4], [1, 5]];
+  $("major").innerHTML = comps.map(function(pair){
+    const p = buildComposition(pair[0], pair[1]);
+    const a = accuracy(p, TESTS, c), pr = positiveRate(p, TESTS, c);
+    const balanced = pair[0] === pair[1];
+    return "<tr><td>" + pair[0] + " positive / " + pair[1] + " negative" +
+      (balanced ? " <span class='chip pos'>balanced</span>" : "") + "</td>" +
+      "<td class='font-bold'>" + (100 * a).toFixed(1) + "%</td>" +
+      "<td>" + (100 * pr).toFixed(1) + "%</td></tr>";
+  }).join("");
+
+  // slot influence
+  const inf = slotInfluence(POOL, TESTS, c);
+  const maxInf = Math.max.apply(null, inf) || 1;
+  $("slots").innerHTML = inf.map(function(v, i){
+    return "<div><div class='flex justify-between text-xs mb-1'><span>position " + (i + 1) +
+      (i === inf.length - 1 ? " <span class='chip neg'>nearest the query</span>" : "") +
+      "</span><span class='font-bold tabular-nums'>" + v.toFixed(4) + "</span></div>" +
+      "<div class='bar'><span style='width:" + (100 * v / maxInf) + "%'></span></div></div>";
+  }).join("");
+
+  $("prompt").textContent = renderPrompt(POOL, "the ending landed better than I expected");
+}
+
+["sRec", "sMaj", "sTok", "sSig", "sInt"].forEach(function(id){
+  $(id).addEventListener("input", render);
+});
+render();
+</script>
+</body>
+</html>
