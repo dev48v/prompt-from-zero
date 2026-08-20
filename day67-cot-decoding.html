@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 67 — CoT-decoding</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  .bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; background:#7c3aed; }
+  tr.hi td { background:#faf5ff; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-violet-700 mb-2">PROMPTFROMZERO · DAY 67</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      🌿 CoT-decoding — sixty-six days of this series changed the <em>prompt</em>. Wang &amp; Zhou
+      (2024) point out that the reasoning was often already there and greedy decoding was throwing
+      it away: take the <strong>top-k first tokens</strong> instead of the argmax one, decode each
+      greedily, and several of those branches turn out to contain a chain of thought that no
+      instruction asked for. Then pick between them by the <strong>confidence gap over the answer
+      span</strong> — Δ = p(top-1) − p(top-2), averaged over the answer tokens only. This page
+      simulates the branch population and the confidence readout, never the language, and prices
+      the result: greedy <strong>39.6%</strong> → <strong>75.9%</strong>. And then the control that
+      cost the page its headline — "just take the longest branch", which needs no logprobs at all,
+      scores <strong>76.2%</strong>. The confidence gap earns its keep somewhere else entirely,
+      and the page measures where. Pure vanilla JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔬 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-3 gap-x-6 gap-y-2">
+          <label class="text-sm">k — branches taken at the first token
+            <span id="vK" class="font-bold tabular-nums float-right">10</span>
+            <input id="sK" type="range" min="1" max="30" value="10" class="w-full"></label>
+          <label class="text-sm">task difficulty
+            <span id="vDiff" class="font-bold tabular-nums float-right">0.55</span>
+            <input id="sDiff" type="range" min="-50" max="200" value="55" class="w-full"></label>
+          <label class="text-sm">model skill
+            <span id="vSkill" class="font-bold tabular-nums float-right">0.30</span>
+            <input id="sSkill" type="range" min="-50" max="150" value="30" class="w-full"></label>
+          <label class="text-sm">ρ — how much of the margin Δ actually carries
+            <span id="vRho" class="font-bold tabular-nums float-right">0.55</span>
+            <input id="sRho" type="range" min="0" max="100" value="55" class="w-full"></label>
+          <label class="text-sm">error agreement (0 = wrong answers all differ)
+            <span id="vAgree" class="font-bold tabular-nums float-right">0.50</span>
+            <input id="sAgree" type="range" min="0" max="100" value="50" class="w-full"></label>
+          <label class="text-sm">overconfidence added to every Δ
+            <span id="vOver" class="font-bold tabular-nums float-right">0.00</span>
+            <input id="sOver" type="range" min="0" max="60" value="0" class="w-full"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          4,000 questions per render, seeded. Nothing here generates text — what is simulated is the
+          <em>population</em> of decoding branches and the confidence readout attached to each.
+        </p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <div class="flex items-baseline justify-between mb-2">
+            <p class="text-xs font-bold tracking-wider text-slate-500">ONE QUESTION, ALL ITS BRANCHES</p>
+            <label class="text-xs text-slate-500">question
+              <input id="sQ" type="range" min="1" max="200" value="17" class="align-middle w-32"></label>
+          </div>
+          <div class="overflow-x-auto" style="max-height:330px">
+            <table class="num w-full">
+              <thead><tr><th>rank</th><th>path</th><th>tok</th><th>Δ answer</th><th>Δ path</th><th>answer</th></tr></thead>
+              <tbody id="branches"></tbody>
+            </table>
+          </div>
+          <p class="text-xs text-slate-500 mt-2" id="branchNote"></p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">EIGHT WAYS TO PICK A BRANCH</p>
+          <table class="num w-full">
+            <thead><tr><th>selector</th><th>accuracy</th><th>gap captured</th><th>calls</th><th>out tok</th><th>tok / extra correct</th></tr></thead>
+            <tbody id="selectors"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2" id="selNote"></p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHERE THE WIN ACTUALLY COMES FROM</p>
+        <div id="decomp" class="space-y-2"></div>
+        <p class="text-xs text-slate-500 mt-3" id="decompNote"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">FAILURE MODE 1 — THE ERRORS AGREE</p>
+          <p class="text-xs text-slate-600 mb-3">Self-consistency needs the correct answer to be the
+            <em>modal</em> one. Push the wrong branches onto a single attractor and voting walks
+            into it. Δ-ranking never looks at the other branches, so it does not care.</p>
+          <table class="num w-full">
+            <thead><tr><th>error agreement</th><th>majority</th><th>Δ-weighted</th><th>max Δ</th></tr></thead>
+            <tbody id="sweepAgree"></tbody>
+          </table>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">FAILURE MODE 2 — Δ CARRIES NOTHING</p>
+          <p class="text-xs text-slate-600 mb-3">Δ is only useful in so far as it correlates with
+            being right. Turn ρ down and max-Δ decays to picking at random; majority voting does not
+            move at all, because it never reads a confidence.</p>
+          <table class="num w-full">
+            <thead><tr><th>ρ</th><th>max Δ</th><th>longest</th><th>majority</th><th>Δ-weighted</th></tr></thead>
+            <tbody id="sweepRho"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">THE FREE CONTROL, AND WHERE IT RUNS OUT</p>
+        <p class="text-sm text-slate-600 mb-3">
+          "Take the longest branch" is a reasoning-path detector that costs nothing and needs no
+          logprob access. At small k it is <em>better</em> than the confidence gap. It also stops
+          improving, because the best it can ever do is the accuracy of a reasoning branch — the
+          rightmost column — while Δ keeps discriminating <em>within</em> that pool.
+        </p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>k</th><th>max Δ</th><th>longest</th><th>majority</th><th>Δ-weighted</th><th>oracle</th><th>a CoT branch</th></tr></thead>
+            <tbody id="sweepK"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE GAIN IS A PROPERTY OF YOUR DIFFICULTY MIX</p>
+          <p class="text-xs text-slate-600 mb-3">Zero when every branch is right, zero when every
+            branch is wrong, and a peak in between. A headline "+36 points" is not portable — it is
+            a statement about the benchmark it was measured on.</p>
+          <table class="num w-full">
+            <thead><tr><th>difficulty</th><th>greedy</th><th>max Δ</th><th>gain</th></tr></thead>
+            <tbody id="sweepDiff"></tbody>
+          </table>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">OVERCONFIDENCE: A CONSTANT THAT DOES NOT WASH OUT</p>
+          <p class="text-xs text-slate-600 mb-3">Adding a constant to every Δ cannot change an
+            <code>argmax</code> — until the readout <strong>clips</strong>. A probability gap cannot
+            exceed 1, so the branches you most wanted to separate merge into a tie, and the tie
+            breaks to the lowest rank, which is the greedy branch you were trying to escape. The
+            last column is the twist: a weighted <em>sum</em> is not shift-invariant, so the same
+            constant that max-Δ cannot see drags Δ-weighted voting toward plain majority.</p>
+          <table class="num w-full">
+            <thead><tr><th>+ constant</th><th>max Δ, clipped</th><th>ties at the top</th><th>max Δ, unclipped</th><th>Δ-weighted vote</th></tr></thead>
+            <tbody id="sweepOver"></tbody>
+          </table>
+          <p class="text-xs text-slate-500 mt-2">1,500 questions per row, so this panel's baseline
+            sits a few tenths from the 4,000-question table above.</p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE SELF-TEST</p>
+        <pre id="selftest" style="margin:0;max-height:260px"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">The prompt was never the only place to intervene</h2>
+
+      <p>Every technique in this series so far has been a change to the text you send. CoT-decoding
+      is not. The prompt stays exactly as it was — no "let's think step by step", no exemplars, no
+      system message — and the change happens one layer down, in how the tokens come out.</p>
+
+      <p>Greedy decoding takes the highest-probability first token and never looks back. Wang &amp;
+      Zhou's observation is that for a question with an obvious-looking answer, that first token is
+      very often the <em>start of the answer</em>, and committing to it forecloses the reasoning.
+      The alternative first tokens — ranks 1 through k−1, which greedy discards — much more often
+      open a path that works through the problem first.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">So the reasoning ability was already in the model. What "let's think step
+        by step" does, on this reading, is not <em>teach</em> reasoning — it makes the reasoning
+        branch the argmax. Which is a much less magical description of prompting, and a more useful
+        one.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Two problems, and only the second one is interesting</h3>
+
+      <p>Branching is easy: ask for the top k first tokens, then greedy-decode k continuations.
+      <strong>Choosing</strong> is the hard part, because you now have k answers and no labels. The
+      paper's selector is the model's own confidence — specifically the gap between the top two
+      token probabilities, Δ = p(top-1) − p(top-2), averaged over the <em>answer</em> tokens.</p>
+
+      <p>Two details in that sentence are doing all the work:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Over the answer span, not the whole path.</strong> A reasoning path is 20–100
+        tokens of fluent prose and 3 tokens of answer. Average Δ over all of it and the fluency
+        drowns the signal — and it drowns it <em>more</em> the better the reasoning is, because the
+        good paths are the long ones. Measured on this page: 75.9% over the answer span, 67.5% over
+        the path. The naive version is worse than the free control.</li>
+        <li><strong>Δ, not a verbalised confidence.</strong> Day 54 asked the model to <em>say</em>
+        how sure it was. This reads a quantity the model never states and cannot editorialise —
+        which also means it needs logprob access, and most hosted APIs do not give you a top-2
+        probability per token.</li>
+      </ul>
+
+      <h3 class="text-xl font-bold">🔴 The control that took the headline</h3>
+
+      <p>The page was going to say: the confidence gap is what finds the reasoning path. So it
+      needed a floor — a selector that also finds reasoning paths but reads no probabilities at all.
+      <strong>Pick the longest branch.</strong> Reasoning paths are long; direct answers are short.
+      It is one line and it is free.</p>
+
+      <p>At the default settings it scores <strong>76.2%</strong> against max-Δ's
+      <strong>75.9%</strong>. Dead level. The whole apparatus of logprob access, answer-span
+      localisation and per-token arithmetic bought <em>nothing</em> over <code>argmax(len)</code>.</p>
+
+      <p>That is the honest headline, and the interesting question is where it stops being true.
+      Two places, both measured:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>k.</strong> "Longest" saturates at the accuracy of a reasoning branch, because
+        once it reliably finds one, more branches give it nothing new — 75.2% at k=8 and 76.3% at
+        k=30. Δ keeps going, because it discriminates <em>between</em> reasoning branches: 72.8% at
+        k=8, 82.2% at k=30. The value of the confidence signal is in the <em>slope</em>, not the
+        level.</li>
+        <li><strong>ρ.</strong> How much of the correctness margin the confidence actually carries.
+        Below about 0.5, max-Δ is worse than picking the longest branch; above it, better. Every
+        published Δ result is implicitly a claim about ρ for that model on that task, and it is not
+        a portable constant.</li>
+      </ul>
+
+      <p>And the selector that wins nearly everywhere is neither: <strong>Δ-weighted voting</strong>,
+      at 82.2%. Vote like self-consistency, but weight each vote by that branch's answer confidence.
+      It uses both signals and fails gracefully when either one dies.</p>
+
+      <h3 class="text-xl font-bold">Two selectors, two orthogonal failure modes</h3>
+
+      <p>This is the part worth taking away, because it tells you which one to reach for:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Majority voting fails when the errors agree.</strong> It needs the right answer
+        to be modal. Push every wrong branch onto one attractor — the answer you get from the
+        plausible-but-wrong method — and voting elects it: 78.3% → 52.9% across the sweep. Max-Δ
+        does not move (78.1% → 75.7%), because it never looks at the other branches.</li>
+        <li><strong>Δ-ranking fails when the confidence is uninformative.</strong> At ρ = 0 it is
+        56.5%, which is exactly picking at random. Majority voting sits flat at 74.0% across that
+        whole sweep, because it never reads a confidence.</li>
+      </ul>
+
+      <p>Neither failure is a bug in the technique. They are the two different things a selector can
+      be made of — agreement between samples, or a signal inside one sample — and they break for
+      unrelated reasons. Which is also why weighting one by the other is not a hack.</p>
+
+      <h3 class="text-xl font-bold">The Day-65 lesson, arriving from the other side</h3>
+
+      <p>Day 65 spent three attempts learning that an additive constant in a score is exactly what
+      calibration removes. Here the same constant shows up as <strong>overconfidence</strong> —
+      real models report high probability gaps everywhere — and the arithmetic says it must be
+      invisible, because adding a constant to every Δ cannot reorder an <code>argmax</code>.</p>
+
+      <p>The page asserts that, and it is exact: with the readout left unclipped, +0.25 changes the
+      result by <strong>0.00e+0</strong> — and so does +4.00, and so does +1000. Then it clips,
+      because a probability gap is bounded by 1, and the same +0.25 costs <strong>6.3
+      points</strong> — 75.5% → 69.2% — with 75.2% of questions ending in a tie at the top. The tie
+      breaks to the lowest rank. The lowest rank is the greedy branch. Overconfidence quietly hands
+      you back the branch you branched to avoid.</p>
+
+      <p>Then the verifier found the sharper version, which I had asserted wrongly and had to
+      correct. "A constant is invisible" is true of an <code>argmax</code> and <strong>false of a
+      weighted sum</strong>: adding c to every Δ adds c × (number of votes) to each answer's total,
+      so the constant is really a knob that turns Δ-weighted voting into plain majority voting.
+      Unclipped, with no ties and no clipping anywhere, +0.25 leaves max-Δ at exactly 75.9% — bit
+      for bit the undisturbed number — and moves the weighted vote 82.2% → 80.5%, converging at
+      77.6%. Its limit
+      is not plain majority (74.4%) but majority with Δ used only to break ties, and that tie-break
+      alone is worth 3.2 points.</p>
+
+      <div class="bg-violet-50 border-l-4 border-violet-500 p-4">
+        <p class="text-sm">So the Day-65 rule needs a qualifier. A constant bias washes out of any
+        selector that only reads the <em>order</em> of the scores. It does not wash out of one that
+        reads their <em>magnitudes</em> — and it does not wash out of an ordering either, once the
+        scale it lives on has an edge to pile up against.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">The columns nobody quotes</h3>
+
+      <p>k branches is k decodes. At k=10 that is 10 calls instead of 1, 439 output tokens instead
+      of 25, and 2,239 total tokens instead of 205. Three things about that bill:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>Most of it is the prompt, sent ten times</strong> — 1,800 of the 2,239. Prefix
+        caching removes nearly all of that, so the irreducible cost is the output side: 17.6×.</li>
+        <li><strong>Latency is not 10×.</strong> The branches are independent, so wall-clock is the
+        <em>longest</em> branch, not the sum: 97 tokens against greedy's 25. You pay 3.9× in time
+        and 17.6× in output tokens, and those are different budgets.</li>
+        <li><strong>The number to actually compare is tokens per additional correct answer.</strong>
+        Δ-weighted voting is the cheapest at ~974 output tokens per extra correct answer; max-Δ is
+        1,140; plain majority 1,190. All are in the same order of magnitude, which is the real
+        finding — the selectors differ by a few points, not by a factor.</li>
+      </ul>
+
+      <h3 class="text-xl font-bold">Where this model is a stand-in, said plainly</h3>
+
+      <p>Declared, not derived: the probability that a branch at rank r contains reasoning (0.12 at
+      the greedy rank, saturating to 0.66 — this is the paper's empirical observation, and the page
+      includes a control that flattens it, at which point greedy and a random branch score the same
+      62%); how much a reasoning path adds to the correctness margin; the length distributions; and
+      ρ. Measured, not declared: everything in every table — which selector wins where, the
+      crossovers, the saturation of "longest", the clipping cost, and the whole cost column.</p>
+
+      <p>The one number to distrust hardest is the 39.6% → 75.9% headline. It is a property of a
+      difficulty mix, and the sweep shows the same technique paying 0.0 points at the easy end and
+      0.2 points at the hard end.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. The one modelling decision everything rests on</h3>
+      <p>Confidence must <strong>not</strong> be a readout of correctness. The first version of this
+      engine set Δ = sigmoid(margin) + noise, and since correctness is <code>margin &gt; 0</code>,
+      that made Δ a nearly noiseless report of the answer being right — max-Δ measured
+      <strong>100.0%</strong>, identical to the oracle, on every setting. Correct arithmetic, useless
+      page. The fix is a shared latent with a dial-able weight:</p>
+      <pre>function confidence(m, rho, c, rnd){
+  // rho = how much of the correctness margin the probability gap carries.
+  // rho=0 -> pure fluency, independent of being right.  rho=1 -> a perfect readout.
+  const carried = rho * m + Math.sqrt(1 - rho * rho) * c.confSpread * gauss(rnd);
+  const raw = sigmoid(c.answerSlope * carried) + c.overconfidence;
+  return c.clampConfidence === false ? raw : clamp01(raw);
+}</pre>
+      <p>Now ρ is a dial with two honest endpoints — random selection at 0, oracle at 1 — and the
+      page's job is to find where on that dial the technique stops being worth its dependencies.</p>
+
+      <h3 class="text-xl font-bold">2. The branch population</h3>
+      <pre>// declared from the paper: the argmax first token is the LEAST likely to open a
+// reasoning path, and the rate saturates as you go down the ranks.
+function pCot(rank, c){
+  return rank === 0 ? c.cotAtGreedy
+    : c.cotAtGreedy + (c.cotCeiling - c.cotAtGreedy) * (1 - Math.exp(-rank / c.cotRankScale));
+}
+
+const isCot  = rnd() &lt; pCot(r, c);
+const margin = c.skill + (isCot ? c.cotBonus : 0) - difficulty + c.spread * gauss(rnd);
+const correct = margin &gt; 0;</pre>
+      <p>Saturating on purpose. A term that grows without bound is a term that will eventually carry
+      a claim it cannot support, and rank 12 is not meaningfully more likely to reason than rank 8.
+      The control that keeps this honest is <code>cotAtGreedy = cotCeiling</code>: flatten the
+      profile and greedy lands on top of a random branch — both near 62%, the exact pair printed by
+      the self-test panel — which is the proof that the greedy penalty on this page is entirely
+      that one declared curve and not an artefact of anything else in the engine.</p>
+
+      <h3 class="text-xl font-bold">3. Δ over the answer span vs Δ over the path</h3>
+      <pre>const ansTokens = 2 + Math.floor(rnd() * 4);
+const reaTokens = isCot ? 18 + Math.floor(rnd() * 92) : 4 + Math.floor(rnd() * 24);
+
+deltaAnswer: dAns,
+deltaPath:   (dRea * reaTokens + dAns * ansTokens) / (reaTokens + ansTokens)</pre>
+      <p>A token-weighted mean, which is what "average Δ over the generation" means. The dilution is
+      not a coefficient someone tuned — it falls out of 3 answer tokens against 60 reasoning ones,
+      and it gets <em>worse</em> as reasoning gets longer.</p>
+
+      <h3 class="text-xl font-bold">4. Eight selectors, including the ones meant to lose</h3>
+      <pre>const SELECTORS = {
+  greedy:      b =&gt; b[0].answer,                              // the baseline
+  randomPath:  (b, c, u) =&gt; b[Math.floor(u * b.length)].answer, // the floor
+  longest:     b =&gt; argmaxBy(b, x =&gt; x.tokens).answer,        // free, no logprobs
+  deltaPath:   b =&gt; argmaxBy(b, x =&gt; x.deltaPath).answer,     // the naive mistake
+  deltaAnswer: b =&gt; argmaxBy(b, x =&gt; x.deltaAnswer).answer,   // CoT-decoding
+  majority:    b =&gt; modalAnswer(b),                           // self-consistency
+  weighted:    b =&gt; modalAnswer(b, x =&gt; x.deltaAnswer),       // both signals
+  oracle:      b =&gt; b.some(x =&gt; x.correct) ? 0 : b[0].answer  // the ceiling
+};</pre>
+      <p><code>randomPath</code> and <code>oracle</code> are the two that make the rest readable:
+      every other selector is reported as the fraction of the floor-to-ceiling gap it captures, so
+      "76%" turns into "half of what was available". <code>longest</code> is the control that took
+      the headline, and it is on the page because a technique with dependencies has to beat the
+      version without them, not just beat doing nothing.</p>
+
+      <h3 class="text-xl font-bold">5. The cost side is counted, not asserted</h3>
+      <pre>// k branches is k decodes. Prompt tokens are paid k times unless the prefix is cached;
+// output tokens always. Latency is the LONGEST branch, because they run independently.
+tokens   += sum(branch.tokens) + c.promptTokens * c.k;
+serial   += sum(branch.tokens);
+parallel += max(branch.tokens);
+
+// and the column that makes the comparison fair:
+tokensPerExtraCorrect = (tokens - greedyTokens) / (accuracy - greedyAccuracy);</pre>
+
+      <h3 class="text-xl font-bold">6. What the tests pin</h3>
+      <pre>// the shape of the thing
+assert(acc(k=1) === acc(greedy));                    // no branches, no technique
+assert(acc(rho=0) ≈ acc(randomPath));                // a useless Δ selects nothing
+assert(acc(rho=1) ≈ acc(oracle));                    // a perfect Δ is the ceiling
+assert(acc(deltaAnswer) &gt; acc(deltaPath));           // the span matters
+
+// the controls
+assert(|argmaxAcc(over=0.25, unclipped) - argmaxAcc(over=0)| === 0);  // EXACTLY, not approximately
+assert(acc(over=0.25, clipped)  &lt;  acc(over=0));           // clipping is the whole effect
+assert(weightedAcc(over=0.25)   &lt;  weightedAcc(over=0));   // a SUM is not shift-invariant
+assert(|acc(greedy) - acc(random)| &lt; 0.04) when pCot is flat;
+
+// the honest ones
+assert(acc(longest) &gt;= acc(deltaAnswer) - 0.02) at the defaults;  // the null result
+assert(slope_k(longest) &lt; slope_k(deltaAnswer));                   // where it stops
+assert(gain(easiest) &lt; 0.02 &amp;&amp; gain(hardest) &lt; 0.02);             // both ends of the U</pre>
+      <p>The third-from-last is the one that hurt. It asserts that at the page's own default
+      settings the free heuristic is <em>not beaten</em> by the technique the page is about. Writing
+      a test that pins your own null result is the only way it survives the next edit.</p>
+
+      <p>And the weighted-sum line above it exists because the first version of that assertion said
+      <code>for every selector: acc(over=0.25) === acc(over=0)</code> and one of the nine failed.
+      The engine was right and the test was wrong, which is the good direction for that to happen
+      in — the finding on the UNDERSTAND tab is what the failure turned into.</p>
+
+      <h3 class="text-xl font-bold">🎉 PromptFromZero Day 67 shipped.</h3>
+      <p class="text-slate-600">A decoding-side technique, a free control that ties it, and the two
+      measured places where the control runs out.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// CoT-decoding (Wang & Zhou, 2024): branch over the top-k FIRST tokens, greedy-decode each, and
+// choose between the paths by the confidence gap measured over the ANSWER span. Nothing here
+// simulates language. What is simulated is the POPULATION of decoding branches and the confidence
+// readout attached to each one - which is the part the technique actually depends on.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const clamp01 = x => x < 0 ? 0 : x > 1 ? 1 : x;
+const sigmoid = x => 1 / (1 + Math.exp(-x));
+
+// Box-Muller, so the branch draws are normal and the stream stays reproducible.
+function gauss(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+const DEFAULTS = {
+  k: 10,                  // branches taken at the first token
+  skill: 0.30,            // the model's competence, in margin units
+  cotBonus: 0.70,         // what a reasoning path adds to the margin
+  difficulty: 0.55,
+  difficultySpread: 0.45, // questions are not all the same difficulty
+  spread: 0.45,           // per-branch luck
+  confInfo: 0.55,         // rho: how much of the margin the probability gap carries
+  confSpread: 0.80,       // the fluency component's scale
+  reasonInfo: 0.12,       // reasoning tokens carry far less of it than answer tokens
+  errorAgreement: 0.50,   // 0 = wrong branches all disagree, 1 = they share one attractor
+  distractors: 5,
+  answerSlope: 2.2,
+  overconfidence: 0.0,    // a constant added to every Delta
+  clampConfidence: true,  // a probability gap cannot exceed 1
+  promptTokens: 180,
+  cotAtGreedy: 0.12,      // declared from the paper: the argmax token rarely opens a chain
+  cotCeiling: 0.66,
+  cotRankScale: 2.0,
+  measurePairs: true
+};
+
+const withDefaults = cfg => Object.assign({}, DEFAULTS, cfg || {});
+
+// Declared, and SATURATING: rank 12 is not meaningfully more likely to reason than rank 8.
+function pCot(rank, c){
+  return rank === 0
+    ? c.cotAtGreedy
+    : c.cotAtGreedy + (c.cotCeiling - c.cotAtGreedy) * (1 - Math.exp(-rank / c.cotRankScale));
+}
+
+// The single decision the whole page rests on. Confidence is NOT a readout of correctness - it
+// shares a dial-able amount of the same latent margin, and the rest is fluency. Make it a readout
+// of correctness and max-Delta measures exactly the oracle at every setting, which is arithmetic
+// rather than a finding.
+function confidence(m, rho, c, rnd){
+  const carried = rho * m + Math.sqrt(Math.max(0, 1 - rho * rho)) * c.confSpread * gauss(rnd);
+  const raw = sigmoid(c.answerSlope * carried) + c.overconfidence;
+  return c.clampConfidence === false ? raw : clamp01(raw);
+}
+
+function decodeBranches(c, rnd, difficulty){
+  const d = difficulty == null ? c.difficulty : difficulty;
+  const out = [];
+  for (let r = 0; r < c.k; r++){
+    const isCot = rnd() < pCot(r, c);
+    const m = c.skill + (isCot ? c.cotBonus : 0) - d + c.spread * gauss(rnd);
+    const correct = m > 0;
+    let answer;
+    if (correct) answer = 0;                                   // 0 is the right answer
+    else if (rnd() < c.errorAgreement) answer = 1;             // the shared attractor
+    else answer = 2 + Math.floor(rnd() * Math.max(1, c.distractors - 1));
+    const dAns = confidence(m, c.confInfo, c, rnd);
+    const dRea = confidence(m, c.confInfo * c.reasonInfo, c, rnd);
+    const ansTokens = 2 + Math.floor(rnd() * 4);
+    const reaTokens = isCot ? 18 + Math.floor(rnd() * 92) : 4 + Math.floor(rnd() * 24);
+    const tokens = ansTokens + reaTokens;
+    out.push({
+      rank: r, isCot: isCot, margin: m, correct: correct, answer: answer,
+      deltaAnswer: dAns, deltaReason: dRea,
+      // a token-weighted mean: this IS what "average Delta over the generation" means, and the
+      // dilution is not a tuned coefficient - it is 3 answer tokens against 60 reasoning ones.
+      deltaPath: (dRea * reaTokens + dAns * ansTokens) / tokens,
+      ansTokens: ansTokens, reaTokens: reaTokens, tokens: tokens
+    });
+  }
+  return out;
+}
+
+function oneQuestion(seed, cfg){
+  const c = withDefaults(cfg);
+  const rnd = mulberry32(seed);
+  const d = c.difficulty + c.difficultySpread * gauss(rnd);
+  return { difficulty: d, branches: decodeBranches(c, rnd, d), cfg: c };
+}
+
+const argmaxBy = (arr, f) => {
+  let best = arr[0], bv = f(arr[0]);
+  for (let i = 1; i < arr.length; i++){ const v = f(arr[i]); if (v > bv){ bv = v; best = arr[i]; } }
+  return best;   // ties keep the FIRST, i.e. the lowest rank, i.e. the greedy branch
+};
+
+function modalAnswer(branches, weight){
+  const tally = new Map();
+  for (const b of branches)
+    tally.set(b.answer, (tally.get(b.answer) || 0) + (weight ? weight(b) : 1));
+  let bestA = branches[0].answer, bestW = -Infinity;
+  for (const b of branches){
+    const w = tally.get(b.answer);
+    if (w > bestW){ bestW = w; bestA = b.answer; }
+  }
+  return bestA;
+}
+
+const SELECTORS = {
+  greedy:       b => b[0].answer,
+  randomPath:   (b, c, u) => b[Math.floor(u * b.length)].answer,
+  longest:      b => argmaxBy(b, x => x.tokens).answer,
+  deltaPath:    b => argmaxBy(b, x => x.deltaPath).answer,
+  deltaAnswer:  b => argmaxBy(b, x => x.deltaAnswer).answer,
+  longThenDelta: b => {
+    const half = Math.max(1, Math.ceil(b.length / 2));
+    const pool = b.slice().sort((x, y) => y.tokens - x.tokens).slice(0, half);
+    return argmaxBy(pool, x => x.deltaAnswer).answer;
+  },
+  majority:     b => modalAnswer(b),
+  weighted:     b => modalAnswer(b, x => x.deltaAnswer),
+  oracle:       b => b.some(x => x.correct) ? 0 : b[0].answer
+};
+
+const SELECTOR_NAMES = Object.keys(SELECTORS);
+
+function runTrials(n, seed, cfg){
+  const c = withDefaults(cfg);
+  const rnd = mulberry32(seed);
+  const hit = {}, outTok = {}, inTok = {}, calls = {}, ser = {}, par = {};
+  for (const s of SELECTOR_NAMES){ hit[s]=0; outTok[s]=0; inTok[s]=0; calls[s]=0; ser[s]=0; par[s]=0; }
+  let cotWins = 0, cotPairs = 0, pathWins = 0;
+  let cotB = 0, allB = 0, cotC = 0, dirC = 0, dirB = 0, tied = 0;
+
+  for (let q = 0; q < n; q++){
+    const d = c.difficulty + c.difficultySpread * gauss(rnd);
+    const branches = decodeBranches(c, rnd, d);
+    const u = rnd();
+    const sum = branches.reduce((a, b) => a + b.tokens, 0);
+    const mx  = branches.reduce((a, b) => Math.max(a, b.tokens), 0);
+
+    let top = -Infinity, tcount = 0;
+    for (const b of branches){
+      if (b.deltaAnswer > top){ top = b.deltaAnswer; tcount = 1; }
+      else if (b.deltaAnswer === top) tcount++;
+    }
+    if (tcount > 1) tied++;
+
+    for (const s of SELECTOR_NAMES){
+      if (SELECTORS[s](branches, c, u) === 0) hit[s]++;
+      if (s === "greedy"){
+        outTok[s] += branches[0].tokens; inTok[s] += c.promptTokens;
+        calls[s] += 1; ser[s] += branches[0].tokens; par[s] += branches[0].tokens;
+      } else {
+        outTok[s] += sum; inTok[s] += c.promptTokens * c.k;
+        calls[s] += c.k; ser[s] += sum; par[s] += mx;
+      }
+    }
+
+    for (const b of branches){
+      allB++;
+      if (b.isCot){ cotB++; if (b.correct) cotC++; } else { dirB++; if (b.correct) dirC++; }
+    }
+    if (c.measurePairs !== false)
+      for (const a of branches) for (const b of branches) if (a.isCot && !b.isCot){
+        cotPairs++;
+        if (a.deltaAnswer > b.deltaAnswer) cotWins++;
+        if (a.deltaPath > b.deltaPath) pathWins++;
+      }
+  }
+
+  const out = { n: n, cfg: c, sel: {} };
+  for (const s of SELECTOR_NAMES)
+    out.sel[s] = {
+      accuracy: hit[s] / n,
+      outputTokens: outTok[s] / n,
+      promptTokens: inTok[s] / n,
+      tokens: (outTok[s] + inTok[s]) / n,
+      calls: calls[s] / n,
+      serialLatency: ser[s] / n,
+      parallelLatency: par[s] / n
+    };
+
+  const floor = out.sel.randomPath.accuracy, ceil = out.sel.oracle.accuracy;
+  for (const s of SELECTOR_NAMES){
+    const r = out.sel[s];
+    r.gapCaptured = ceil > floor ? (r.accuracy - floor) / (ceil - floor) : 0;
+    const dA = r.accuracy - out.sel.greedy.accuracy;
+    r.tokensPerExtraCorrect = dA > 1e-9 ? (r.tokens - out.sel.greedy.tokens) / dA : null;
+    r.outputTokensPerExtraCorrect = dA > 1e-9
+      ? (r.outputTokens - out.sel.greedy.outputTokens) / dA : null;
+  }
+  out.cotIdentifiedByAnswerDelta = cotPairs ? cotWins / cotPairs : 0;
+  out.cotIdentifiedByPathDelta = cotPairs ? pathWins / cotPairs : 0;
+  out.cotShare = allB ? cotB / allB : 0;
+  out.cotBranchAccuracy = cotB ? cotC / cotB : 0;
+  out.directBranchAccuracy = dirB ? dirC / dirB : 0;
+  out.tieRate = tied / n;
+  return out;
+}
+
+function sweep(field, values, n, seed, cfg){
+  const out = [];
+  for (const v of values){
+    const over = {}; over[field] = v;
+    out.push({ value: v, run: runTrials(n, seed, Object.assign({}, cfg || {}, over)) });
+  }
+  return out;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+const MAIN_N = 4000, MAIN_SEED = 2026, SW_N = 1200, SW_SEED = 7;
+const pc = x => (100 * x).toFixed(1) + "%";
+
+const LABEL = {
+  greedy: "greedy (rank 0 only)", randomPath: "a random branch", longest: "longest branch (free)",
+  deltaPath: "max &Delta; over the whole path", deltaAnswer: "max &Delta; over the answer span",
+  longThenDelta: "longest half, then max &Delta;", majority: "majority vote (self-consistency)",
+  weighted: "&Delta;-weighted vote", oracle: "oracle (any correct branch)"
+};
+
+function cfg(){
+  return {
+    k: +$("sK").value,
+    difficulty: +$("sDiff").value / 100,
+    skill: +$("sSkill").value / 100,
+    confInfo: +$("sRho").value / 100,
+    errorAgreement: +$("sAgree").value / 100,
+    overconfidence: +$("sOver").value / 100
+  };
+}
+
+function renderBranches(c){
+  const q = oneQuestion(1000 + (+$("sQ").value), c);
+  const bs = q.branches;
+  const bestD = argmaxBy(bs, x => x.deltaAnswer), bestL = argmaxBy(bs, x => x.tokens);
+  $("branches").innerHTML = bs.map(function(b){
+    const mark = (b === bestD ? " &Delta;" : "") + (b === bestL ? " L" : "");
+    return "<tr class='" + (b === bestD ? "hi" : "") + "'><td>" + b.rank + (b.rank === 0 ? " <span class='dim'>greedy</span>" : "") + "</td>" +
+      "<td>" + (b.isCot ? "reasoning" : "<span class='dim'>direct</span>") + "</td>" +
+      "<td>" + b.tokens + "</td>" +
+      "<td>" + b.deltaAnswer.toFixed(3) + "<span class='text-violet-600 font-bold'>" + mark + "</span></td>" +
+      "<td class='dim'>" + b.deltaPath.toFixed(3) + "</td>" +
+      "<td class='" + (b.correct ? "ok" : "bad") + "'>" + (b.correct ? "correct" : "wrong #" + b.answer) + "</td></tr>";
+  }).join("");
+  const nCot = bs.filter(function(b){ return b.isCot; }).length;
+  $("branchNote").innerHTML = "difficulty " + q.difficulty.toFixed(2) + " &middot; " + nCot + " of " +
+    bs.length + " branches contain reasoning &middot; greedy is " +
+    (bs[0].correct ? "<span class='ok'>right</span>" : "<span class='bad'>wrong</span>") +
+    ", max-&Delta; picks rank " + bestD.rank + " (" + (bestD.correct ? "<span class='ok'>right</span>" : "<span class='bad'>wrong</span>") +
+    "), longest picks rank " + bestL.rank + " (" + (bestL.correct ? "<span class='ok'>right</span>" : "<span class='bad'>wrong</span>") + ")";
+}
+
+function render(){
+  const c = cfg();
+  $("vK").textContent = c.k;
+  $("vDiff").textContent = c.difficulty.toFixed(2);
+  $("vSkill").textContent = c.skill.toFixed(2);
+  $("vRho").textContent = c.confInfo.toFixed(2);
+  $("vAgree").textContent = c.errorAgreement.toFixed(2);
+  $("vOver").textContent = c.overconfidence.toFixed(2);
+
+  renderBranches(c);
+
+  const R = runTrials(MAIN_N, MAIN_SEED, c);
+  $("selectors").innerHTML = SELECTOR_NAMES.map(function(s){
+    const r = R.sel[s];
+    const hi = (s === "deltaAnswer" || s === "longest");
+    const cls = s === "oracle" ? "dim" : r.accuracy > 0.8 ? "ok" : r.accuracy < 0.5 ? "bad" : "";
+    return "<tr class='" + (hi ? "hi" : "") + "'><td>" + LABEL[s] + "</td>" +
+      "<td class='" + cls + "'>" + pc(r.accuracy) + "</td>" +
+      "<td>" + (100 * r.gapCaptured).toFixed(0) + "%</td>" +
+      "<td>" + r.calls.toFixed(0) + "</td>" +
+      "<td>" + Math.round(r.outputTokens) + "</td>" +
+      "<td>" + (r.outputTokensPerExtraCorrect == null ? "&mdash;"
+                : Math.round(r.outputTokensPerExtraCorrect).toLocaleString()) + "</td></tr>";
+  }).join("");
+
+  const dA = R.sel.deltaAnswer.accuracy, lo = R.sel.longest.accuracy;
+  $("selNote").innerHTML =
+    "max &Delta; " + pc(dA) + " against the free control at " + pc(lo) + " &mdash; " +
+    (Math.abs(dA - lo) < 0.02
+      ? "<strong>level</strong>, and that is the null result this page is built around."
+      : (dA > lo ? "&Delta; is ahead by " : "the free control is ahead by ") +
+        (100 * Math.abs(dA - lo)).toFixed(1) + " points.") +
+    " Latency is the longest branch, not the sum: " + Math.round(R.sel.deltaAnswer.parallelLatency) +
+    " tokens against greedy's " + Math.round(R.sel.greedy.parallelLatency) + ".";
+
+  const steps = [
+    ["greedy — the argmax first token", R.sel.greedy.accuracy],
+    ["+ take any branch at all (no selection)", R.sel.randomPath.accuracy],
+    ["+ select on the answer-span &Delta;", R.sel.deltaAnswer.accuracy],
+    ["+ weight the vote by &Delta;", R.sel.weighted.accuracy],
+    ["oracle — the best branch present", R.sel.oracle.accuracy]
+  ];
+  $("decomp").innerHTML = steps.map(function(s){
+    return "<div><div class='flex justify-between text-xs mb-1'><span>" + s[0] +
+      "</span><span class='font-bold tabular-nums'>" + pc(s[1]) + "</span></div>" +
+      "<div class='bar'><span style='width:" + (100 * s[1]).toFixed(1) + "%'></span></div></div>";
+  }).join("");
+  $("decompNote").innerHTML =
+    "Three roughly equal thirds: <strong>" + (100 * (R.sel.randomPath.accuracy - R.sel.greedy.accuracy)).toFixed(1) +
+    " points</strong> come from nothing more than not being stuck on rank 0 &mdash; no selector, no logprobs, " +
+    "just a branch that is not the argmax. Another <strong>" +
+    (100 * (R.sel.deltaAnswer.accuracy - R.sel.randomPath.accuracy)).toFixed(1) +
+    " points</strong> come from choosing well. And <strong>" +
+    (100 * (R.sel.oracle.accuracy - R.sel.deltaAnswer.accuracy)).toFixed(1) +
+    " points</strong> are still sitting in branches that were generated, paid for and discarded.";
+
+  const sw = { measurePairs: false };
+  const agree = sweep("errorAgreement", [0, 0.25, 0.5, 0.75, 1], SW_N, SW_SEED, Object.assign({}, c, sw));
+  $("sweepAgree").innerHTML = agree.map(function(r){
+    return "<tr><td>" + r.value.toFixed(2) + "</td><td>" + pc(r.run.sel.majority.accuracy) +
+      "</td><td>" + pc(r.run.sel.weighted.accuracy) + "</td><td>" + pc(r.run.sel.deltaAnswer.accuracy) + "</td></tr>";
+  }).join("");
+
+  const rho = sweep("confInfo", [0, 0.2, 0.35, 0.5, 0.7, 0.9, 1], SW_N, SW_SEED, Object.assign({}, c, sw));
+  $("sweepRho").innerHTML = rho.map(function(r){
+    return "<tr><td>" + r.value.toFixed(2) + "</td><td>" + pc(r.run.sel.deltaAnswer.accuracy) +
+      "</td><td class='dim'>" + pc(r.run.sel.longest.accuracy) + "</td><td class='dim'>" +
+      pc(r.run.sel.majority.accuracy) + "</td><td>" + pc(r.run.sel.weighted.accuracy) + "</td></tr>";
+  }).join("");
+
+  const ks = sweep("k", [1, 2, 3, 5, 8, 10, 15, 20, 30], SW_N, SW_SEED, Object.assign({}, c, sw));
+  $("sweepK").innerHTML = ks.map(function(r){
+    return "<tr><td>" + r.value + "</td><td>" + pc(r.run.sel.deltaAnswer.accuracy) + "</td><td>" +
+      pc(r.run.sel.longest.accuracy) + "</td><td>" + pc(r.run.sel.majority.accuracy) + "</td><td>" +
+      pc(r.run.sel.weighted.accuracy) + "</td><td class='dim'>" + pc(r.run.sel.oracle.accuracy) +
+      "</td><td class='dim'>" + pc(r.run.cotBranchAccuracy) + "</td></tr>";
+  }).join("");
+
+  const dif = sweep("difficulty", [-1.5, -1, -0.5, 0, 0.5, 1, 1.5, 2, 2.5], SW_N, SW_SEED,
+                    Object.assign({}, c, sw, { difficultySpread: 0 }));
+  $("sweepDiff").innerHTML = dif.map(function(r){
+    const g = r.run.sel.deltaAnswer.accuracy - r.run.sel.greedy.accuracy;
+    return "<tr><td>" + r.value.toFixed(1) + "</td><td class='dim'>" + pc(r.run.sel.greedy.accuracy) +
+      "</td><td>" + pc(r.run.sel.deltaAnswer.accuracy) + "</td><td class='" +
+      (g > 0.3 ? "ok" : g < 0.05 ? "dim" : "") + "'>+" + (100 * g).toFixed(1) + "</td></tr>";
+  }).join("");
+
+  $("sweepOver").innerHTML = [0, 0.15, 0.25, 0.35, 0.45].map(function(v){
+    const clipped = runTrials(1500, MAIN_SEED, Object.assign({}, c, { overconfidence: v, measurePairs: false }));
+    const free = runTrials(1500, MAIN_SEED, Object.assign({}, c, { overconfidence: v, clampConfidence: false, measurePairs: false }));
+    const drop = clipped.sel.deltaAnswer.accuracy < free.sel.deltaAnswer.accuracy - 0.005;
+    return "<tr><td>+" + v.toFixed(2) + "</td><td class='" + (drop ? "bad" : "") + "'>" +
+      pc(clipped.sel.deltaAnswer.accuracy) + "</td><td>" + pc(clipped.tieRate) + "</td>" +
+      "<td class='dim'>" + pc(free.sel.deltaAnswer.accuracy) + "</td>" +
+      "<td>" + pc(free.sel.weighted.accuracy) + "</td></tr>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------- in-page self-test
+// Runs ONCE, at the engine's declared defaults - it tests the engine, not the slider positions.
+function selfTest(){
+  const c = Object.assign({}, DEFAULTS);
+  const R = runTrials(MAIN_N, MAIN_SEED, {});
+  const lines = [];
+  let pass = 0, fail = 0;
+  const ok = (cond, label) => { if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } };
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const base = { measurePairs: false };
+
+  // 1. shape
+  const k1 = runTrials(1500, 3, Object.assign({}, c, base, { k: 1 }));
+  ok(near(k1.sel.deltaAnswer.accuracy, k1.sel.greedy.accuracy, 1e-12), "k=1 must equal greedy");
+  ok(near(k1.sel.majority.accuracy, k1.sel.greedy.accuracy, 1e-12), "k=1 majority must equal greedy");
+  ok(near(k1.sel.oracle.accuracy, k1.sel.greedy.accuracy, 1e-12), "k=1 oracle must equal greedy");
+
+  // 2. the two endpoints of rho
+  const r0 = runTrials(2500, 5, Object.assign({}, c, base, { confInfo: 0 }));
+  const r1 = runTrials(2500, 5, Object.assign({}, c, base, { confInfo: 1 }));
+  ok(near(r0.sel.deltaAnswer.accuracy, r0.sel.randomPath.accuracy, 0.04), "rho=0 must select at random");
+  ok(r1.sel.deltaAnswer.accuracy > r0.sel.deltaAnswer.accuracy + 0.15, "rho must be a real dial");
+  ok(r1.sel.deltaAnswer.accuracy >= r1.sel.oracle.accuracy - 0.02, "rho=1 must reach the oracle");
+
+  // 3. the answer span beats the whole path
+  ok(R.sel.deltaAnswer.accuracy > R.sel.deltaPath.accuracy, "answer-span Delta must beat path Delta");
+
+  // 4. the constant washes out EXACTLY without clipping, and not with it
+  const u0 = runTrials(1500, 11, Object.assign({}, c, base, { clampConfidence: false, overconfidence: 0 }));
+  const u1 = runTrials(1500, 11, Object.assign({}, c, base, { clampConfidence: false, overconfidence: 0.25 }));
+  const uBig = runTrials(1500, 11, Object.assign({}, c, base, { clampConfidence: false, overconfidence: 1000 }));
+  const p1 = runTrials(1500, 11, Object.assign({}, c, base, { overconfidence: 0.45 }));
+  for (const s of SELECTOR_NAMES)
+    if (s !== "weighted")
+      ok(u0.sel[s].accuracy === u1.sel[s].accuracy, "an unclipped constant must be exactly invisible to " + s);
+  ok(u0.sel.deltaAnswer.accuracy === uBig.sel.deltaAnswer.accuracy, "+1000 must still be invisible to an argmax");
+  ok(p1.sel.deltaAnswer.accuracy < u0.sel.deltaAnswer.accuracy, "clipping must cost accuracy");
+  ok(p1.tieRate > 0.5, "clipping must create ties at the top");
+  ok(u1.tieRate === 0, "an unclipped readout must not tie");
+  // ...and the exception the verifier caught: a weighted SUM is not shift-invariant
+  ok(u1.sel.weighted.accuracy < u0.sel.weighted.accuracy, "a constant must drag the weighted vote toward majority");
+  ok(uBig.sel.weighted.accuracy > u0.sel.majority.accuracy, "its limit is majority with Delta as the tie-break");
+
+  // 5. the flat-pCot control: the greedy penalty is that one declared curve
+  const flat = runTrials(2500, 13, Object.assign({}, c, base, { cotAtGreedy: 0.66, cotCeiling: 0.66 }));
+  ok(near(flat.sel.greedy.accuracy, flat.sel.randomPath.accuracy, 0.04),
+     "with a flat rank profile greedy must equal a random branch");
+
+  // 6. the null result, pinned
+  ok(R.sel.longest.accuracy >= R.sel.deltaAnswer.accuracy - 0.02,
+     "the free control must not be beaten at the defaults - if it is, say so and rewrite the page");
+  const k8 = runTrials(1500, 17, Object.assign({}, c, base, { k: 8 }));
+  const k30 = runTrials(1500, 17, Object.assign({}, c, base, { k: 30 }));
+  ok((k30.sel.deltaAnswer.accuracy - k8.sel.deltaAnswer.accuracy) >
+     (k30.sel.longest.accuracy - k8.sel.longest.accuracy),
+     "Delta must gain more from k than the longest heuristic does");
+  ok(k30.sel.longest.accuracy <= k30.cotBranchAccuracy + 0.05,
+     "the longest heuristic cannot beat the accuracy of a reasoning branch");
+
+  // 7. the two failure modes are orthogonal
+  const a0 = runTrials(2000, 19, Object.assign({}, c, base, { errorAgreement: 0 }));
+  const a1 = runTrials(2000, 19, Object.assign({}, c, base, { errorAgreement: 1 }));
+  ok(a1.sel.majority.accuracy < a0.sel.majority.accuracy - 0.1, "agreeing errors must break voting");
+  ok(near(a1.sel.deltaAnswer.accuracy, a0.sel.deltaAnswer.accuracy, 0.05), "agreeing errors must not touch max-Delta");
+
+  // 8. both ends of the inverted U
+  const easy = runTrials(1500, 23, Object.assign({}, c, base, { difficulty: -1.5, difficultySpread: 0 }));
+  const hard = runTrials(1500, 23, Object.assign({}, c, base, { difficulty: 2.5, difficultySpread: 0 }));
+  ok(easy.sel.deltaAnswer.accuracy - easy.sel.greedy.accuracy < 0.02, "no gain is available on trivial questions");
+  ok(hard.sel.deltaAnswer.accuracy - hard.sel.greedy.accuracy < 0.02, "no gain is available on impossible questions");
+
+  // 9. costs and determinism
+  ok(R.sel.deltaAnswer.calls === c.k, "k branches must cost k calls");
+  ok(R.sel.deltaAnswer.parallelLatency < R.sel.deltaAnswer.serialLatency, "parallel latency must be below serial");
+  ok(R.sel.deltaAnswer.outputTokens > R.sel.greedy.outputTokens, "branching must cost output tokens");
+  const d1 = runTrials(600, 29, Object.assign({}, c, base));
+  const d2 = runTrials(600, 29, Object.assign({}, c, base));
+  ok(d1.sel.deltaAnswer.accuracy === d2.sel.deltaAnswer.accuracy, "the same seed must reproduce");
+
+  const head = "  " + (fail ? "FAILED" : "all green") + "  |  asserts " + (pass + fail) +
+    "  |  pass " + pass + "  |  fail " + fail + "   (run once, at the engine's declared defaults)";
+  $("selftest").textContent = [head, ""].concat(lines).concat([
+    "  k=1 == greedy, rho=0 == random, rho=1 == oracle",
+    "  answer-span " + pc(R.sel.deltaAnswer.accuracy) + " vs whole-path " + pc(R.sel.deltaPath.accuracy),
+    "  unclipped +0.25 changes nothing: " +
+      (u1.sel.deltaAnswer.accuracy - u0.sel.deltaAnswer.accuracy).toExponential(1) +
+      "   clipped +0.45 costs " + (100 * (u0.sel.deltaAnswer.accuracy - p1.sel.deltaAnswer.accuracy)).toFixed(1) + " points",
+    "  flat rank profile: greedy " + pc(flat.sel.greedy.accuracy) + " vs random branch " + pc(flat.sel.randomPath.accuracy),
+    "  free control " + pc(R.sel.longest.accuracy) + " vs max-Delta " + pc(R.sel.deltaAnswer.accuracy) +
+      "  (k 8->30: longest " + (100 * (k30.sel.longest.accuracy - k8.sel.longest.accuracy)).toFixed(1) +
+      ", Delta +" + (100 * (k30.sel.deltaAnswer.accuracy - k8.sel.deltaAnswer.accuracy)).toFixed(1) + ")",
+    "  weighted vote under a constant: " + pc(u0.sel.weighted.accuracy) + " -> " + pc(uBig.sel.weighted.accuracy) +
+      ", plain majority " + pc(u0.sel.majority.accuracy) + "  (a sum is not shift-invariant)"
+  ]).join("\n");
+}
+
+let pending = 0;
+function scheduleRender(){
+  clearTimeout(pending);
+  pending = setTimeout(render, 90);
+}
+["sK", "sDiff", "sSkill", "sRho", "sAgree", "sOver", "sQ"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+  $(id).addEventListener("change", scheduleRender);
+});
+render();
+selfTest();
+</script>
+</body>
+</html>
