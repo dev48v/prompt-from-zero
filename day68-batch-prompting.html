@@ -1,0 +1,1280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 68 — Batch prompting</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  .bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; background:#0d9488; }
+  tr.hi td { background:#f0fdfa; }
+  tr.mis td { background:#fef2f2; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-teal-700 mb-2">PROMPTFROMZERO · DAY 68</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      📦 Batch prompting — put <strong>k</strong> independent items in one call so the shared
+      instruction and exemplars are paid <em>once</em> instead of k times (Cheng, Kasai &amp; Yu,
+      2023). The saving is exact and it is <strong>capped</strong>: batch size k captures precisely
+      <strong>1 − 1/k</strong> of every token batching can ever save, so k=4 already holds 75% of it.
+      What has no cap is the other side. k answers now have to come back in a form that can be put
+      back <em>next to the k questions they belong to</em> — and at k=16 the obvious positional
+      parse hands <strong>22.7%</strong> of items somebody else's answer while
+      <strong>43.3%</strong> of batches come back corrupted with nothing in the response saying so.
+      Then the control that took the headline: I shipped "count the lines" as the free one-line fix,
+      expecting it to win. It is the <em>most expensive</em> fix on this page. Pure vanilla
+      JavaScript, one file, offline.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔬 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-3 gap-x-6 gap-y-2">
+          <label class="text-sm">k — items per call
+            <span id="vK" class="font-bold tabular-nums float-right">16</span>
+            <input id="sK" type="range" min="1" max="64" value="16" class="w-full"></label>
+          <label class="text-sm">P — shared prompt tokens (instruction + exemplars)
+            <span id="vP" class="font-bold tabular-nums float-right">180</span>
+            <input id="sP" type="range" min="20" max="1200" step="20" value="180" class="w-full"></label>
+          <label class="text-sm">L — size of the label space
+            <span id="vL" class="font-bold tabular-nums float-right">5</span>
+            <input id="sL" type="range" min="2" max="50" value="5" class="w-full"></label>
+          <label class="text-sm">format-slip ceiling (declared)
+            <span id="vDrop" class="font-bold tabular-nums float-right">0.055</span>
+            <input id="sDrop" type="range" min="0" max="150" value="55" class="w-full"></label>
+          <label class="text-sm">crowding ceiling (declared)
+            <span id="vCrowd" class="font-bold tabular-nums float-right">0.55</span>
+            <input id="sCrowd" type="range" min="0" max="120" value="55" class="w-full"></label>
+          <label class="text-sm">tag cost — output tokens per "12: "
+            <span id="vTag" class="font-bold tabular-nums float-right">3</span>
+            <input id="sTag" type="range" min="0" max="10" value="3" class="w-full"></label>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          A 2,400-item workload, drawn once and shared by every strategy, so this is a
+          <em>paired</em> comparison: the same questions, the same luck, the same lengths, the same
+          formatting accidents. Nothing here generates text — what is simulated is the token
+          accounting and the <em>channel</em>: how k answers get re-attached to k questions.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-baseline justify-between mb-2">
+          <p class="text-xs font-bold tracking-wider text-slate-500">ONE BATCH, LINE BY LINE — POSITIONAL PARSE</p>
+          <label class="text-xs text-slate-500">batch
+            <input id="sB" type="range" min="0" max="140" value="13" class="align-middle w-32"></label>
+        </div>
+        <div class="overflow-x-auto" style="max-height:400px">
+          <table class="num w-full">
+            <thead><tr><th>item</th><th>truth</th><th>answered</th><th>channel</th><th>line taken</th><th>came from</th><th>read as</th><th>scored</th></tr></thead>
+            <tbody id="batchRows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2" id="batchNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">EIGHT WAYS TO RUN THE SAME 2,400 ITEMS</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>strategy</th><th>accuracy</th><th>tok / item</th><th>calls / item</th><th>misaligned</th><th>silent batches</th><th>re-runs</th><th>tok / correct</th><th>ms to answer</th></tr></thead>
+            <tbody id="strategies"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2" id="stratNote"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE SAVING IS EXACT, AND IT SATURATES</p>
+          <p class="text-xs text-slate-600 mb-3">Per-item input cost is P/k + q, so the saving over
+            one-call-per-item is P(1 − 1/k) out of a maximum of P. The fraction captured is
+            <strong>exactly 1 − 1/k</strong> and depends on nothing else — not the prompt, not the
+            task, not the model. Everything past k=8 is buying the last few percent.</p>
+          <table class="num w-full">
+            <thead><tr><th>k</th><th>1 − 1/k</th><th>tok / item</th><th>marginal saving</th></tr></thead>
+            <tbody id="sweepSave"></tbody>
+          </table>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">…AND THE CEILING ON IT IS CONTENT</p>
+          <p class="text-xs text-slate-600 mb-3">The most batching can ever save is the share of a
+            single-item call that is shared overhead, P/(P+q+a). With a one-line instruction there
+            is almost nothing to amortise. "Batch prompting saves 5×" is a statement about your
+            prompt, not about batching.</p>
+          <table class="num w-full">
+            <thead><tr><th>P</th><th>ceiling</th><th>single, tok/item</th><th>batched</th><th>actually saved</th></tr></thead>
+            <tbody id="sweepPrompt"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHAT k COSTS ON THE OTHER SIDE</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>k</th><th>positional</th><th>+ count check</th><th>tagged</th><th>tagged + repair</th><th>perfect channel</th><th>silent batches</th><th>fell back to singles</th><th>tok/correct, count</th><th>tok/correct, repair</th></tr></thead>
+            <tbody id="sweepK"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2" id="kNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">FOUR WAYS TO READ THE SAME RESPONSE</p>
+        <div id="quad" class="space-y-2"></div>
+        <p class="text-xs text-slate-600 mt-3" id="quadNote"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE SAME BUG, SEEN THROUGH DIFFERENT LABEL SPACES</p>
+          <p class="text-xs text-slate-600 mb-3">Misalignment is a fixed fraction of items — it does
+            not care how many labels you have. What the label space decides is how much of it is
+            <em>visible</em>: a scrambled answer still scores correct with probability ≈ 1/L.</p>
+          <table class="num w-full">
+            <thead><tr><th>L</th><th>misaligned</th><th>still scored correct</th><th>≈ 1/L</th><th>visible damage</th></tr></thead>
+            <tbody id="sweepL"></tbody>
+          </table>
+        </div>
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">TWO CONTROLS — WHAT SURVIVES WITHOUT THE DECLARED TERMS</p>
+          <p class="text-xs text-slate-600 mb-3">Two things on this page are declared rather than
+            derived. Turn each off and see which findings were resting on it. The channel story
+            survives with crowding off; every strategy collapses onto one number with the slip rate
+            at zero, which is the honest statement that the slip rate is an <em>input</em>.</p>
+          <table class="num w-full">
+            <thead><tr><th>setting</th><th>positional</th><th>tagged + repair</th><th>perfect channel</th><th>never batch</th></tr></thead>
+            <tbody id="controls"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE SELF-TEST</p>
+        <pre id="selftest" style="margin:0;max-height:300px"></pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">One prompt, k questions</h2>
+
+      <p>You have 40,000 support tickets to classify. The prompt that does it well is an instruction
+      plus four worked examples — call it 180 tokens — and each ticket is another 28. Send them one
+      at a time and you pay the 180 forty thousand times. Batch prompting is the observation that
+      you do not have to: put sixteen tickets in one call, ask for sixteen answers, and the 180 is
+      paid once for all of them.</p>
+
+      <p>That is the whole technique, and the arithmetic is a single line. Per-item input cost goes
+      from P + q to <strong>P/k + q</strong>. Which means two things worth saying out loud, because
+      neither is usually said.</p>
+
+      <h3 class="text-xl font-bold">The saving is capped twice</h3>
+
+      <p><strong>Cap one is content.</strong> The most you can ever save is the share of a
+      single-item call that is shared overhead — P/(P+q+a). With a 180-token prompt that is 84%.
+      With a one-line instruction it is 47%, and no batch size in the world improves on it. Every
+      "batch prompting cut our bill 5×" is really a statement about how bloated the prompt was.</p>
+
+      <p><strong>Cap two is k, and it is exact.</strong> Batching k items captures precisely
+      <strong>1 − 1/k</strong> of that available saving. Not approximately — the page asserts it to
+      1e-12. k=2 gets you half. k=4 gets you three quarters. k=8 gets 87.5%, k=64 gets 98.4%, and
+      the entire journey from 8 to 64 is worth <em>eleven percent</em> of a saving you already
+      mostly had.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">So the decision is not "should I batch" — obviously — but "where do I
+        stop", and the token side answers that on its own: the returns die at single-digit k while
+        the thing on the other side of the ledger grows without any cap at all.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">The other side of the ledger is not accuracy. It is alignment.</h3>
+
+      <p>Sending k questions is easy. Getting k answers <em>back</em> is a different problem,
+      because the answers have to be re-attached to the questions they belong to, and the obvious
+      way to do that is by position: line 1 is the answer to item 1.</p>
+
+      <p>Now suppose the response omits one. Not garbles it — omits it. Every answer after that
+      point shifts up by one, and item 5 is scored against item 6's answer, item 6 against item 7's,
+      all the way down. One missing line corrupts up to k−1 others. The page's default batch shows
+      the shape of it exactly: one dropped answer at item 2, one answer that came back over two
+      lines at item 12, <strong>ten items scrambled between them</strong> — and sixteen lines out
+      for sixteen items in, so the count is right.</p>
+
+      <p>At k=16 this is not an edge case. <strong>22.7% of all items</strong> carry another item's
+      answer, and <strong>43.3% of batches</strong> are affected. The accuracy that a perfect
+      channel would deliver is 73.9%; positional parsing delivers 61.5%. Twelve and a half points,
+      and not one of them looks like a wrong answer — they look like <em>answers</em>.</p>
+
+      <h3 class="text-xl font-bold">🔴 The free control that lost</h3>
+
+      <p>The rule in this series is to ship the dumbest thing that could work and let it win if it
+      wins. The dumbest thing here is one line: <strong>count the lines, and if you did not get k of
+      them, run the batch again.</strong> No format change, no parser change, free.</p>
+
+      <p>It works. It takes 61.5% back to <strong>74.0%</strong>, which is the perfect-channel
+      number to within a tenth. I expected it to be the whole page.</p>
+
+      <p>It is the most expensive fix here. <strong>92.2 tokens per item</strong>, against 45.4 for
+      the perfect channel — it slightly more than doubles the cost of the thing you were batching to
+      make cheap. And the alternative that beats it is not clever either: print the item's index in
+      front of each answer, match on that instead of position, and re-ask <em>only</em> the items
+      whose index never came back. Same accuracy — <strong>74.0%, identical to two decimal
+      places</strong> — at <strong>55.4 tokens per item</strong>. Forty percent less.</p>
+
+      <div class="bg-teal-50 border-l-4 border-teal-600 p-4">
+        <p class="text-sm">The reason is not that tags are more reliable. It is that they are more
+        <strong>observable</strong>. A count check knows that something is missing and cannot know
+        <em>what</em>, so its only available repair is to redo everything. A tag makes the damage
+        addressable, and the repair becomes proportional to it: 3.4% of items re-asked instead of
+        9.3% of items thrown away and 60% of batches re-run. A coarse detector can only trigger a
+        coarse repair, and you pay for the repair, not the detection.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">Format and check are two separate decisions</h3>
+
+      <p>Which makes a 2×2, and it is worth reading in this order:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>positional, unchecked — 61.5% at 45.2 tok/item.</strong> The version everybody
+        writes first. Cheapest, and 43.3% of its batches are wrong in a way it cannot see.</li>
+        <li><strong>tagged, unchecked — 71.2% at 48.2.</strong> Three tokens per answer buys back
+        9.7 of the 12.4 points, because there is no cascade left: a missing answer is now just a
+        missing answer.</li>
+        <li><strong>positional + count check — 74.0% at 92.2.</strong> Full accuracy, double the
+        cost.</li>
+        <li><strong>tagged + repair the gaps — 74.0% at 55.4.</strong> Same accuracy. 40% cheaper
+        than the count check, 22% more than doing nothing.</li>
+      </ul>
+
+      <p>The check matters more than the format — positional-with-a-check beats
+      tagged-without-one. But the <em>granularity</em> of the repair matters more than either, and
+      that is what the format decides.</p>
+
+      <h3 class="text-xl font-bold">🔴 The tag is a net negative on small batches</h3>
+
+      <p>I wrote "index your answers, it is never wrong to do" and then had to take it back, because
+      the grid says otherwise. Printing an index introduces a failure the positional format does not
+      have — the index itself can be wrong — and that rate does not depend on k, while the
+      cascade it prevents grows with k. So there is a crossing, and it is measurable: at
+      <strong>k=4 with a low slip rate, positional parsing misaligns 0.08% of items and tagged
+      parsing misaligns 0.25%</strong> — three times worse, plus the tokens. By k=16 the tag
+      removes <strong>98.7%</strong> of the misalignment and the argument is over.</p>
+
+      <p>Which is the useful form of the rule: the tag is not a hygiene habit, it is a trade against
+      the cascade, and the cascade is what scales. Below about six items per call there is barely a
+      cascade to trade against.</p>
+
+      <h3 class="text-xl font-bold">What a count check cannot see</h3>
+
+      <p>It is also not sufficient, and the reason is combinatorial rather than unlucky. The count
+      only fails when the number of lines is wrong. A dropped answer removes one; an answer that
+      arrives over two lines adds one. <strong>One of each in the same batch and the count is
+      exactly right and the contents between them are scrambled.</strong></p>
+
+      <p>That is not a hunch. Every assignment of {clean, dropped, split} to k items is enumerated
+      for k up to 7 — <strong>3,279 of them</strong> — and 608 come back with exactly k
+      lines and a scrambled interior. Every one has at least one drop <em>and</em> at least one
+      split, and the smallest case is k=2: split the first answer, drop the second, and two lines
+      come back for two items with one of them wrong.</p>
+
+      <p>The rate is P(≥1 drop) × P(≥1 split), which at k=16 is 3.8% of batches by hand
+      and <strong>4.0% measured</strong>; at k=32, 26.1% by hand and 26.9% measured. So the cheap
+      check does not take the silent corruption to zero — it takes it from 43.3% of batches to
+      4.0%, and the last 4.0% still looks exactly like data.</p>
+
+      <h3 class="text-xl font-bold">The metric that ranks these is the one you were avoiding</h3>
+
+      <p>Tokens per <em>correct</em> answer ranks everything cleanly. At k=16: perfect channel 61.4,
+      tagged 67.7, tagged+repair 74.9, positional 73.6, count check 124.6, never batch 269.1.</p>
+
+      <p>Read that list again, though. Positional at 73.6 looks competitive — cheaper than
+      tagged+repair. It is only cheaper because 22.7% of the answers it produced are not answers to
+      the questions they are filed under, and the denominator knows that <em>because it was given
+      the labels</em>. In production you have the numerator and not the denominator. What you can
+      actually observe is the bill and the fact that k lines came back, and by both of those the
+      broken version is the best strategy on the page.</p>
+
+      <h3 class="text-xl font-bold">The label space decides how much of the damage you can see</h3>
+
+      <p>A scrambled answer is another item's label, so it still scores correct whenever the two
+      items happened to share one — probability ≈ 1/L. Same 22.7% misalignment, every time:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>L=2</strong> (is this spam?) — 51.2% of the corruption still scores correct.
+        Visible damage: <strong>6.3 points</strong>.</li>
+        <li><strong>L=5</strong> — 24.4% masked, 12.4 points.</li>
+        <li><strong>L=50</strong> — 3.5% masked, <strong>17.2 points</strong>.</li>
+      </ul>
+
+      <p>Identical bug, 2.7× the visible damage, decided entirely by how many labels the task has.
+      Binary classification — the single most common thing anyone batches — is where this bug hides
+      best, because half of it cancels.</p>
+
+      <h3 class="text-xl font-bold">🔴 The safety net that quietly stops batching</h3>
+
+      <p>Re-running a failed batch has a failure mode of its own that took me by surprise in the
+      sweep. The chance a batch needs a re-run is 1 − (1−p)<sup>k</sup>, which climbs fast, and after
+      the retries are exhausted the honest thing to do is fall back to one call per item. So:</p>
+
+      <ul class="list-disc pl-6 space-y-1">
+        <li>k=16 — 9.3% of items end up in single calls.</li>
+        <li>k=32 — 34.7%.</li>
+        <li>k=64 — <strong>66.7%</strong>. Two thirds of the workload is no longer batched at all,
+        and it paid for the failed batch first. Cost per correct answer: <strong>342.8 against
+        269.1 for never batching in the first place.</strong></li>
+      </ul>
+
+      <p>Its accuracy goes <em>up</em> over that range, which is the tell — 69.1% at k=32 and 69.9%
+      at k=64, drifting back toward the single-call number because that is what it has become. A
+      strategy whose accuracy improves with batch size is not batching.</p>
+
+      <h3 class="text-xl font-bold">Latency is not the win, and it is not the loss either</h3>
+
+      <p>Three separate clocks, and batching moves them in different directions. Time until a
+      <em>given</em> item's answer exists: 96 ms unbatched, 749 ms at k=16, because your answer is
+      behind fifteen others in the same decode. Wall clock for the whole 2,400-item job at
+      concurrency 8: 28.9 s unbatched, 25.4 s batched — a 12% improvement while the bill falls 79%.
+      And with the count check: <strong>43.5 s</strong>, worse than not batching, because re-runs
+      are serial.</p>
+
+      <p>Batch prompting is a token optimisation. Anyone selling it as a latency optimisation is
+      quoting the wall clock and hoping you are not the item at position 15.</p>
+
+      <h3 class="text-xl font-bold">Not the other kind of batching</h3>
+
+      <p>Continuous batching — the inference server packing independent requests into one forward
+      pass — shares a word with this and nothing else. That is a scheduler; it improves GPU
+      utilisation and changes nobody's token bill, and each request keeps its own prompt and its own
+      response. This changes the prompt itself: the items become <em>textually adjacent</em>, one
+      response covers all of them, and that adjacency is where both the saving and every problem on
+      this page comes from.</p>
+
+      <h3 class="text-xl font-bold">Where this model is a stand-in, said plainly</h3>
+
+      <p><strong>Declared, not derived:</strong> the crowding penalty (a long call answers slightly
+      worse — content-dependent, on the call's own input length, and saturating, because the 900th
+      token of context is not worse than the 800th); and the format-slip rate, likewise
+      content-dependent and saturating, sitting at its floor of 0.002 for a single-item call so that
+      the exposure is <em>created</em> by batching rather than assumed for it. Both have a control
+      on the MEASURE tab. With crowding off the channel story is unchanged (65.5% positional against
+      79.8% perfect); with the slip rate at zero every batch strategy lands on the same number,
+      which is the honest way to say the slip rate is an input.</p>
+
+      <p><strong>Measured, not declared:</strong> every token in every table, the 1 − 1/k identity,
+      the cascade and its exact extent, the drop-split residual against its closed form, the ≈ 1/L
+      masking, the fallback rates, the crossovers, and which strategy wins where.</p>
+
+      <p>One boundary worth naming: tagged output plus a completeness check reports
+      <strong>0.0%</strong> misalignment, and that is a property of this channel, not of language
+      models. The declared channel can drop an answer, split one, or print the wrong index — all
+      three break "the tags are exactly 0…k−1", so the check is exhaustive against it by
+      construction. A real model can also answer item 7 with item 3's content and label it 7
+      correctly, and no structural check will ever catch that. Do not read the zero as a promise.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. The workload is drawn once, so this is a paired experiment</h3>
+      <p>Eight strategies are compared, and the only honest way to do that is to give all eight the
+      same questions, the same luck and the same accidents. So the workload holds everything random
+      about an item and nothing about how it will be sent:</p>
+      <pre>items.push({ truth, wrong, difficulty, luck, qTok, aTok });
+
+// correctness is then a DETERMINISTIC function of the item and the call it was put in,
+// so every strategy is looking at the same model
+function itemIsCorrect(item, inputTokens, c){
+  return (c.skill - item.difficulty - crowd(inputTokens, c) + c.spread * item.luck) &gt; 0;
+}</pre>
+      <p>Note what <code>crowd</code> reads: the call's <em>input</em> length. Tagged and untagged
+      responses differ only on the output side, so the two see a bit-identical set of correct
+      answers and any difference between them is the channel and nothing else.</p>
+
+      <h3 class="text-xl font-bold">2. Two declared terms, both obeying the same rule</h3>
+      <p>Day 65 of this series cost three rebuilds to learn that a term which is a constant
+      calibrates away exactly, and a term proportional to the signal only rescales it. What survives
+      has to depend on <strong>content</strong> and has to <strong>saturate</strong>. Both declared
+      terms here are written that way and the shape is asserted, not assumed:</p>
+      <pre>function crowd(inputTokens, c){          // margin lost to a long call
+  const over = Math.max(0, inputTokens - c.crowdFree);
+  return c.crowdMax * (1 - Math.exp(-over / c.crowdScale));
+}
+
+function pDrop(emitTokens, c){           // per-item chance the response format slips
+  const over = Math.max(0, emitTokens - c.dropFree);
+  return c.dropFloor + (c.dropCeil - c.dropFloor) * (1 - Math.exp(-over / c.dropScale));
+}</pre>
+      <p>Both are monotone, bounded and saturating, and both read a length rather than k, which is
+      what makes a batch of long answers riskier than a batch of short ones at the same batch size.
+      At one item per call <code>pDrop</code> sits at 0.002 — the exposure is manufactured by
+      batching, not baked in.</p>
+
+      <h3 class="text-xl font-bold">3. Four draws per item, always</h3>
+      <pre>function drawEvents(k, emitTokens, c, rnd){
+  for (let i = 0; i &lt; k; i++){
+    const a = rnd(), b = rnd(), d = rnd(), e = rnd();   // ALWAYS four, whatever the strategy
+    ev.push({ drop: a &lt; p, split: !drop &amp;&amp; b &lt; ps, mistag: d &lt; pm, shift: 1 + floor(e * (k-1)) });
+  }
+}</pre>
+      <p>Unconditional draws so the random stream cannot depend on which branch a strategy takes.
+      Positional and tagged parsing then see the <em>same</em> accidents on the same batch, and the
+      difference in their scores is attributable rather than suggestive. The seed is derived from
+      <code>(seed, batch start, attempt, k)</code>, so a retry is a genuinely new draw and two
+      strategies retrying the same batch get the same second chance.</p>
+
+      <h3 class="text-xl font-bold">4. The emitter and the two parsers</h3>
+      <pre>// a dropped item contributes no line; a split contributes two
+for (let i = 0; i &lt; k; i++){
+  if (ev[i].drop) continue;
+  lines.push({ src: i, tag: tagged ? (ev[i].mistag ? (i+ev[i].shift)%k : i) : null, label: answers[i] });
+  if (ev[i].split) lines.push({ src: i, tag: ..., label: answers[i], extra: true });
+}
+
+const parsePositional = (lines, k) =&gt; range(k).map(i =&gt; lines[i] || null);   // line i IS item i
+const parseTagged = (lines, k) =&gt; { ... first line claiming tag t wins ... };</pre>
+      <p>The cascade is not modelled — it is what <code>lines[i]</code> <em>does</em> once a line is
+      missing. Every misalignment on the page is a consequence of those two functions, which is why
+      the demo batch can be read row by row and checked by hand.</p>
+
+      <h3 class="text-xl font-bold">5. Eight strategies, including the two that cannot lose</h3>
+      <pre>const STRATEGIES = {
+  single:         { k: 1,    tagged: false, check: "count" },   // never batch: the incumbent
+  batch:          { k: null, tagged: false, check: "none"  },   // what everyone writes first
+  batchCount:     { k: null, tagged: false, check: "count" },   // the free control
+  batchTag:       { k: null, tagged: true,  check: "none"  },   // 3 tokens per answer
+  batchTagRepair: { k: null, tagged: true,  check: "none", repair: true },   // re-ask the gaps
+  batchTagCheck:  { k: null, tagged: true,  check: "tags"  },   // re-run the whole batch
+  noChannelLoss:  { k: null, tagged: false, check: "none", perfect: true },  // crowding only
+  ceiling:        { k: 1,    tagged: false, check: "none", perfect: true }
+};</pre>
+      <p><code>noChannelLoss</code> and <code>ceiling</code> are the two that make the rest readable:
+      one isolates the declared crowding penalty from the channel, the other is the best any
+      strategy could do. <code>batchTagCheck</code> exists to price <em>repair granularity</em>
+      against <code>batchTagRepair</code> while holding the format constant — same tags, same
+      detection, and the only difference is whether you redo the batch or the item.</p>
+
+      <h3 class="text-xl font-bold">6. Repair is the line that only tags can reach</h3>
+      <pre>if (p === null){
+  missing++;
+  if (S.repair){                        // we know WHICH item lost its answer, so re-ask that one
+    calls++; inTok += c.promptTokens + it.qTok; outTok += it.aTok;
+    if (itemIsCorrect(it, c.promptTokens + it.qTok, cc)) correct++;
+  }
+  continue;
+}</pre>
+      <p>There is no positional equivalent of this block and that is the whole finding. With a count
+      mismatch you have one bit — "wrong" — and a batch-sized repair; with tags you have an index
+      and an item-sized one.</p>
+
+      <h3 class="text-xl font-bold">7. The costs are counted, not asserted</h3>
+      <pre>inTok  += c.promptTokens + sum(qTok over the batch);   // the prompt, once per CALL
+outTok += sum(line.tok for every line ACTUALLY emitted);  // a drop costs nothing, a split costs
+// three clocks, because they disagree:
+msToAnswer   = when that item's own line finished decoding    // 96 vs 749 at k=16
+wallClockS   = total call latency / concurrency               // 28.9 vs 25.4 vs 43.5
+tokensPerCorrect = (inTok + outTok) / correct                 // needs the labels you do not have</pre>
+
+      <h3 class="text-xl font-bold">8. What the tests pin</h3>
+      <pre>// the arithmetic, exactly
+assert(savingFraction(k) === 1 - 1/k)                    // to 1e-12, for every k dividing n
+assert(savingFraction(k) &lt;  1 - 1/k)                     // STRICTLY, when it does not divide
+
+// the controls
+assert(dropCeil = 0  =&gt; every batch strategy is bit-identical);   // the slip rate is an INPUT
+assert(crowdOff      =&gt; noChannelLoss === ceiling exactly);
+assert(batch.accuracy &lt;= noChannelLoss.accuracy);                 // a channel can only cost
+
+// the null result, pinned
+assert(|batchTagRepair.accuracy - batchCount.accuracy| &lt; 0.01);   // same accuracy
+assert(batchTagRepair.tokens &lt; 0.75 * batchCount.tokens);         // at 60% of the cost
+assert(batchTag.accuracy &gt; batch.accuracy);                       // positional is dominated
+
+// the honest ones
+assert(batchCount.silentBatchRate &gt; 0);         // a count check cannot reach zero
+assert(masked ≈ 1/L for L in 2..50);            // the corruption you cannot see
+assert(batchCount.tokensPerCorrect(k=64) &gt; single.tokensPerCorrect);  // the net inverts it</pre>
+      <p>The pair in the middle is the one that hurt. It asserts that the free control this page was
+      built around is <em>matched on accuracy and beaten on cost</em> by something that is not
+      cleverer, only better instrumented. Writing a test that pins your own wrong prediction is the
+      only way it survives the next edit.</p>
+
+      <p>And the last one exists because I did not believe the sweep. A strategy whose entire job is
+      to make batching safe, costing more per correct answer than not batching, looked like a bug
+      until the fallback column explained it: at k=64 two thirds of the work has silently reverted
+      to single calls, after paying for the batch that failed.</p>
+
+      <h3 class="text-xl font-bold">9. Two assertions of mine that were wrong, not the engine</h3>
+      <p>The verifier runs 2,026 independently written checks against this engine, and two of them
+      caught claims the page was about to make:</p>
+      <ul class="list-disc pl-6 space-y-1">
+        <li><strong>"A count-clean corruption needs at least three items."</strong> It does not. The
+        exhaustive enumeration found it at <strong>k=2</strong>, twice — split the first answer
+        and drop the second, or the reverse. A cascade needs somewhere to cascade to, and at k=2
+        there is exactly one such place. The assertion now names the number instead of ruling it
+        out.</li>
+        <li><strong>"Tagging can only reduce misalignment."</strong> False in 3 of 45 grid
+        configurations, all at small k, and the mechanism is clean: a wrong index is a failure mode
+        positional parsing does not have, and its rate does not depend on k. The invariant is now
+        asserted for k ≥ 8, and the exception is asserted <em>separately, as an exception</em>,
+        so it cannot quietly disappear in the next edit.</li>
+      </ul>
+      <p>Both are written into the UNDERSTAND tab. An assertion that fails is either a bug or a
+      finding, and these were findings.</p>
+
+      <h3 class="text-xl font-bold">🎉 PromptFromZero Day 68 shipped.</h3>
+      <p class="text-slate-600">An exact saving with two caps, a failure mode that looks like data,
+      and a free control that lost to three tokens per answer.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Batch prompting (Cheng, Kasai & Yu, 2023): put k independent items in ONE call so the shared
+// instruction + exemplars are paid once instead of k times. Nothing here simulates language. What
+// is simulated is the ACCOUNTING - which tokens are paid how many times - and the CHANNEL: k
+// answers have to come back in a form that can be put back next to the k questions they belong to.
+// This is not continuous batching (a server-side scheduler that does not change your token bill);
+// this changes the prompt itself.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Box-Muller, so the draws are normal and the stream stays reproducible.
+function gauss(rnd){
+  let u = 0, v = 0;
+  while (u === 0) u = rnd();
+  while (v === 0) v = rnd();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+}
+
+const DEFAULTS = {
+  nItems: 2400,
+  k: 16,                   // items per call
+  labels: 5,               // size of the label space - decides how much corruption is VISIBLE
+  promptTokens: 180,       // shared instruction + exemplars: paid once per CALL, not per item
+  itemTokens: 28,          // mean input tokens per item
+  itemTokenSpread: 9,
+  answerTokens: 6,         // mean output tokens per answer
+  answerTokenSpread: 3,
+  tagTokens: 3,            // what "12: " costs on the output side, per answer
+
+  skill: 1.15,             // competence, in margin units
+  difficulty: 0.55,
+  difficultySpread: 0.55,
+  spread: 0.45,            // per-item luck
+
+  // DECLARED #1 - a long crowded call answers slightly worse. Depends on CONTENT (the call's own
+  // input length, not on k) and SATURATES, because the 900th token of context is not more damaging
+  // than the 800th.
+  crowdMax: 0.55,
+  crowdFree: 260,
+  crowdScale: 1400,
+
+  // DECLARED #2 - the response format slips. Again content-dependent (how much has to be emitted)
+  // and saturating. At one item per call this sits at the floor, which is the whole point: the
+  // exposure is created by batching, not assumed for it.
+  dropFloor: 0.002,        // this item's answer is missing from the response
+  dropCeil: 0.055,
+  dropFree: 20,
+  dropScale: 220,
+  splitShare: 0.45,        // a SPLIT (one answer over two lines) is this fraction as likely
+  mistagRate: 0.004,       // tagged output only: the index printed is the wrong one
+
+  maxRetries: 2,
+  fallbackToSingles: true, // a batch that will not format after maxRetries is redone one at a time
+
+  latPrefillPerKTok: 55,   // ms per 1,000 input tokens
+  latDecodePerTok: 14,     // ms per output token
+  concurrency: 8,          // calls in flight
+
+  noFormatFailures: false, // control: perfect channel
+  crowdOff: false          // control: no length penalty at all
+};
+
+const withDefaults = cfg => Object.assign({}, DEFAULTS, cfg || {});
+
+// Declared, saturating: margin lost to the length of the call the item is sitting in.
+function crowd(inputTokens, c){
+  if (c.crowdOff) return 0;
+  const over = Math.max(0, inputTokens - c.crowdFree);
+  return c.crowdMax * (1 - Math.exp(-over / c.crowdScale));
+}
+
+// Declared, saturating: per-item probability the response mis-formats around that answer.
+function pDrop(emitTokens, c){
+  const over = Math.max(0, emitTokens - c.dropFree);
+  return c.dropFloor + (c.dropCeil - c.dropFloor) * (1 - Math.exp(-over / c.dropScale));
+}
+
+// ---------------------------------------------------------------- the workload
+// Drawn ONCE and shared by every strategy, so the comparison is paired: the same questions, the
+// same luck, the same lengths. The only thing a strategy changes is how they are packed and how
+// the answers are put back.
+function makeWorkload(c, seed){
+  const rnd = mulberry32(seed);
+  const items = [];
+  for (let i = 0; i < c.nItems; i++){
+    const truth = Math.floor(rnd() * c.labels);
+    let wrong = Math.floor(rnd() * Math.max(1, c.labels - 1));
+    if (wrong >= truth) wrong++;                       // uniform over the OTHER labels
+    items.push({
+      id: i,
+      truth: truth,
+      wrong: wrong % c.labels,
+      difficulty: c.difficulty + c.difficultySpread * gauss(rnd),
+      luck: gauss(rnd),
+      qTok: Math.max(4, Math.round(c.itemTokens + c.itemTokenSpread * gauss(rnd))),
+      aTok: Math.max(1, Math.round(c.answerTokens + c.answerTokenSpread * gauss(rnd)))
+    });
+  }
+  return items;
+}
+
+// Correctness is a deterministic function of the item and the call it was put in. No new randomness
+// here, which is what makes every strategy see the SAME model.
+function itemIsCorrect(item, inputTokens, c){
+  return (c.skill - item.difficulty - crowd(inputTokens, c) + c.spread * item.luck) > 0;
+}
+
+// ---------------------------------------------------------------- the channel
+// Four draws per item, ALWAYS, whatever the strategy - so positional and tagged parsing see a
+// bit-identical stream of formatting accidents and can be compared as a paired experiment.
+function drawEvents(k, emitTokens, c, rnd){
+  const p = c.noFormatFailures ? 0 : pDrop(emitTokens, c);
+  const ps = p * c.splitShare;
+  const pm = c.noFormatFailures ? 0 : c.mistagRate;
+  const ev = [];
+  for (let i = 0; i < k; i++){
+    const a = rnd(), b = rnd(), d = rnd(), e = rnd();
+    const drop = a < p;
+    ev.push({
+      drop: drop,
+      split: !drop && b < ps,                          // nothing to split if it was dropped
+      mistag: d < pm,
+      shift: 1 + Math.floor(e * Math.max(1, k - 1))
+    });
+  }
+  return ev;
+}
+
+// The response, as a list of lines. A dropped item contributes none; a split contributes two.
+function emitLines(members, answers, ev, tagged, c){
+  const lines = [];
+  for (let i = 0; i < members.length; i++){
+    if (ev[i].drop) continue;
+    const tag = tagged ? (ev[i].mistag ? (i + ev[i].shift) % members.length : i) : null;
+    lines.push({ src: i, tag: tag, label: answers[i], tok: members[i].aTok + (tagged ? c.tagTokens : 0) });
+    if (ev[i].split)
+      lines.push({ src: i, tag: tag, label: answers[i], tok: 2 + (tagged ? c.tagTokens : 0), extra: true });
+  }
+  return lines;
+}
+
+// THE positional parser: line i is the answer to item i. This is the implementation everybody
+// writes, and one missing line shifts every answer after it by one.
+function parsePositional(lines, k){
+  const out = [];
+  for (let i = 0; i < k; i++) out.push(i < lines.length ? lines[i] : null);
+  return out;
+}
+
+// The tagged parser: match on the printed index. First line wins, so a split is harmless.
+function parseTagged(lines, k){
+  const out = new Array(k).fill(null);
+  for (const ln of lines) if (ln.tag >= 0 && ln.tag < k && out[ln.tag] === null) out[ln.tag] = ln;
+  return out;
+}
+
+const CHECKS = {
+  none:  () => false,
+  count: (lines, parsed, k) => lines.length !== k,               // one line, free, no parsing change
+  tags:  (lines, parsed, k) => parsed.some(p => p === null)      // the tag set must be exactly 0..k-1
+};
+
+const STRATEGIES = {
+  single:         { k: 1,    tagged: false, check: "count" },
+  batch:          { k: null, tagged: false, check: "none"  },
+  batchCount:     { k: null, tagged: false, check: "count" },
+  batchTag:       { k: null, tagged: true,  check: "none"  },
+  batchTagRepair: { k: null, tagged: true,  check: "none", repair: true },
+  batchTagCheck:  { k: null, tagged: true,  check: "tags"  },
+  noChannelLoss:  { k: null, tagged: false, check: "none", perfect: true },
+  ceiling:        { k: 1,    tagged: false, check: "none", perfect: true }
+};
+
+const STRATEGY_NAMES = Object.keys(STRATEGIES);
+
+function runStrategy(name, items, c, seed){
+  const S = STRATEGIES[name];
+  const k = S.k === null ? c.k : S.k;
+  const cc = S.perfect ? Object.assign({}, c, { noFormatFailures: true }) : c;
+
+  let correct = 0, answered = 0, missing = 0, misaligned = 0, maskedWrong = 0, maskedRight = 0;
+  let inTok = 0, outTok = 0, calls = 0, retries = 0, fallbacks = 0, detected = 0, undetected = 0;
+  let repaired = 0;
+  let latSum = 0, callLatSum = 0, batches = 0;
+
+  for (let start = 0; start < items.length; start += k){
+    const members = items.slice(start, Math.min(start + k, items.length));
+    const kk = members.length;                        // the last batch can be short
+    const qSum = members.reduce((a, it) => a + it.qTok, 0);
+    const callIn = c.promptTokens + qSum;
+    const emitTokens = members.reduce((a, it) => a + it.aTok, 0) + kk;
+    const answers = members.map(it => itemIsCorrect(it, callIn, cc) ? it.truth : it.wrong);
+    batches++;
+
+    let parsed = null, lines = null, flagged = false;
+    for (let attempt = 0; attempt <= c.maxRetries; attempt++){
+      const rnd = mulberry32((seed * 0x9E37 + start * 131 + attempt * 7919 + k * 17) >>> 0);
+      const ev = drawEvents(kk, emitTokens, cc, rnd);
+      lines = emitLines(members, answers, ev, S.tagged, c);
+      parsed = S.tagged ? parseTagged(lines, kk) : parsePositional(lines, kk);
+      calls++;
+      inTok += callIn;
+      const o = lines.reduce((a, ln) => a + ln.tok, 0);
+      outTok += o;
+      const lat = c.latPrefillPerKTok * callIn / 1000 + c.latDecodePerTok * o;
+      callLatSum += lat;
+      flagged = CHECKS[S.check](lines, parsed, kk);
+      if (!flagged) break;
+      if (attempt < c.maxRetries) retries++;
+    }
+    if (flagged) detected++;
+
+    if (flagged && c.fallbackToSingles){
+      // give up on the batch and redo it one item at a time - the honest thing to do, and it costs
+      fallbacks += kk;
+      for (const it of members){
+        const inOne = c.promptTokens + it.qTok;
+        calls++; inTok += inOne; outTok += it.aTok;
+        const lat = c.latPrefillPerKTok * inOne / 1000 + c.latDecodePerTok * it.aTok;
+        callLatSum += lat; latSum += lat;
+        answered++;
+        if (itemIsCorrect(it, inOne, cc)) correct++;
+      }
+      continue;
+    }
+
+    // score, and time each answer to the moment its own line finished decoding
+    let running = c.latPrefillPerKTok * callIn / 1000;
+    const lineEnd = [];
+    for (const ln of lines){ running += c.latDecodePerTok * ln.tok; lineEnd.push(running); }
+    let silent = false;
+    for (let i = 0; i < kk; i++){
+      const p = parsed[i];
+      if (p === null){
+        missing++;
+        // REPAIR - only possible with tags. Positional parsing knows a line is missing but not
+        // WHICH item lost it, so its only repair is to redo the whole batch.
+        if (S.repair){
+          const it = members[i];
+          const inOne = c.promptTokens + it.qTok;
+          calls++; inTok += inOne; outTok += it.aTok; repaired++;
+          const lat = c.latPrefillPerKTok * inOne / 1000 + c.latDecodePerTok * it.aTok;
+          callLatSum += lat; latSum += running + lat;
+          answered++;
+          if (itemIsCorrect(it, inOne, cc)) correct++;
+        } else latSum += running;
+        continue;
+      }
+      answered++;
+      const idx = lines.indexOf(p);
+      latSum += lineEnd[idx];
+      if (p.src === i){
+        if (p.label === members[i].truth) correct++;
+      } else {
+        misaligned++; silent = true;
+        if (p.label === members[i].truth){ correct++; maskedRight++; }   // right for the wrong reason
+        else maskedWrong++;
+      }
+    }
+    if (silent && !flagged) undetected++;
+  }
+
+  const n = items.length;
+  return {
+    strategy: name, k: k,
+    accuracy: correct / n,
+    correct: correct,
+    missingRate: missing / n,
+    misalignedRate: misaligned / n,
+    maskedRate: misaligned ? maskedRight / misaligned : 0,   // corruption that still scores CORRECT
+    silentBatchRate: batches ? undetected / batches : 0,     // batches corrupted with a clean check
+    flaggedBatchRate: batches ? detected / batches : 0,
+    batches: batches,
+    inputTokens: inTok / n,
+    outputTokens: outTok / n,
+    tokens: (inTok + outTok) / n,
+    calls: calls / n,
+    retryRate: batches ? retries / batches : 0,
+    fallbackRate: fallbacks / n,
+    repairRate: repaired / n,
+    tokensPerCorrect: correct ? (inTok + outTok) / correct : Infinity,
+    msToAnswer: latSum / n,
+    wallClockS: callLatSum / c.concurrency / 1000
+  };
+}
+
+function runWorkload(cfg, seed){
+  const c = withDefaults(cfg);
+  const s = seed == null ? 2026 : seed;
+  const items = makeWorkload(c, s);
+  const out = { cfg: c, n: items.length, strat: {} };
+  for (const name of STRATEGY_NAMES) out.strat[name] = runStrategy(name, items, c, s);
+  return out;
+}
+
+// The arithmetic the whole technique rests on, in closed form. Per-item input cost is P/k + q, so
+// the saving over one-call-per-item is P(1 - 1/k) out of a maximum of P. The fraction of the
+// AVAILABLE saving that batch size k captures is therefore exactly 1 - 1/k, and it does not depend
+// on the prompt, the items, the model or the task.
+function savingCaptured(k){ return 1 - 1 / k; }
+
+function tokensPerItemIdeal(k, c){
+  const cc = withDefaults(c);
+  return cc.promptTokens / k + cc.itemTokens + cc.answerTokens;
+}
+
+// The ceiling on the saving itself DOES depend on content: it is the share of a single-item call
+// that is shared overhead.
+function maxSavingFraction(c){
+  const cc = withDefaults(c);
+  return cc.promptTokens / (cc.promptTokens + cc.itemTokens + cc.answerTokens);
+}
+
+function sweep(field, values, cfg, seed){
+  const out = [];
+  for (const v of values){
+    const over = {};
+    over[field] = v;
+    out.push({ value: v, run: runWorkload(Object.assign({}, cfg || {}, over), seed) });
+  }
+  return out;
+}
+
+// One batch, exposed line by line, so the cascade can be read rather than believed.
+function inspectBatch(cfg, seed, batchIndex, tagged){
+  const c = withDefaults(cfg);
+  const items = makeWorkload(c, seed);
+  const start = (batchIndex * c.k) % Math.max(1, items.length - c.k);
+  const members = items.slice(start, start + c.k);
+  const kk = members.length;
+  const qSum = members.reduce((a, it) => a + it.qTok, 0);
+  const callIn = c.promptTokens + qSum;
+  const emitTokens = members.reduce((a, it) => a + it.aTok, 0) + kk;
+  const answers = members.map(it => itemIsCorrect(it, callIn, c) ? it.truth : it.wrong);
+  const rnd = mulberry32((seed * 0x9E37 + start * 131 + c.k * 17) >>> 0);
+  const ev = drawEvents(kk, emitTokens, c, rnd);
+  const lines = emitLines(members, answers, ev, !!tagged, c);
+  const parsed = tagged ? parseTagged(lines, kk) : parsePositional(lines, kk);
+  const rows = [];
+  for (let i = 0; i < kk; i++){
+    const p = parsed[i];
+    rows.push({
+      i: i, truth: members[i].truth, sent: answers[i], event: ev[i],
+      got: p ? p.label : null, from: p ? p.src : null, lineIndex: p ? lines.indexOf(p) : null,
+      state: p === null ? "missing" : p.src === i ? "aligned" : "misaligned",
+      scored: p !== null && p.label === members[i].truth
+    });
+  }
+  return {
+    start: start, lines: lines, rows: rows, callIn: callIn, k: kk,
+    lineCount: lines.length, countCheckFires: lines.length !== kk,
+    drops: ev.filter(e => e.drop).length, splits: ev.filter(e => e.split).length,
+    pDrop: pDrop(emitTokens, c)
+  };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- UI
+const $ = id => document.getElementById(id);
+const SEED = 2026;
+const pc = x => (100 * x).toFixed(1) + "%";
+const K_POINTS = [1, 2, 4, 6, 8, 12, 16, 24, 32, 48, 64];
+
+const LABEL = {
+  single: "never batch (1 item / call)",
+  batch: "batch, parsed by POSITION",
+  batchCount: "&hellip; + count the lines, re-run",
+  batchTag: "batch, answers TAGGED with the index",
+  batchTagRepair: "&hellip; + re-ask only the missing items",
+  batchTagCheck: "&hellip; + re-run the whole batch instead",
+  noChannelLoss: "batched, perfect channel (crowding only)",
+  ceiling: "ceiling — 1 item / call, perfect channel"
+};
+
+function cfg(){
+  return {
+    k: +$("sK").value,
+    promptTokens: +$("sP").value,
+    labels: +$("sL").value,
+    dropCeil: +$("sDrop").value / 1000,
+    crowdMax: +$("sCrowd").value / 100,
+    tagTokens: +$("sTag").value
+  };
+}
+
+function renderBatch(c){
+  const ins = inspectBatch(c, SEED, +$("sB").value, false);
+  $("batchRows").innerHTML = ins.rows.map(function(r){
+    const ev = (r.event.drop ? "<span class='bad'>dropped</span>"
+              : r.event.split ? "<span class='warn'>split over 2 lines</span>" : "<span class='dim'>clean</span>");
+    const st = r.state === "aligned" ? "<span class='dim'>aligned</span>"
+             : r.state === "missing" ? "<span class='bad'>no line left</span>"
+             : "<span class='bad'>item " + r.from + "'s answer</span>";
+    return "<tr class='" + (r.state === "aligned" ? "" : "mis") + "'>" +
+      "<td>" + r.i + "</td><td>" + r.truth + "</td><td>" + r.sent + "</td><td>" + ev + "</td>" +
+      "<td>" + (r.lineIndex == null ? "&mdash;" : r.lineIndex) + "</td>" +
+      "<td>" + (r.from == null ? "&mdash;" : r.from) + "</td>" +
+      "<td>" + (r.got == null ? "&mdash;" : r.got) + "</td>" +
+      "<td>" + st + "&nbsp;&nbsp;" + (r.scored ? "<span class='ok'>&check;</span>" : "<span class='dim'>&times;</span>") + "</td></tr>";
+  }).join("");
+  const mis = ins.rows.filter(function(r){ return r.state === "misaligned"; }).length;
+  const masked = ins.rows.filter(function(r){ return r.state === "misaligned" && r.scored; }).length;
+  $("batchNote").innerHTML =
+    ins.k + " items in, <strong>" + ins.lineCount + "</strong> lines back (" + ins.drops +
+    " dropped, " + ins.splits + " split) &middot; the count check " +
+    (ins.countCheckFires ? "<span class='warn'>fires</span>" : "<strong class='bad'>does not fire</strong>") +
+    " &middot; <strong>" + mis + "</strong> of " + ins.k + " items were scored against another item's answer" +
+    (masked ? ", and <strong>" + masked + "</strong> of those still scored CORRECT" : "") +
+    " &middot; per-item slip probability in this call: " + ins.pDrop.toFixed(4) +
+    " &middot; call input " + ins.callIn + " tokens.";
+}
+
+function render(){
+  const c = cfg();
+  $("vK").textContent = c.k;
+  $("vP").textContent = c.promptTokens;
+  $("vL").textContent = c.labels;
+  $("vDrop").textContent = c.dropCeil.toFixed(3);
+  $("vCrowd").textContent = c.crowdMax.toFixed(2);
+  $("vTag").textContent = c.tagTokens;
+
+  renderBatch(c);
+
+  const R = runWorkload(c, SEED);
+  const S = R.strat;
+
+  $("strategies").innerHTML = STRATEGY_NAMES.map(function(name){
+    const r = S[name];
+    const hi = (name === "batchCount" || name === "batchTagRepair");
+    const reruns = r.fallbackRate > 0 || r.repairRate > 0
+      ? (r.repairRate > 0 ? pc(r.repairRate) + " items" : pc(r.fallbackRate) + " items")
+      : "<span class='dim'>&mdash;</span>";
+    return "<tr class='" + (hi ? "hi" : "") + "'><td>" + LABEL[name] + "</td>" +
+      "<td class='" + (name === "ceiling" ? "dim" : r.accuracy < 0.65 ? "bad" : "") + "'>" + pc(r.accuracy) + "</td>" +
+      "<td>" + r.tokens.toFixed(1) + "</td>" +
+      "<td>" + r.calls.toFixed(3) + "</td>" +
+      "<td class='" + (r.misalignedRate > 0.02 ? "bad" : "dim") + "'>" + pc(r.misalignedRate) + "</td>" +
+      "<td class='" + (r.silentBatchRate > 0.1 ? "bad" : r.silentBatchRate > 0 ? "warn" : "dim") + "'>" + pc(r.silentBatchRate) + "</td>" +
+      "<td>" + reruns + "</td>" +
+      "<td>" + r.tokensPerCorrect.toFixed(1) + "</td>" +
+      "<td class='dim'>" + Math.round(r.msToAnswer) + "</td></tr>";
+  }).join("");
+
+  const dAcc = S.batchTagRepair.accuracy - S.batchCount.accuracy;
+  $("stratNote").innerHTML =
+    "The free control &mdash; count the lines &mdash; scores " + pc(S.batchCount.accuracy) +
+    " at <strong>" + S.batchCount.tokens.toFixed(1) + "</strong> tokens per item. Tagging the " +
+    "answers and re-asking only the gaps scores " + pc(S.batchTagRepair.accuracy) +
+    " at <strong>" + S.batchTagRepair.tokens.toFixed(1) + "</strong> &mdash; " +
+    (Math.abs(dAcc) < 0.005 ? "<strong>the same accuracy</strong>" :
+      (dAcc > 0 ? "+" : "") + (100 * dAcc).toFixed(1) + " points") + " at " +
+    (100 * S.batchTagRepair.tokens / S.batchCount.tokens).toFixed(0) + "% of the cost. " +
+    "Wall clock for the whole job at concurrency " + DEFAULTS.concurrency + ": " +
+    S.single.wallClockS.toFixed(1) + "s unbatched, " + S.batch.wallClockS.toFixed(1) +
+    "s batched, " + S.batchCount.wallClockS.toFixed(1) + "s with the count check.";
+
+  // ---- the exact saving
+  const singleIn = DEFAULTS.itemTokens + c.promptTokens;
+  $("sweepSave").innerHTML = K_POINTS.map(function(k, i){
+    const prev = i ? savingCaptured(K_POINTS[i - 1]) : 0;
+    const t = tokensPerItemIdeal(k, c);
+    return "<tr class='" + (k === c.k ? "hi" : "") + "'><td>" + k + "</td><td>" +
+      pc(savingCaptured(k)) + "</td><td>" + t.toFixed(1) + "</td><td class='dim'>" +
+      (i === 0 ? "&mdash;" : "+" + (100 * (savingCaptured(k) - prev)).toFixed(1) + " pts") + "</td></tr>";
+  }).join("");
+
+  $("sweepPrompt").innerHTML = [30, 90, 180, 400, 1200].map(function(P){
+    const r = runWorkload(Object.assign({}, c, { promptTokens: P }), SEED);
+    return "<tr class='" + (P === c.promptTokens ? "hi" : "") + "'><td>" + P + "</td><td>" +
+      pc(maxSavingFraction({ promptTokens: P })) + "</td><td class='dim'>" +
+      r.strat.single.tokens.toFixed(1) + "</td><td>" + r.strat.batchTagRepair.tokens.toFixed(1) +
+      "</td><td class='ok'>" + pc(1 - r.strat.batchTagRepair.tokens / r.strat.single.tokens) + "</td></tr>";
+  }).join("");
+
+  // ---- what k costs
+  const kRuns = K_POINTS.map(function(k){ return { k: k, S: runWorkload(Object.assign({}, c, { k: k }), SEED).strat }; });
+  $("sweepK").innerHTML = kRuns.map(function(row){
+    const x = row.S;
+    return "<tr class='" + (row.k === c.k ? "hi" : "") + "'><td>" + row.k + "</td>" +
+      "<td class='" + (x.batch.accuracy < 0.6 ? "bad" : "") + "'>" + pc(x.batch.accuracy) + "</td>" +
+      "<td>" + pc(x.batchCount.accuracy) + "</td>" +
+      "<td>" + pc(x.batchTag.accuracy) + "</td>" +
+      "<td class='ok'>" + pc(x.batchTagRepair.accuracy) + "</td>" +
+      "<td class='dim'>" + pc(x.noChannelLoss.accuracy) + "</td>" +
+      "<td class='" + (x.batch.silentBatchRate > 0.3 ? "bad" : "") + "'>" + pc(x.batch.silentBatchRate) + "</td>" +
+      "<td class='" + (x.batchCount.fallbackRate > 0.3 ? "bad" : "dim") + "'>" + pc(x.batchCount.fallbackRate) + "</td>" +
+      "<td>" + x.batchCount.tokensPerCorrect.toFixed(0) + "</td>" +
+      "<td class='ok'>" + x.batchTagRepair.tokensPerCorrect.toFixed(0) + "</td></tr>";
+  }).join("");
+
+  const last = kRuns[kRuns.length - 1].S;
+  $("kNote").innerHTML =
+    "The last two columns are the whole argument. And the right-hand end of the " +
+    "&ldquo;fell back to singles&rdquo; column is where the safety net stops being one: at k=" +
+    kRuns[kRuns.length - 1].k + ", <strong>" + pc(last.batchCount.fallbackRate) +
+    "</strong> of items have quietly reverted to one call each &mdash; after paying for the batch " +
+    "that failed &mdash; so it costs <strong>" + last.batchCount.tokensPerCorrect.toFixed(0) +
+    "</strong> tokens per correct answer against <strong>" + last.single.tokensPerCorrect.toFixed(0) +
+    "</strong> for never batching at all. Its accuracy going back UP over that range is the tell.";
+
+  // ---- the 2x2
+  const quad = [
+    ["positional, no check", S.batch],
+    ["tagged, no check", S.batchTag],
+    ["positional + count check", S.batchCount],
+    ["tagged + repair the gaps", S.batchTagRepair],
+    ["perfect channel", S.noChannelLoss]
+  ];
+  const maxTok = Math.max.apply(null, quad.map(function(q){ return q[1].tokens; }));
+  $("quad").innerHTML = quad.map(function(q){
+    return "<div><div class='flex justify-between text-xs mb-1'><span>" + q[0] +
+      "</span><span class='font-bold tabular-nums'>" + pc(q[1].accuracy) + " &middot; " +
+      q[1].tokens.toFixed(1) + " tok/item</span></div>" +
+      "<div class='bar'><span style='width:" + (100 * q[1].tokens / maxTok).toFixed(1) +
+      "%;background:" + (q[0].indexOf("tagged") === 0 ? "#0d9488" : "#64748b") + "'></span></div></div>";
+  }).join("");
+  $("quadNote").innerHTML =
+    "Bars are cost, numbers are accuracy. The check matters more than the format &mdash; " +
+    "positional-with-a-check (" + pc(S.batchCount.accuracy) + ") beats tagged-without-one (" +
+    pc(S.batchTag.accuracy) + "). But the GRANULARITY of the repair matters more than either, and " +
+    "that is what the format decides: same detection, same tags, and re-asking the item instead of " +
+    "the batch costs " + S.batchTagRepair.tokens.toFixed(1) + " against " +
+    S.batchTagCheck.tokens.toFixed(1) + " tokens per item for " +
+    (100 * (S.batchTagCheck.accuracy - S.batchTagRepair.accuracy)).toFixed(1) + " points.";
+
+  // ---- label space
+  $("sweepL").innerHTML = [2, 3, 5, 10, 50].map(function(L){
+    const r = runWorkload(Object.assign({}, c, { labels: L }), SEED).strat;
+    const dmg = r.noChannelLoss.accuracy - r.batch.accuracy;
+    return "<tr class='" + (L === c.labels ? "hi" : "") + "'><td>" + L + "</td><td>" +
+      pc(r.batch.misalignedRate) + "</td><td class='warn'>" + pc(r.batch.maskedRate) +
+      "</td><td class='dim'>" + pc(1 / L) + "</td><td class='bad'>" +
+      (100 * dmg).toFixed(1) + " pts</td></tr>";
+  }).join("");
+
+  // ---- the two controls
+  const ctlRows = [
+    ["as declared", c],
+    ["crowding off", Object.assign({}, c, { crowdOff: true })],
+    ["slip rate = 0", Object.assign({}, c, { dropCeil: 0, dropFloor: 0, mistagRate: 0 })],
+    ["both off", Object.assign({}, c, { crowdOff: true, dropCeil: 0, dropFloor: 0, mistagRate: 0 })]
+  ];
+  $("controls").innerHTML = ctlRows.map(function(row){
+    const r = runWorkload(row[1], SEED).strat;
+    return "<tr><td>" + row[0] + "</td><td class='" + (r.batch.accuracy < 0.65 ? "bad" : "") + "'>" +
+      pc(r.batch.accuracy) + "</td><td>" + pc(r.batchTagRepair.accuracy) + "</td><td class='dim'>" +
+      pc(r.noChannelLoss.accuracy) + "</td><td class='dim'>" + pc(r.single.accuracy) + "</td></tr>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------- in-page self-test
+// Runs ONCE, at the engine's declared defaults - it tests the engine, not the slider positions.
+function selfTest(){
+  const lines = [];
+  let pass = 0, fail = 0;
+  const ok = (cond, label) => { if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } };
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const R = runWorkload({}, SEED), S = R.strat;
+
+  // 1. the saving identity, exactly - for every k that divides the workload
+  const flat = { noFormatFailures: true, crowdOff: true };
+  const base = runWorkload(Object.assign({ k: 1 }, flat), 5).strat.batch.inputTokens;
+  let worst = 0;
+  for (const k of [2, 3, 4, 5, 6, 8, 10, 12, 16, 20, 24, 25, 30, 32, 40, 48, 50, 60, 75, 80, 96, 100]){
+    const r = runWorkload(Object.assign({ k: k }, flat), 5).strat.batch.inputTokens;
+    const frac = (base - r) / DEFAULTS.promptTokens;
+    worst = Math.max(worst, Math.abs(frac - savingCaptured(k)));
+    ok(Math.abs(frac - savingCaptured(k)) < 1e-12, "saving at k=" + k + " is not exactly 1-1/k");
+  }
+  // ...and STRICTLY below it when the last batch is short
+  for (const k of [7, 9, 11, 13, 23, 64]){
+    const r = runWorkload(Object.assign({ k: k }, flat), 5).strat.batch.inputTokens;
+    ok((base - r) / DEFAULTS.promptTokens < savingCaptured(k) - 1e-12,
+       "a partial final batch at k=" + k + " must pay a full prompt for fewer items");
+  }
+
+  // 2. the two controls
+  const zero = runWorkload({ dropCeil: 0, dropFloor: 0, mistagRate: 0 }, SEED).strat;
+  for (const s of ["batch", "batchCount", "batchTag", "batchTagRepair", "batchTagCheck"])
+    ok(zero[s].accuracy === zero.noChannelLoss.accuracy,
+       "with the slip rate at zero, " + s + " must be bit-identical to a perfect channel");
+  const noCrowd = runWorkload({ crowdOff: true }, SEED).strat;
+  ok(noCrowd.noChannelLoss.accuracy === noCrowd.ceiling.accuracy,
+     "with crowding off, a batched perfect channel must equal the single-call ceiling");
+  ok(noCrowd.batch.accuracy < noCrowd.ceiling.accuracy - 0.05,
+     "the channel story must survive with the declared crowding term removed");
+
+  // 3. a channel can only cost, and the ceiling is a ceiling
+  for (const s of STRATEGY_NAMES)
+    ok(S[s].accuracy <= S.ceiling.accuracy + 1e-12, s + " beat the ceiling, which is impossible");
+  ok(S.batch.accuracy <= S.noChannelLoss.accuracy, "a lossy channel raised the accuracy");
+  ok(S.noChannelLoss.accuracy <= S.ceiling.accuracy, "crowding raised the accuracy");
+
+  // 4. THE NULL RESULT, pinned: the free control is matched on accuracy and beaten on cost
+  ok(near(S.batchTagRepair.accuracy, S.batchCount.accuracy, 0.01),
+     "tagged+repair and the count check must land on the same accuracy");
+  ok(S.batchTagRepair.tokens < 0.75 * S.batchCount.tokens,
+     "the free control must be the EXPENSIVE one - if it is not, rewrite the page");
+  ok(S.batchTag.accuracy > S.batch.accuracy + 0.05, "the index tag must remove the cascade");
+  ok(S.batchTag.tokens > S.batch.tokens, "the index tag is not free on the output side");
+  // ...and the exception the verifier found, which contradicted what the page first said: the tag
+  // ADDS a wrong-index failure at a k-independent rate, so it is a net negative on small batches.
+  const small = runWorkload({ k: 4, dropCeil: 0.01, nItems: 1200 }, 13).strat;
+  ok(small.batchTag.misalignedRate > small.batch.misalignedRate,
+     "at k=4 the tag must be a NET NEGATIVE - the page says so, and it was measured not assumed");
+  ok(S.batchTag.misalignedRate < S.batch.misalignedRate / 10,
+     "at the default k the tag must remove nearly all of the misalignment");
+
+  // 5. what a count check cannot see
+  ok(S.batchCount.silentBatchRate > 0, "a count check cannot reach zero silent corruption");
+  ok(S.batchCount.silentBatchRate < S.batch.silentBatchRate / 5,
+     "the count check must remove most of it, or it is not worth mentioning");
+  ok(S.batchTagCheck.misalignedRate === 0,
+     "a tag-completeness check is exhaustive against THIS declared channel");
+
+  // 6. masking is the label space
+  for (const L of [2, 4, 5, 10, 20]){
+    const r = runWorkload({ labels: L, k: 24 }, 11).strat.batch;
+    ok(near(r.maskedRate, 1 / L, 0.03), "masked corruption at L=" + L + " is not near 1/L");
+  }
+  const l2 = runWorkload({ labels: 2 }, SEED).strat, l50 = runWorkload({ labels: 50 }, SEED).strat;
+  ok((l50.noChannelLoss.accuracy - l50.batch.accuracy) >
+     2 * (l2.noChannelLoss.accuracy - l2.batch.accuracy),
+     "the same misalignment must cost far more on a large label space");
+  ok(near(l2.batch.misalignedRate, l50.batch.misalignedRate, 1e-12),
+     "the label space must not change HOW MUCH is misaligned, only how much shows");
+
+  // 7. the safety net inverts the economics
+  const big = runWorkload({ k: 64 }, SEED).strat;
+  ok(big.batchCount.fallbackRate > 0.5, "at k=64 the count check must mostly be falling back");
+  ok(big.batchCount.tokensPerCorrect > big.single.tokensPerCorrect,
+     "at k=64 the safety net must cost more per correct answer than never batching");
+  ok(big.batchCount.accuracy > runWorkload({ k: 32 }, SEED).strat.batchCount.accuracy,
+     "accuracy rising with k is the tell that it has stopped batching");
+
+  // 8. shapes: monotone, bounded, saturating
+  const c0 = withDefaults({});
+  ok(pDrop(0, c0) === c0.dropFloor, "pDrop does not start at its floor");
+  ok(pDrop(1e9, c0) <= c0.dropCeil + 1e-9 && near(pDrop(1e9, c0), c0.dropCeil, 1e-9),
+     "pDrop does not saturate at its ceiling");
+  ok(pDrop(300, c0) - pDrop(280, c0) > pDrop(3000, c0) - pDrop(2980, c0), "pDrop is not saturating");
+  ok(crowd(0, c0) === 0 && crowd(c0.crowdFree, c0) === 0, "crowd charges for a short call");
+  ok(near(crowd(1e9, c0), c0.crowdMax, 1e-9), "crowd does not saturate at its ceiling");
+
+  // 9. costs and determinism
+  ok(S.batch.calls < S.single.calls, "batching did not reduce the call count");
+  ok(S.batch.tokens < S.single.tokens / 3, "batching did not reduce the token count");
+  ok(S.batch.msToAnswer > S.single.msToAnswer * 3, "batching is not slower per ANSWER");
+  ok(S.batch.wallClockS < S.single.wallClockS, "batching did not improve wall clock at all");
+  ok(S.batchCount.wallClockS > S.single.wallClockS, "re-runs are serial and must show up on the clock");
+  const d1 = runWorkload({}, 77).strat.batch.accuracy, d2 = runWorkload({}, 77).strat.batch.accuracy;
+  ok(d1 === d2, "the same seed must reproduce");
+  ok(runWorkload({}, 78).strat.batch.accuracy !== d1, "two different seeds gave an identical result");
+
+  const head = "  " + (fail ? "FAILED" : "all green") + "  |  asserts " + (pass + fail) +
+    "  |  pass " + pass + "  |  fail " + fail + "   (run once, at the engine's declared defaults)";
+  $("selftest").textContent = [head, ""].concat(lines).concat([
+    "  saving == 1-1/k exactly for every k dividing n   (worst error " + worst.toExponential(1) + ")",
+    "  k=16   positional " + pc(S.batch.accuracy) + " vs a perfect channel " + pc(S.noChannelLoss.accuracy) +
+      "   (" + pc(S.batch.misalignedRate) + " of items carry another item's answer)",
+    "  the free control  " + pc(S.batchCount.accuracy) + " at " + S.batchCount.tokens.toFixed(1) +
+      " tok/item   vs   tagged+repair " + pc(S.batchTagRepair.accuracy) + " at " +
+      S.batchTagRepair.tokens.toFixed(1) + "  -> " +
+      (100 * S.batchTagRepair.tokens / S.batchCount.tokens).toFixed(0) + "% of the cost",
+    "  silent corruption: " + pc(S.batch.silentBatchRate) + " of batches -> " +
+      pc(S.batchCount.silentBatchRate) + " with the count check, and it cannot reach 0",
+    "  masking: L=2 hides " + pc(l2.batch.maskedRate) + " of the damage, L=50 hides " +
+      pc(l50.batch.maskedRate) + "  (same " + pc(l2.batch.misalignedRate) + " misaligned)",
+    "  the tag is a NET NEGATIVE at k=4: positional " + pc(small.batch.misalignedRate) +
+      " misaligned vs tagged " + pc(small.batchTag.misalignedRate) + ", and removes " +
+      (100 * (1 - S.batchTag.misalignedRate / S.batch.misalignedRate)).toFixed(1) +
+      "% of it at k=" + DEFAULTS.k,
+    "  k=64: the count check falls back to singles on " + pc(big.batchCount.fallbackRate) +
+      " of items and costs " + big.batchCount.tokensPerCorrect.toFixed(0) + " tok/correct vs " +
+      big.single.tokensPerCorrect.toFixed(0) + " for never batching"
+  ]).join("\n");
+}
+
+let pending = 0;
+function scheduleRender(){
+  clearTimeout(pending);
+  pending = setTimeout(render, 90);
+}
+["sK", "sP", "sL", "sDrop", "sCrowd", "sTag", "sB"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+  $(id).addEventListener("change", scheduleRender);
+});
+render();
+selfTest();
+</script>
+</body>
+</html>
