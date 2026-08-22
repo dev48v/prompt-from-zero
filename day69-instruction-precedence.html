@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 69 — Instruction precedence</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: -apple-system, "Inter", sans-serif; }
+  .tab-active { background:#0f172a; color:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px; overflow:auto; white-space:pre-wrap; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  .bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; background:#0d9488; }
+  tr.hi td { background:#f0fdfa; }
+  tr.mis td { background:#fef2f2; }
+  tr.off td { color:#94a3b8; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px; }
+  .p-free { background:#dcfce7; color:#166534; }
+  .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; }
+  .p-edit { background:#e0e7ff; color:#3730a3; }
+  .p-baseline { background:#f1f5f9; color:#475569; }
+</style>
+</head>
+<body class="bg-slate-50 text-slate-900">
+
+<header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+  <div class="max-w-6xl mx-auto p-4 md:p-6">
+    <p class="text-xs font-bold tracking-widest text-teal-700 mb-2">PROMPTFROMZERO · DAY 69</p>
+    <h1 class="text-xl md:text-2xl font-black leading-tight mb-4">
+      ⚖️ Instruction precedence — every prompt engineering guide tells you to put your constraints
+      in priority order, and none of them tells you what precedence <em>is for</em>. It is for
+      deciding which of your instructions gets broken. So this page enumerates the whole answer
+      space — <strong>576</strong> concrete answer shapes across <strong>36</strong> request
+      situations — makes every instruction a real predicate over it, and asks the question first:
+      <em>can this prompt be obeyed at all?</em> At twelve rules, <strong>90.8%</strong> of prompts
+      are impossible in at least one situation, and the model gets blamed for it. Then the ranking:
+      re-ordering your rules so the critical ones come last is <strong>free</strong> and takes
+      critical violations from 7.25% to <strong>2.78%</strong>; printing
+      "(priority&nbsp;n)" next to all twelve costs <strong>48 tokens on every call, forever</strong>
+      and scores <strong>3.83%</strong> — worse than the free fix. Pure vanilla JavaScript, one
+      file, no build step.
+    </h1>
+    <div class="flex gap-2 flex-wrap" id="tabs">
+      <button data-tab="look" class="tab-active px-5 py-2 rounded-lg font-semibold text-sm">🔬 MEASURE</button>
+      <button data-tab="understand" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🧠 UNDERSTAND</button>
+      <button data-tab="build" class="bg-slate-100 px-5 py-2 rounded-lg font-semibold text-sm">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-100">
+    <div class="max-w-6xl mx-auto space-y-5">
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="grid md:grid-cols-3 gap-x-6 gap-y-2">
+          <label class="text-sm">rules in the prompt
+            <span id="vN" class="font-bold tabular-nums float-right">12</span>
+            <input id="sN" type="range" min="2" max="24" value="12" class="w-full"></label>
+          <label class="text-sm">prompts in the corpus
+            <span id="vP" class="font-bold tabular-nums float-right">400</span>
+            <input id="sP" type="range" min="100" max="800" step="50" value="400" class="w-full"></label>
+          <label class="text-sm">critical = priority &ge;
+            <span id="vC" class="font-bold tabular-nums float-right">4</span>
+            <input id="sC" type="range" min="2" max="5" value="4" class="w-full"></label>
+          <label class="text-sm">recency — a later rule weighs more <span class="dim">(declared)</span>
+            <span id="vR" class="font-bold tabular-nums float-right">0.55</span>
+            <input id="sR" type="range" min="0" max="200" value="55" class="w-full"></label>
+          <label class="text-sm">obey a PRINTED priority number <span class="dim">(declared)</span>
+            <span id="vO" class="font-bold tabular-nums float-right">0.80</span>
+            <input id="sO" type="range" min="0" max="400" value="80" class="w-full"></label>
+          <label class="text-sm">obey ALWAYS / NEVER in caps <span class="dim">(declared)</span>
+            <span id="vE" class="font-bold tabular-nums float-right">0.35</span>
+            <input id="sE" type="range" min="0" max="200" value="35" class="w-full"></label>
+        </div>
+        <div class="flex gap-5 flex-wrap mt-3 text-sm">
+          <label><input id="cPlaus" type="checkbox" checked> one rule per attribute per condition</label>
+          <label><input id="cEye" type="checkbox" checked> the author caught the <em>visible</em> contradictions</label>
+          <span class="text-xs text-slate-500" id="corpusNote"></span>
+        </div>
+        <p class="text-xs text-slate-500 mt-3">
+          The first block is <strong>exact and parameter-free</strong>: whether a set of instructions
+          can be obeyed is a set intersection over an enumerated space, and it does not depend on any
+          number above. The three sliders in the second row are a <em>declared</em> model of which
+          instruction a reader breaks when it cannot keep them all — set all of them to zero and
+          every annotation strategy on this page collapses onto one another, which is asserted below
+          and is the proof that the ranking effect lives there and nowhere else.
+        </p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <div class="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+          <p class="text-xs font-bold tracking-wider text-slate-500">ONE PROMPT, ONE REQUEST</p>
+          <div class="flex gap-4">
+            <label class="text-xs text-slate-500">prompt
+              <input id="sIdx" type="range" min="0" max="99" value="4" class="align-middle w-28"></label>
+            <label class="text-xs text-slate-500">situation
+              <input id="sSit" type="range" min="0" max="35" value="9" class="align-middle w-28"></label>
+          </div>
+        </div>
+        <p class="text-sm mb-2" id="sitLine"></p>
+        <div class="overflow-x-auto" style="max-height:340px">
+          <table class="num w-full">
+            <thead><tr><th>#</th><th>the instruction as written</th><th>priority</th><th>touches</th><th>fires here</th><th>answers it allows</th><th>in the core</th></tr></thead>
+            <tbody id="ruleRows"></tbody>
+          </table>
+        </div>
+        <p class="text-sm mt-3 font-semibold" id="verdict"></p>
+        <div class="overflow-x-auto mt-2">
+          <table class="num w-full">
+            <thead><tr><th>what you could ship instead</th><th>tokens</th><th>rules kept</th><th>possible here</th><th>the answer it lands on</th><th>instructions it breaks</th></tr></thead>
+            <tbody id="polRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE EXACT LAYER — NO MODEL IN IT AT ALL</p>
+          <p class="text-xs text-slate-600 mb-3">Every prompt in the corpus, evaluated in every one
+            of the 36 situations — exhaustive, not sampled. Set intersection is commutative, so none
+            of this depends on the order your rules are in. Feasibility does not care about
+            precedence; precedence only decides what happens <em>after</em> feasibility is gone.</p>
+          <table class="num w-full"><tbody id="exactRows"></tbody></table>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">WHERE A CONTRADICTION COMES FROM</p>
+          <p class="text-xs text-slate-600 mb-3">A funnel over every pair of rules in every prompt.
+            Two instructions can only fight if they touch the same thing, and only fight
+            <em>in production</em> if their conditions can both be true at once. That last number is
+            a per-pair rate, and it is what makes the per-prompt number a combinatorial one.</p>
+          <table class="num w-full"><tbody id="funnelRows"></tbody></table>
+          <p class="text-xs text-slate-600 mt-2" id="funnelNote"></p>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">EIGHT PROMPTS YOU COULD SHIP FOR THE SAME JOB</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>strategy</th><th>tok / call</th><th>&Delta; tok</th><th>impossible</th>
+              <th>broke a critical rule</th><th>rules obeyed</th><th>weighted</th>
+              <th>collateral</th><th>answers left</th><th>rules kept</th></tr></thead>
+            <tbody id="policyRows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2">Every strategy is scored against the
+          <strong>original author's rule set</strong>, never against its own edited one — otherwise
+          deleting an instruction would look like obeying it. <em>collateral</em> is the share of
+          situations that were perfectly satisfiable before the edit and now come back violating
+          something; the four strategies that only re-arrange words score exactly 0 there by
+          construction, and that zero is asserted.</p>
+        <p class="text-xs text-slate-600 mt-2" id="policyNote"></p>
+      </div>
+
+      <div class="grid lg:grid-cols-2 gap-5">
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">MINIMAL CORES, AND THE ONE LINTER YOU CAN ACTUALLY RUN</p>
+          <p class="text-xs text-slate-600 mb-3">An impossible instruction set has a smallest
+            impossible subset. A pairwise checker — the only kind that is cheap enough to run on a
+            real prompt — finds the conflict exactly when that subset has size 2.</p>
+          <table class="num w-full">
+            <thead><tr><th>smallest impossible subset</th><th>cases</th><th>share</th><th>pairwise linter</th></tr></thead>
+            <tbody id="coreRows"></tbody>
+          </table>
+          <p class="text-xs text-slate-600 mt-2" id="coreNote"></p>
+        </div>
+
+        <div class="bg-white rounded-2xl shadow p-5">
+          <p class="text-xs font-bold tracking-wider text-slate-500 mb-1">THE DIALS — WHERE THE PAID FIX STARTS PAYING</p>
+          <p class="text-xs text-slate-600 mb-3">Left: how strongly the reader prefers a rule that
+            came later. Right: how strongly it obeys a printed priority number. Free re-ordering and
+            paid annotation are the same purchase made in two currencies, and the crossover is
+            measurable rather than arguable.</p>
+          <table class="num w-full">
+            <thead><tr><th>recency</th><th>as written</th><th>ordered <span class="ok">free</span></th><th>numbered <span class="bad">paid</span></th><th>both</th></tr></thead>
+            <tbody id="recRows"></tbody>
+          </table>
+          <table class="num w-full mt-3">
+            <thead><tr><th>obey a printed number</th><th>ordered <span class="ok">free</span></th><th>numbered <span class="bad">paid</span></th><th>verdict</th></tr></thead>
+            <tbody id="obeyRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">HOW MANY RULES BEFORE YOUR PROMPT CANNOT BE OBEYED</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>rules</th><th>impossible situations</th><th>prompts hit somewhere</th>
+              <th>1 &minus; (1&minus;p)<sup>C(n,2)</sup></th><th>gap</th><th>contradictory pairs</th>
+              <th>cores of size 2</th><th>&ge;3</th><th>answers left of 576</th></tr></thead>
+            <tbody id="curveRows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2" id="curveNote"></p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-3">WHAT THE GENERATOR'S TWO REALISM ASSUMPTIONS ARE WORTH</p>
+        <div class="overflow-x-auto">
+          <table class="num w-full">
+            <thead><tr><th>corpus</th><th>impossible situations</th><th>prompts hit</th><th>contradictory pairs</th><th>cores &ge;3</th></tr></thead>
+            <tbody id="filterRows"></tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-600 mt-2">The headline number is a property of this rule
+          catalogue and this generator, not a measurement of prompts in general. What travels is the
+          shape: a per-pair contradiction rate that barely moves, raised to the number of pairs.</p>
+      </div>
+
+      <div class="bg-white rounded-2xl shadow p-5">
+        <p class="text-xs font-bold tracking-wider text-slate-500 mb-2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running...</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">Ask the first question first</h2>
+
+      <p>Here are two instructions from a real system prompt, months apart, written by two people who
+      were both right:</p>
+
+      <pre>In email replies, keep it to two sentences at most.
+When the request is urgent, give at least four sentences.</pre>
+
+      <p>Neither is wrong. Neither is ambiguous. They are not even about the same thing — one is about
+      a channel, the other about a state. And an urgent email is impossible. Not hard, not
+      ambiguous: <em>impossible</em>. There is no output that satisfies both, so whatever the model
+      returns is a violation of something you wrote down, and the ticket that gets filed says "the
+      model ignores my instructions".</p>
+
+      <p>That is the question this page asks before any question about precedence, because it comes
+      first and almost nobody asks it: <strong>can this prompt be obeyed at all?</strong></p>
+
+      <h3 class="text-xl font-bold">Which is answerable, because the answer space is finite</h3>
+
+      <p>Make the answer a small object — length, tone, format, language, whether there is code,
+      whether there is a greeting — and there are 576 of them. Make the request a small object too —
+      channel, what was asked for, what language the user wrote in, whether it is urgent — and there
+      are 36. Every instruction is now a predicate: a set of situations it fires in, and a set of the
+      576 answers it permits. And the set of answers that obeys your whole prompt is just the
+      intersection.</p>
+
+      <p>Nothing in that paragraph simulates a language model, and that is the point. It is not a
+      claim about what a model would do. It is a statement about your prompt, and it is exact.</p>
+
+      <div class="bg-teal-50 border-l-4 border-teal-600 p-4">
+        <p class="text-sm"><strong>Intersection is commutative.</strong> Which means feasibility does
+        not depend on the order of your rules — at all, ever, by construction. Every piece of advice
+        about putting the important thing first, or last, or in the system prompt rather than the
+        user turn, is advice about something else entirely: not <em>whether</em> an instruction can
+        be obeyed, but <em>which one gets broken</em> once one of them has to be.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">The number, and why it is a combinatorial number</h3>
+
+      <p>At twelve rules, <strong>27.6%</strong> of request situations admit no valid answer at all,
+      and <strong>90.8%</strong> of prompts are impossible in at least one of the 36 — on average in
+      <strong>10.9</strong> of them. Both numbers are properties of this rule catalogue and you
+      should not quote them at your own prompt. What you should take is the shape underneath, because
+      that does travel.</p>
+
+      <p>Only <strong>4.47%</strong> of rule <em>pairs</em> contradict each other. That is a small,
+      believable, almost comfortable number — the sort of thing you would accept as the cost of a
+      growing prompt. But twelve rules is sixty-six pairs, and
+      1&nbsp;&minus;&nbsp;(1&nbsp;&minus;&nbsp;0.0447)<sup>66</sup> is <strong>95.1%</strong>. The
+      measured figure is 90.8%, a little lower because pairs share rules and so their failures
+      cluster rather than being independent. Your prompt does not get contradictory because anyone
+      wrote a bad rule. It gets contradictory because you wrote a <em>twelfth</em> one.</p>
+
+      <p>And the conflicts that survive review are specifically the ones that need two unrelated
+      conditions to be true simultaneously. The generator models that directly: it throws away any
+      contradiction whose two conditions are <em>nested</em> — including every pair of unconditional
+      rules — on the grounds that a human reviewer can hold those two lines side by side and see it.
+      What is left needs an urgent email, or a French speaker asking for code. Which is exactly why
+      it does not show up in your evals, and exactly why it reads as flakiness rather than as a
+      contradiction.</p>
+
+      <h3 class="text-xl font-bold">Now precedence, and it cannot do what you want</h3>
+
+      <p>Here is the thing that follows from the definition and is worth saying slowly. If no answer
+      satisfies your instructions, then <em>every</em> strategy for ranking them produces an answer
+      that violates one. Ordering, capitalising, numbering, putting it in the system prompt, saying
+      please — all of them are choices about which instruction dies. None of them is a choice about
+      whether one has to. This page asserts it across every impossible case: no annotation strategy
+      ever reaches zero violations, and the four that only re-arrange words all leave the
+      impossibility rate at exactly the same 27.6%.</p>
+
+      <p>There is a smaller version of the same point hiding underneath. Even when your prompt
+      <em>is</em> satisfiable, the instructions that fire never pin down every attribute, so the
+      best answer is a tie — in every one of the 5,400 cases checked, more than one answer
+      scores the maximum. Precedence decides which instruction survives a contradiction. It never
+      decides which answer you get.</p>
+
+      <p>So what is precedence worth? Take the corpus and count how often a rule the author marked
+      <em>critical</em> is the one that gets broken. Written in the order it grew in, that is
+      <strong>7.25%</strong> of cases. Sort the rules so the critical ones come last —
+      <strong>zero extra tokens, one pass of your editor</strong> — and it is
+      <strong>2.78%</strong>. Print "(priority n)" beside all twelve rules, which is the advice you
+      will find in every guide, and it costs <strong>48 tokens on every call for the life of the
+      product</strong> and scores <strong>3.83%</strong>. Worse than the free fix.</p>
+
+      <p>Do both and you get <strong>2.72%</strong>. Which is the honest way to price an annotation:
+      not against doing nothing, but against the free thing you should have done first.
+      <strong>0.069 of a percentage point</strong>, for 48 tokens a call. And it is real — the paired
+      difference is positive on all five seeds and lands between 0.037 and 0.102, while the level
+      itself swings a full 0.8 points across those same seeds. The only reason it is measurable at
+      all is that it is a <em>paired</em> comparison; as an absolute number it sits inside the noise
+      of its own corpus.</p>
+
+      <div class="bg-amber-50 border-l-4 border-amber-500 p-4">
+        <p class="text-sm">Both those numbers come out of a declared reader model, and the direction
+        of the result is a property of it: a reader that ignores position entirely cannot be helped
+        by re-ordering. So the page measures the crossover instead of arguing about it. With the
+        default recency weight, printing a number only beats re-ordering once the reader values that
+        number about <strong>3.6&times;</strong> as much as it values coming last. That is a
+        one-afternoon experiment on your own model, and it is a better use of your time than
+        another rewrite.</p>
+      </div>
+
+      <h3 class="text-xl font-bold">The only fix that fixes it, and what it costs</h3>
+
+      <p>If ranking cannot remove an impossibility, editing can. Find the minimal impossible subset,
+      drop its lowest-priority member, repeat until every situation is satisfiable. That works
+      completely — impossibility goes to <strong>0.00%</strong> — and your prompt gets
+      <strong>38 tokens shorter</strong>. It looks free. It is not, and the column that prices it is
+      one nobody prints: in <strong>20.2%</strong> of the situations that were <em>already
+      perfectly satisfiable</em>, the answer now violates something the author wrote. You deleted a
+      rule to fix two situations out of thirty-six, and lost it in the other thirty-four.</p>
+
+      <p>Which is what conditions are for. Instead of deleting the losing rule, attach an exception
+      to it — "except in urgent email replies" — so it keeps working everywhere it never conflicted.
+      Same 0.00% impossibility, same 1.27% critical violations, and the collateral damage falls from
+      20.2% to <strong>5.3%</strong>, for about <strong>7 tokens</strong>. That is the
+      recommendation this page ends up making, and it comes with its own measured catch: the
+      exception you need is a set of situations, and the exception you can <em>write</em> is a
+      clause. They are not the same object. The clause is usually wider than the conflict, so the
+      rule goes dark in <strong>4.8</strong> situations per prompt where it was doing no harm — and
+      on <strong>0.18</strong> rules per prompt no available clause covers the conflict at all, and
+      there is nothing left to do but delete.</p>
+
+      <h3 class="text-xl font-bold">The dumbest thing on the page ties the best thing on the page</h3>
+
+      <p>Throw away every rule that is not critical. Three rules instead of twelve,
+      <strong>74.5</strong> tokens instead of 222.5, no analysis, no core-finding, no exception
+      clauses. Critical violations: <strong>1.27%</strong>. That is not close to the careful fix, it
+      is <em>exactly</em> it — the same 183 cases out of 14,400, to the last one.</p>
+
+      <p>Which is not a coincidence and is not luck. Once the critical rules are intact and
+      satisfiable, a critical rule can only break where the critical rules contradict
+      <em>each other</em>, and that is a property of what you marked critical, not of what you did
+      about it. 1.27% is a floor, three separate strategies sit exactly on it, and the cheapest one
+      is a two-minute deletion. If the metric you were optimising was "how often do I break a rule I
+      cared about", you have been buying an answer you could have had for nothing.</p>
+
+      <p>The reason to prefer the careful fix is in the next column along, which is why it has to be
+      printed next to the win: obedience to the <em>whole</em> rule set falls from 94.3% to
+      <strong>67.6%</strong>, and collateral damage runs to <strong>68.8%</strong>. Every style rule
+      you deleted was a rule. A single-column scoreboard would have made the crudest possible edit
+      look like the best idea on this page, and it very nearly is.</p>
+
+      <h3 class="text-xl font-bold">Negative instructions build the conflicts you cannot detect</h3>
+
+      <p>The last result is the one that surprised me, and it is exact. When a prompt is impossible,
+      how big is the smallest impossible subset? Almost always two: <strong>99.1%</strong> of the
+      time a pairwise check — the only check that is cheap enough to run on a real prompt, and one
+      you could write this afternoon — finds it. The exhaustive search over triples and quadruples,
+      which costs C(n,3) + C(n,4) intersections and does not scale, buys you the last 0.9%.</p>
+
+      <p>But look at what that 0.9% is made of. Every single core of size 3 or more in this corpus —
+      61 out of 61 over a 1,200-prompt run — consists <em>entirely</em> of negative instructions, all on
+      one attribute, and <strong>its size is exactly that attribute's number of possible
+      values</strong>. Three "never" rules about tone, when tone has three values. Four about format,
+      when format has four.</p>
+
+      <div class="bg-slate-900 text-slate-100 rounded-xl p-4 text-sm">
+        <p class="mb-2 font-bold">Why this has to be true, not just why it was measured</p>
+        <p>A positive instruction pins an attribute to one value, so two of them collide immediately
+        and pairwise. A negative instruction removes one value and leaves the rest, so any two of
+        them are perfectly satisfiable, and any three, right up until you have removed the last
+        option. <strong>A set of "do not" rules is unsatisfiable only when it is complete, and no
+        subset of a complete set is unsatisfiable.</strong> That is the definition of invisible to a
+        pairwise linter — and it is why the fourth "never use X" you add is a different kind of
+        risk from the fourth "always do Y".</p>
+      </div>
+
+      <p>So the cheap linter is the right tool and the exponential one is not worth building. It has
+      one blind spot, the blind spot is structural rather than statistical, and it has a name you can
+      check for by hand: count your negative instructions per attribute, and if that count reaches
+      the number of things the attribute could be, you have written an impossibility that no pair of
+      your rules can reveal.</p>
+
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="min-h-[calc(100vh-72px)] p-4 md:p-8 bg-slate-50">
+    <div class="max-w-3xl mx-auto space-y-6">
+
+      <h2 class="text-2xl font-black">🔨 How it is built</h2>
+
+      <h3 class="text-xl font-bold">1. The answer space is enumerated, not sampled</h3>
+      <p>Six attributes with 6&times;3&times;4&times;2&times;2&times;2 = 576 combinations, and four
+      request attributes with 36. Both are built by the same cross product, so nothing anywhere in
+      the engine has to be estimated:</p>
+      <pre>const OUTPUTS    = cross(ATTRS);      // 576 answer shapes
+const SITUATIONS = cross(SIT_ATTRS);  // 36 request contexts</pre>
+      <p>An instruction is a <code class="tok">guard</code> over the situation plus a
+      <code class="tok">req</code> over the answer. 26 requirements &times; 10 guards gives a 260-rule
+      catalogue, and each entry's satisfying set is precomputed once as an 18-word bitset per
+      situation. Everything else on the page is an AND of those bitsets.</p>
+
+      <h3 class="text-xl font-bold">2. Feasibility is a set intersection, so it is order-free</h3>
+      <pre>function satSet(active, out){
+  out.set(ALL_ONES);
+  for (const a of active) bsAnd(out, a.m, out);   // commutative, associative
+  return out;
+}</pre>
+      <p>The page asserts the consequence directly: shuffle a prompt's rules and the satisfying set
+      comes back bit-identical, for every prompt and every situation. That assertion is what earns
+      the right to say precedence cannot change feasibility — it is checked, not argued.</p>
+
+      <h3 class="text-xl font-bold">3. Two core-finders, one cheap and one exhaustive</h3>
+      <p><code class="tok">greedyCore</code> is deletion-based: drop a rule, and if the set is still
+      impossible the rule was never needed. That is n intersections and the result is guaranteed
+      <em>minimal</em> — every member matters — but not necessarily of <em>minimum</em> size.
+      <code class="tok">minCoreSize</code> enumerates all pairs, then all triples, then all
+      quadruples, and returns the smallest impossible subset there is. The page measures the gap
+      between them: greedy averages 2.010 and exceeds the true minimum in 0.10% of cases.</p>
+
+      <h3 class="text-xl font-bold">4. The reader model is four lines and they are all on sliders</h3>
+      <p>This is the only assumption on the page, so it is written where it can be seen and turned
+      off. Every term needs something the prompt actually <em>says</em>, and every term is
+      bounded — Day 65's rule, which cost that page three attempts:</p>
+      <pre>function weightOf(r, n, c){
+  let w = 1;
+  if (n > 1) w += c.recency * (r.pos / (n - 1));       // where it sits
+  if (r.emph) w += c.emphasis;                          // whether it shouts
+  w += c.specificity * Math.min(r.ref.guard.depth,2)/2; // whether its condition matched
+  if (r.printPrio) w += c.obeyPriority * (r.prio-1)/4;  // whether a number was printed
+  return w;
+}</pre>
+      <p>The author's private intent is worth exactly nothing here. It enters the reader's decision
+      only through something written down, which is the whole subject of the page. And the reader
+      picks the argmax over all 576 answers of the total weight it can satisfy — a real optimisation
+      over the real space, not a heuristic.</p>
+      <p>Because every weight is positive, the argmax necessarily lands <em>inside</em> the
+      satisfying set whenever that set is non-empty. That is asserted (10,436 feasible cases, zero
+      violations) and then used: for a strategy that did not edit the rule list, a feasible situation
+      needs no argmax computed at all, which is what keeps a full render under two seconds.</p>
+
+      <h3 class="text-xl font-bold">5. Every strategy is scored against the ORIGINAL rules</h3>
+      <p>Three of the eight strategies change the rule list. If each were scored against its own
+      edited prompt, deleting an instruction would count as obeying it and the crudest edit would
+      win by construction. So the score always comes from the author's rules:</p>
+      <pre>const orig = origActive[s];              // the AUTHOR's rules, active in this situation
+for (const a of orig)
+  if (bsGet(a.m, out)) sat++; else { broke++; if (a.r.prio >= c.criticalPrio) crit = true; }</pre>
+      <p>This is Day 64's lesson arriving in a new shape. That page found precision made a fallible
+      verifier look free until coverage was printed beside it; here a single "did you break a
+      critical rule" column makes deleting nine rules look like the best idea on the page, until
+      whole-rule-set obedience and collateral damage are printed beside it.</p>
+
+      <h3 class="text-xl font-bold">6. The generator's two realism assumptions, both reported</h3>
+      <p>Sampling twelve rules uniformly from 260 produces prompts no human would ship, so two
+      filters run and the page shows what each is worth. <strong>One rule per attribute per
+      condition</strong> — an author does not write two format rules under the same condition. And
+      <strong>the author's eye</strong>: any contradiction whose two conditions are nested, which
+      includes every unconditional pair, is discarded on the grounds a reviewer could see it. Turn
+      both off and impossibility goes from 27.2% to 51.1%. The honest reading is that the
+      per-prompt rate is a property of the catalogue; what survives is the per-pair rate and the
+      exponent.</p>
+
+      <h3 class="text-xl font-bold">7. The costs are counted, not asserted</h3>
+      <p>A hand-written token estimator (about five characters to a token, punctuation separately)
+      runs over the actual rule text, so " (priority 3)" &times; 12 rules is a measured 48 tokens
+      rather than a guess. The columns beside every win: tokens per call forever, rules kept out of
+      twelve, answers still permitted out of 576, and collateral damage in situations that were
+      already fine.</p>
+
+      <h3 class="text-xl font-bold">8. What the assertions pin down</h3>
+      <pre>assert(satSet(shuffled) === satSet(original))            // bit-identical, every prompt
+assert(argmax(score) inside SAT whenever SAT non-empty)   // 0 violations in 10,436 cases
+assert(infeasible => EVERY strategy breaks something)     // no ranking escapes a contradiction
+assert(annotation strategies leave infeasibility EQUAL)   // 27.56% for all four
+assert(collateral(re-arranging strategies) === 0)         // exactly, by construction
+assert(critBreak(deleteCore) === critBreak(narrowCore)
+    === critBreak(criticalOnly) === infeas(critical subset))   // 183/14400, all four
+assert(all four dials = 0 => the annotation strategies are IDENTICAL)
+assert(every core of size >= 3 is all-negative, one attribute, size === |domain|)
+assert(greedyCore is minimal: removing any member restores feasibility)
+assert(orderLast costs exactly 0 extra tokens)            // it is a sort, not a rewrite
+assert(the maximum is a TIE in 100% of cases)             // so the tie-break is not an edge case</pre>
+      <p>The fifth one is the structural identity that took the headline away from the careful fix:
+      three strategies, one of which is "delete two thirds of your prompt", land on the same 183
+      cases out of 14,400 — not approximately, exactly. When that assertion holds, the expensive
+      analysis has been proved to buy nothing <em>on that column</em>, and the page has to justify
+      itself on the next one.</p>
+
+      <h3 class="text-xl font-bold">9. Three things that were not what I expected</h3>
+      <p><strong>The paid annotation lost, and then it lost again.</strong> I built the numbering
+      strategy expecting it to be the answer, with re-ordering as the cheap control. Numbering is
+      worse than the free re-order on its own (3.83% against 2.78%), and on top of the re-order it
+      is worth 0.065 points for 48 tokens a call. The mechanism is legible once measured: a numbered
+      prompt is still in whatever order it grew in, so its printed priorities fight its own recency,
+      while sorting makes the two agree for nothing.</p>
+      <p><strong>Over-constraint is not the problem — I assumed it was.</strong> Twelve rules leave
+      70.3 of 576 answers standing, and the number of cases pinned to exactly one answer is
+      <strong>0.00%</strong>. The story that long system prompts produce robotic output by squeezing
+      the space to a point is not what happens here. Contradiction is what happens.</p>
+      <p><strong>The best answer is a tie every single time.</strong> I wrote the verifier to assert
+      that the engine's argmax matches an independently computed one by index, and it failed once in
+      5,400. Chasing it turned up something the page had no idea about: the maximum score is shared
+      by more than one answer in <strong>100% of cases</strong> — all 5,400 — because the
+      instructions that fire never constrain every attribute, so everything they leave alone is free
+      and equally good. Which means the answer you actually get is decided by something that is not
+      in your prompt at all. The assertion was wrong to ask for index equality; it now asserts
+      score-optimality and <em>counts</em> the tie-breaks, which is the claim the model supports.</p>
+      <p><strong>And an exact identity broken by floating point.</strong> With recency at zero,
+      position cannot matter, so the as-written and re-ordered prompts must give identical answers.
+      They differ on <strong>0.535%</strong> of cases. The weights are identical; the rules are
+      summed in a different order; 1 + 1.15 + 1.30 is not bit-identical to 1.30 + 1 + 1.15; and
+      since every maximum is a tie, that last bit is what decides. Set the other three dials to zero
+      as well, making every weight exactly 1 and every sum an integer, and the difference is 0 out
+      of 14,400. The assertion carries a tolerance and the reason rather than a quietly loosened
+      bound — and a real model breaks ties by sampling, so an arbitrary tie-break is the
+      faithful behaviour, not the bug.</p>
+
+      <h3 class="text-xl font-bold">10. What this is not</h3>
+      <p>It is not a claim about how any model resolves conflicting instructions; that is the
+      declared part and it is on sliders. It is not the instruction hierarchy between system,
+      developer and user turns — that is a different axis and this page holds it fixed. It is not
+      Day 51's system-prompt placement, Day 16's structured output, or Day 43's constitutional
+      critique, which revises against principles that are assumed to be mutually satisfiable. The
+      exact half — can this prompt be obeyed, what is the smallest subset that cannot be, how does
+      that scale with the number of rules — is a statement about your prompt and holds whatever
+      model reads it.</p>
+
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(t => t.addEventListener("click", () => {
+  tabs.forEach(x => { x.classList.remove("tab-active"); x.classList.add("bg-slate-100"); });
+  t.classList.add("tab-active"); t.classList.remove("bg-slate-100");
+  panels.forEach(p => p.classList.add("hidden"));
+  document.getElementById(t.dataset.tab).classList.remove("hidden");
+}));
+
+// ===== ENGINE:BEGIN =====
+// Instruction precedence - what happens when two instructions in one prompt cannot both be obeyed.
+// Nothing here simulates language. The output space is ENUMERATED (576 concrete answer shapes x 36
+// request situations), every instruction is a real predicate over it, and "can this prompt be
+// obeyed at all" is set intersection - exact, order-independent, parameter-free. Only the last
+// stage (WHICH instruction gets broken when none can be kept) uses a declared reader model, and
+// every coefficient in it is on a slider so the conclusion can be seen to depend on it.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------------------------------------------------------------- the output space (enumerated)
+const ATTRS = [
+  { key: 'len',   label: 'sentences', values: [1, 2, 3, 4, 5, 6] },
+  { key: 'tone',  label: 'tone',      values: ['formal', 'neutral', 'casual'] },
+  { key: 'fmt',   label: 'format',    values: ['prose', 'bullets', 'table', 'json'] },
+  { key: 'lang',  label: 'language',  values: ['en', 'fr'] },
+  { key: 'code',  label: 'code',      values: [0, 1] },
+  { key: 'greet', label: 'greeting',  values: [0, 1] }
+];
+
+function cross(specs){
+  let acc = [{}];
+  for (const a of specs){
+    const next = [];
+    for (const o of acc) for (const v of a.values){ const c = Object.assign({}, o); c[a.key] = v; next.push(c); }
+    acc = next;
+  }
+  return acc;
+}
+
+const OUTPUTS = cross(ATTRS);                    // 6*3*4*2*2*2 = 576
+const NOUT = OUTPUTS.length;
+const WORDS = Math.ceil(NOUT / 32);              // 18 words of 32 bits
+
+const SIT_ATTRS = [
+  { key: 'channel',  label: 'channel', values: ['email', 'chat', 'ticket'] },
+  { key: 'asked',    label: 'asked for', values: ['code', 'explain', 'status'] },
+  { key: 'userLang', label: 'user wrote in', values: ['en', 'fr'] },
+  { key: 'urgent',   label: 'urgent', values: [0, 1] }
+];
+const SITUATIONS = cross(SIT_ATTRS);             // 3*3*2*2 = 36
+const NSIT = SITUATIONS.length;
+
+// ---------------------------------------------------------------- bitset over the 576 outputs
+function bsNew(){ return new Uint32Array(WORDS); }
+function bsAnd(a, b, out){ for (let i = 0; i < WORDS; i++) out[i] = a[i] & b[i]; return out; }
+function bsEmpty(a){ for (let i = 0; i < WORDS; i++) if (a[i]) return false; return true; }
+function bsCount(a){
+  let n = 0;
+  for (let i = 0; i < WORDS; i++){
+    let v = a[i];
+    v = v - ((v >>> 1) & 0x55555555);
+    v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+    v = (v + (v >>> 4)) & 0x0f0f0f0f;
+    n += (Math.imul(v, 0x01010101) >>> 24);
+  }
+  return n;
+}
+function bsGet(a, i){ return (a[i >>> 5] >>> (i & 31)) & 1; }
+function bsSet(a, i){ a[i >>> 5] |= (1 << (i & 31)); }
+const ALL_ONES = (function(){
+  const a = bsNew();
+  for (let i = 0; i < NOUT; i++) bsSet(a, i);
+  return a;
+})();
+
+// ---------------------------------------------------------------- guards (over the SITUATION)
+const GUARDS = [
+  { id: 'any',      depth: 0, text: '',                                    test: function(s){ return true; } },
+  { id: 'email',    depth: 1, text: 'in email replies',                    test: function(s){ return s.channel === 'email'; } },
+  { id: 'chat',     depth: 1, text: 'in chat',                             test: function(s){ return s.channel === 'chat'; } },
+  { id: 'ticket',   depth: 1, text: 'on support tickets',                  test: function(s){ return s.channel === 'ticket'; } },
+  { id: 'askCode',  depth: 1, text: 'when the user asks for code',         test: function(s){ return s.asked === 'code'; } },
+  { id: 'askStat',  depth: 1, text: 'for status questions',                test: function(s){ return s.asked === 'status'; } },
+  { id: 'urgent',   depth: 1, text: 'when the request is urgent',          test: function(s){ return s.urgent === 1; } },
+  { id: 'frUser',   depth: 1, text: 'when the user writes in French',      test: function(s){ return s.userLang === 'fr'; } },
+  { id: 'urgMail',  depth: 2, text: 'in urgent email replies',             test: function(s){ return s.channel === 'email' && s.urgent === 1; } },
+  { id: 'codeChat', depth: 2, text: 'when code is asked for in chat',      test: function(s){ return s.asked === 'code' && s.channel === 'chat'; } }
+];
+
+// ---------------------------------------------------------------- requirements (over the OUTPUT)
+// prio is the AUTHOR's intent, 1..5. It is never visible to the reader unless a policy prints it.
+// neg marks a "do not / never" instruction. dom is the size of the attribute domain it negates -
+// the whole negative-instruction result on this page turns on that number.
+const REQS = [
+  { id: 'fmtBullets', attrs: ['fmt'],  prio: 2, neg: false, text: 'answer in bullet points',                         test: function(o, s){ return o.fmt === 'bullets'; } },
+  { id: 'fmtProse',   attrs: ['fmt'],  prio: 2, neg: false, text: 'answer in plain prose',                           test: function(o, s){ return o.fmt === 'prose'; } },
+  { id: 'fmtJson',    attrs: ['fmt'],  prio: 5, neg: false, text: 'return a JSON object and nothing else',            test: function(o, s){ return o.fmt === 'json'; } },
+  { id: 'fmtTable',   attrs: ['fmt'],  prio: 2, neg: false, text: 'lay the answer out as a table',                    test: function(o, s){ return o.fmt === 'table'; } },
+  { id: 'noBullets',  attrs: ['fmt'],  prio: 2, neg: true,  dom: 4, text: 'never use bullet points',                  test: function(o, s){ return o.fmt !== 'bullets'; } },
+  { id: 'noTable',    attrs: ['fmt'],  prio: 2, neg: true,  dom: 4, text: 'never use tables',                         test: function(o, s){ return o.fmt !== 'table'; } },
+  { id: 'noJson',     attrs: ['fmt'],  prio: 3, neg: true,  dom: 4, text: 'do not dump raw JSON at the user',          test: function(o, s){ return o.fmt !== 'json'; } },
+  { id: 'noProse',    attrs: ['fmt'],  prio: 2, neg: true,  dom: 4, text: 'never answer in one unbroken paragraph',    test: function(o, s){ return o.fmt !== 'prose'; } },
+  { id: 'len2',       attrs: ['len'],  prio: 3, neg: false, text: 'keep it to two sentences at most',                 test: function(o, s){ return o.len <= 2; } },
+  { id: 'len3',       attrs: ['len'],  prio: 3, neg: false, text: 'keep it under four sentences',                     test: function(o, s){ return o.len <= 3; } },
+  { id: 'len4',       attrs: ['len'],  prio: 3, neg: false, text: 'give at least four sentences',                     test: function(o, s){ return o.len >= 4; } },
+  { id: 'len5',       attrs: ['len'],  prio: 2, neg: false, text: 'explain in full, five sentences or more',          test: function(o, s){ return o.len >= 5; } },
+  { id: 'toneFormal', attrs: ['tone'], prio: 3, neg: false, text: 'keep the tone formal',                             test: function(o, s){ return o.tone === 'formal'; } },
+  { id: 'toneCasual', attrs: ['tone'], prio: 2, neg: false, text: 'keep the tone casual and friendly',                test: function(o, s){ return o.tone === 'casual'; } },
+  { id: 'noCasual',   attrs: ['tone'], prio: 4, neg: true,  dom: 3, text: 'never sound casual',                       test: function(o, s){ return o.tone !== 'casual'; } },
+  { id: 'noFormal',   attrs: ['tone'], prio: 2, neg: true,  dom: 3, text: 'do not sound stiff or corporate',          test: function(o, s){ return o.tone !== 'formal'; } },
+  { id: 'noNeutral',  attrs: ['tone'], prio: 2, neg: true,  dom: 3, text: 'never settle into a flat neutral register', test: function(o, s){ return o.tone !== 'neutral'; } },
+  { id: 'langUser',   attrs: ['lang'], prio: 5, neg: false, text: 'reply in the language the user wrote in',           test: function(o, s){ return o.lang === s.userLang; } },
+  { id: 'langEn',     attrs: ['lang'], prio: 4, neg: false, text: 'always answer in English',                          test: function(o, s){ return o.lang === 'en'; } },
+  { id: 'codeYes',    attrs: ['code'], prio: 4, neg: false, text: 'include a runnable code example',                   test: function(o, s){ return o.code === 1; } },
+  { id: 'codeNo',     attrs: ['code'], prio: 3, neg: true,  dom: 2, text: 'do not include code',                       test: function(o, s){ return o.code === 0; } },
+  { id: 'greetNo',    attrs: ['greet'],prio: 2, neg: true,  dom: 2, text: 'no greeting and no sign-off',               test: function(o, s){ return o.greet === 0; } },
+  { id: 'greetYes',   attrs: ['greet'],prio: 2, neg: false, text: 'open by greeting the user by name',                 test: function(o, s){ return o.greet === 1; } },
+  { id: 'shortProse', attrs: ['fmt', 'len'],   prio: 3, neg: false, text: 'reply in one short paragraph of prose, two sentences at most', test: function(o, s){ return o.fmt === 'prose' && o.len <= 2; } },
+  { id: 'jsonCode',   attrs: ['fmt', 'code'],  prio: 4, neg: false, text: 'return the code inside a JSON field',        test: function(o, s){ return o.fmt === 'json' && o.code === 1; } },
+  { id: 'formalGreet',attrs: ['tone', 'greet'],prio: 3, neg: false, text: 'open with a formal greeting',               test: function(o, s){ return o.tone === 'formal' && o.greet === 1; } }
+];
+
+// ---------------------------------------------------------------- a hand-written token estimator
+// ~5 characters to a token, punctuation counted separately. An approximation, and it only ever
+// gets used to COMPARE two versions of the same sentence, where the bias cancels.
+function tokens(text){
+  if (!text) return 0;
+  let t = 0;
+  const parts = String(text).trim().split(/\s+/);
+  for (const w of parts){
+    if (!w) continue;
+    const core = w.replace(/[^A-Za-z0-9]/g, '');
+    t += Math.max(1, Math.ceil(core.length / 5)) + (w.length - core.length);
+  }
+  return t;
+}
+
+function cap(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
+function ruleText(guard, req){
+  return guard.depth === 0 ? cap(req.text) + '.' : cap(guard.text) + ', ' + req.text + '.';
+}
+
+// ---------------------------------------------------------------- the catalogue: 26 x 10 = 260
+const CATALOGUE = (function(){
+  const out = [];
+  for (const req of REQS) for (const guard of GUARDS){
+    const text = ruleText(guard, req);
+    out.push({
+      idx: out.length, req: req, guard: guard, prio: req.prio, neg: !!req.neg,
+      dom: req.dom || 0, attrs: req.attrs, text: text, tok: tokens('- ' + text)
+    });
+  }
+  return out;
+})();
+const NCAT = CATALOGUE.length;
+
+// guard truth table, and the per-(rule, situation) satisfying set. Built once; every measurement
+// on the page is an AND of these.
+const GUARD_ON = (function(){
+  const t = [];
+  for (const g of GUARDS) t.push(SITUATIONS.map(s => !!g.test(s)));
+  return t;
+})();
+const GUARD_IDX = (function(){ const m = {}; GUARDS.forEach((g, i) => m[g.id] = i); return m; })();
+
+const MASK = new Array(NCAT * NSIT);             // null when the guard does not fire
+(function(){
+  for (let c = 0; c < NCAT; c++){
+    const cat = CATALOGUE[c], gi = GUARD_IDX[cat.guard.id];
+    for (let s = 0; s < NSIT; s++){
+      if (!GUARD_ON[gi][s]){ MASK[c * NSIT + s] = null; continue; }
+      const m = bsNew();
+      for (let o = 0; o < NOUT; o++) if (cat.req.test(OUTPUTS[o], SITUATIONS[s])) bsSet(m, o);
+      MASK[c * NSIT + s] = m;
+    }
+  }
+})();
+
+// two guards CO-FIRE if some situation satisfies both - a pair of instructions that never co-fire
+// can contradict each other on paper and never once collide in production
+function coFire(gi, gj){
+  for (let s = 0; s < NSIT; s++) if (GUARD_ON[gi][s] && GUARD_ON[gj][s]) return true;
+  return false;
+}
+
+// gi IMPLIES gj when every situation that fires gi also fires gj. Nested guards are the pairs a
+// human reviewer can hold side by side ("always X" vs "in email, not X"); CROSSING guards are the
+// pairs that need two unrelated conditions to be true at once, and those are the ones that ship.
+function implies(gi, gj){
+  for (let s = 0; s < NSIT; s++) if (GUARD_ON[gi][s] && !GUARD_ON[gj][s]) return false;
+  return true;
+}
+function nested(gi, gj){ return implies(gi, gj) || implies(gj, gi); }
+
+// does this PAIR of catalogue rules contradict in any situation where both fire?
+function pairClashes(a, b){
+  const gi = GUARD_IDX[a.guard.id], gj = GUARD_IDX[b.guard.id];
+  const acc = bsNew();
+  for (let s = 0; s < NSIT; s++){
+    if (!GUARD_ON[gi][s] || !GUARD_ON[gj][s]) continue;
+    bsAnd(MASK[a.idx * NSIT + s], MASK[b.idx * NSIT + s], acc);
+    if (bsEmpty(acc)) return true;
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------- prompts
+const DEFAULTS = {
+  nPrompts: 400,
+  nRules: 12,
+  plausible: true,        // reject a second rule on the same attribute under the same guard
+  authorEye: true,        // ...and reject the contradictions a reviewer could SEE (nested guards)
+  criticalPrio: 4,        // prio >= this is a rule you did not want broken
+  only: null,             // restrict which policies are evaluated (sweeps use this)
+  coreCap: 5,             // exhaustive minimum-core search up to this size
+  scaffoldTokens: 24,     // the fixed "You are a support assistant..." around the rule list
+
+  // ---- the DECLARED reader model. Only these four lines are an assumption, they are all on
+  // sliders, and setting all four to zero collapses every annotation policy onto one another -
+  // which is asserted, and is the proof that the effect lives here and nowhere else.
+  recency: 0.55,          // a rule later in the prompt weighs more
+  emphasis: 0.35,         // NEVER / ALWAYS in caps weighs more
+  specificity: 0.30,      // a rule whose guard matched this situation weighs more
+  obeyPriority: 0.80,     // a PRINTED priority number weighs more
+
+  emphTokens: 2,          // what "ALWAYS" / "NEVER" costs, per rule marked
+  prioTokens: 4,          // what " (priority 3)" costs, per rule, on every call, forever
+  narrowTokens: 5         // what " - except <guard>" costs, per rule narrowed
+};
+const withDefaults = cfg => Object.assign({}, DEFAULTS, cfg || {});
+
+// A prompt is an ORDERED list of catalogue rules. The plausibility filter is the generator's one
+// realism assumption and it is reported both ways: an author does not write two rules about the
+// same attribute under the same condition, so every conflict here has to cross a guard.
+function samplePrompt(c, rnd){
+  const chosen = [], taken = {}, seen = {};
+  let guard = 0;
+  while (chosen.length < c.nRules && guard++ < 20000){
+    const ci = Math.floor(rnd() * NCAT);
+    if (seen[ci]) continue;
+    const cat = CATALOGUE[ci];
+    if (c.plausible){
+      let clash = false;
+      for (const a of cat.attrs) if (taken[cat.guard.id + '|' + a]) clash = true;
+      if (clash) continue;
+    }
+    if (c.authorEye){
+      // the reviewer catches a contradiction whose two conditions are NESTED - which includes
+      // every unconditional pair. What survives needs two crossing conditions to co-fire.
+      let seenIt = false;
+      for (const r of chosen){
+        if (!nested(GUARD_IDX[cat.guard.id], GUARD_IDX[r.ref.guard.id])) continue;
+        if (pairClashes(cat, r.ref)){ seenIt = true; break; }
+      }
+      if (seenIt) continue;
+    }
+    seen[ci] = 1;
+    for (const a of cat.attrs) taken[cat.guard.id + '|' + a] = 1;
+    chosen.push({ cat: ci, ref: cat, prio: cat.prio, pos: chosen.length, emph: false, printPrio: false, exceptGuard: -1 });
+  }
+  return chosen;
+}
+
+function activeRules(rules, s){
+  const out = [];
+  for (const r of rules){
+    if (r.exceptGuard >= 0 && GUARD_ON[r.exceptGuard][s]) continue;   // narrowed away here
+    const m = MASK[r.cat * NSIT + s];
+    if (m) out.push({ r: r, m: m });
+  }
+  return out;
+}
+
+const _scratch = bsNew(), _scratch2 = bsNew();
+function satSet(active, out){
+  out.set(ALL_ONES);
+  for (const a of active) bsAnd(out, a.m, out);
+  return out;
+}
+function satCount(active){ return bsCount(satSet(active, _scratch)); }
+function feasible(active){ return !bsEmpty(satSet(active, _scratch)); }
+
+// minimal core by deletion (QuickXplain's cheap cousin): drop a rule, and if it is still
+// impossible the rule was never needed. n intersections, and the result is guaranteed MINIMAL -
+// every member matters - but not necessarily of MINIMUM size.
+function greedyCore(active){
+  let keep = active.slice();
+  for (let i = 0; i < active.length; i++){
+    const trial = keep.filter(x => x !== active[i]);
+    if (trial.length && !feasible(trial)) keep = trial;
+    else if (!trial.length && !feasible(trial)) keep = trial;
+  }
+  return keep;
+}
+
+// the exhaustive version: the size of the SMALLEST impossible subset. A pairwise linter - the
+// only kind anyone can actually run - finds the conflict exactly when this number is 2.
+function minCoreSize(active, cap){
+  const n = active.length;
+  const acc = bsNew();
+  for (let i = 0; i < n; i++) if (bsEmpty(active[i].m)) return 1;
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){
+    bsAnd(active[i].m, active[j].m, acc);
+    if (bsEmpty(acc)) return 2;
+  }
+  if (cap < 3) return cap + 1;
+  const acc2 = bsNew();
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){
+    bsAnd(active[i].m, active[j].m, acc);
+    for (let k = j + 1; k < n; k++){
+      bsAnd(acc, active[k].m, acc2);
+      if (bsEmpty(acc2)) return 3;
+    }
+  }
+  if (cap < 4) return cap + 1;
+  const acc3 = bsNew();
+  for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){
+    bsAnd(active[i].m, active[j].m, acc);
+    for (let k = j + 1; k < n; k++){
+      bsAnd(acc, active[k].m, acc2);
+      for (let l = k + 1; l < n; l++){
+        bsAnd(acc2, active[l].m, acc3);
+        if (bsEmpty(acc3)) return 4;
+      }
+    }
+  }
+  return cap + 1;
+}
+
+// ---------------------------------------------------------------- the DECLARED reader
+// Weight is bounded and every term needs something the prompt actually SAYS: where the rule sits,
+// whether it shouts, whether its condition matched, whether a number was printed next to it. The
+// author's private intent is worth exactly nothing until it is written down.
+function weightOf(r, n, c){
+  let w = 1;
+  if (n > 1) w += c.recency * (r.pos / (n - 1));
+  if (r.emph) w += c.emphasis;
+  w += c.specificity * Math.min(r.ref.guard.depth, 2) / 2;
+  if (r.printPrio) w += c.obeyPriority * (r.prio - 1) / 4;
+  return w;
+}
+
+const _score = new Float64Array(NOUT);
+function resolve(active, n, c){
+  _score.fill(0);
+  for (const a of active){
+    const w = weightOf(a.r, n, c), m = a.m;
+    for (let i = 0; i < WORDS; i++){
+      let v = m[i];
+      while (v){
+        const b = v & -v;
+        _score[(i << 5) + (31 - Math.clz32(b >>> 0))] += w;
+        v ^= b;
+      }
+    }
+  }
+  let best = 0, bs = _score[0];
+  for (let o = 1; o < NOUT; o++) if (_score[o] > bs){ bs = _score[o]; best = o; }
+  return best;
+}
+
+// ---------------------------------------------------------------- the seven prompts you could ship
+const POLICIES = ['asWritten', 'orderLast', 'emphasis', 'numbered', 'orderNumber',
+                  'deleteCore', 'narrowCore', 'criticalOnly'];
+const POLICY_LABEL = {
+  asWritten:    'as written (the order it grew in)',
+  orderLast:    'critical rules LAST - free',
+  emphasis:     'ALWAYS / NEVER on the critical ones',
+  numbered:     'print "(priority n)" on every rule',
+  orderNumber:  'ordered AND numbered - both',
+  deleteCore:   'delete the loser of every core',
+  narrowCore:   'add an "except ..." to the loser',
+  criticalOnly: 'ship only the critical rules'
+};
+// the three policies that CHANGE the rule list - the only ones that can violate an instruction
+// in a situation where the original prompt was perfectly satisfiable
+const EDITING = { deleteCore: true, narrowCore: true, criticalOnly: true };
+const POLICY_KIND = {
+  asWritten: 'baseline', orderLast: 'free', emphasis: 'cheap', numbered: 'paid',
+  orderNumber: 'paid', deleteCore: 'edit', narrowCore: 'edit', criticalOnly: 'edit'
+};
+
+function clone(rules){ return rules.map(r => Object.assign({}, r)); }
+function renumber(rules){ rules.forEach((r, i) => r.pos = i); return rules; }
+
+// the two EDIT policies both need to know which rule to sacrifice, and both find it the same way:
+// the lowest-priority member of a minimal core, ties broken by position.
+function pickLoser(core){
+  let best = core[0].r;
+  for (const x of core) if (x.r.prio < best.prio || (x.r.prio === best.prio && x.r.pos > best.pos)) best = x.r;
+  return best;
+}
+
+function conflictSituations(rules, target){
+  const sits = [];
+  for (let s = 0; s < NSIT; s++){
+    const act = activeRules(rules, s);
+    if (feasible(act)) continue;
+    const without = act.filter(a => a.r !== target);
+    if (feasible(without)) sits.push(s);
+  }
+  return sits;
+}
+
+function repairPrompt(rules, mode, c){
+  let cur = clone(rules);
+  let deletions = 0, narrowings = 0, fallbacks = 0, overNarrow = 0, rounds = 0;
+  while (rounds++ < 4 * c.nRules){
+    let bad = -1;
+    for (let s = 0; s < NSIT; s++) if (!feasible(activeRules(cur, s))){ bad = s; break; }
+    if (bad < 0) break;
+    const core = greedyCore(activeRules(cur, bad));
+    const loser = pickLoser(core);
+    // one exception clause per rule. A rule that needs a SECOND exception is a rule whose
+    // condition was wrong to begin with, so it goes - which is also what makes this terminate.
+    if (mode === 'narrow' && loser.exceptGuard < 0){
+      const need = conflictSituations(cur, loser);
+      let bestG = -1, bestWaste = Infinity;
+      for (let g = 1; g < GUARDS.length; g++){
+        let covers = true, waste = 0;
+        for (const s of need) if (!GUARD_ON[g][s]) covers = false;
+        if (!covers) continue;
+        for (let s = 0; s < NSIT; s++){
+          if (!GUARD_ON[g][s]) continue;
+          if (need.indexOf(s) >= 0) continue;
+          if (MASK[loser.cat * NSIT + s]) waste++;      // the rule was live there and now is not
+        }
+        if (waste < bestWaste){ bestWaste = waste; bestG = g; }
+      }
+      if (bestG >= 0 && need.length){ loser.exceptGuard = bestG; narrowings++; overNarrow += bestWaste; continue; }
+      fallbacks++;   // no clause in the language covers the conflict: nothing left but deletion
+    }
+    else if (mode === 'narrow') fallbacks++;
+    cur = renumber(cur.filter(r => r !== loser));
+    deletions++;
+    if (!cur.length) break;
+  }
+  return { rules: cur, deletions: deletions, narrowings: narrowings, fallbacks: fallbacks, overNarrow: overNarrow };
+}
+
+function applyPolicy(name, rules, c){
+  let out = clone(rules), edits = { deletions: 0, narrowings: 0, fallbacks: 0, overNarrow: 0 };
+  let extraTok = 0;
+  if (name === 'orderLast'){
+    out.sort((a, b) => (a.prio - b.prio) || (a.pos - b.pos));
+    renumber(out);
+  } else if (name === 'emphasis'){
+    for (const r of out) if (r.prio >= c.criticalPrio){ r.emph = true; extraTok += c.emphTokens; }
+  } else if (name === 'numbered'){
+    for (const r of out){ r.printPrio = true; extraTok += c.prioTokens; }
+  } else if (name === 'orderNumber'){
+    out.sort((a, b) => (a.prio - b.prio) || (a.pos - b.pos));
+    renumber(out);
+    for (const r of out){ r.printPrio = true; extraTok += c.prioTokens; }
+  } else if (name === 'deleteCore'){
+    const rep = repairPrompt(out, 'delete', c); out = rep.rules; edits = rep;
+  } else if (name === 'narrowCore'){
+    const rep = repairPrompt(out, 'narrow', c); out = rep.rules; edits = rep;
+    extraTok += rep.narrowings * c.narrowTokens;
+  } else if (name === 'criticalOnly'){
+    out = renumber(out.filter(r => r.prio >= c.criticalPrio));
+  }
+  let tok = c.scaffoldTokens + extraTok;
+  for (const r of out) tok += r.ref.tok;
+  return { rules: out, tokens: tok, edits: edits };
+}
+
+// ---------------------------------------------------------------- the corpus
+// Every prompt is evaluated in every one of the 36 situations - exhaustive, not sampled - and
+// every policy is scored against the ORIGINAL author rule set, never against its own edited one.
+// Otherwise deleting an instruction would look like obeying it.
+function runCorpus(cfg, seed){
+  const c = withDefaults(cfg);
+  const rnd = mulberry32(seed);
+  const N = c.nPrompts;
+
+  const exact = {
+    cases: 0, infeasCases: 0, promptsWithAny: 0, sitsPerBadPrompt: 0,
+    coreSize: {}, coreNeg: 0, coreNegAllOneAttr: 0, coreObs: 0,
+    latitude: 0, latitudeMin: NOUT, pinned: 0,
+    pairsCollide: 0, pairsCoFire: 0, pairsClash: 0, pairsTotal: 0,
+    greedySize: 0, greedyGtMin: 0
+  };
+  const wanted = {};
+  const runPols = (c.only && c.only.length !== undefined) ? c.only : POLICIES;
+  for (const p of runPols) wanted[p] = true;
+  const M = {};
+  for (const p of POLICIES) M[p] = {
+    tok: 0, infeas: 0, critBreak: 0, comply: 0, wComply: 0, collateral: 0, cleanCases: 0,
+    latitude: 0, feasCases: 0, deletions: 0, narrowings: 0, fallbacks: 0, overNarrow: 0,
+    brokenRules: 0, kept: 0
+  };
+
+  for (let p = 0; p < N; p++){
+    const rules = samplePrompt(c, rnd);
+    const n = rules.length;
+
+    // ---- pair funnel: collide on an attribute -> guards can co-fire -> actually contradictory
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++){
+      exact.pairsTotal++;
+      const A = rules[i].ref, B = rules[j].ref;
+      const shares = A.attrs.some(a => B.attrs.indexOf(a) >= 0);
+      if (!shares) continue;
+      exact.pairsCollide++;
+      const gi = GUARD_IDX[A.guard.id], gj = GUARD_IDX[B.guard.id];
+      if (!coFire(gi, gj)) continue;
+      exact.pairsCoFire++;
+      let clash = false;
+      for (let s = 0; s < NSIT; s++){
+        if (!GUARD_ON[gi][s] || !GUARD_ON[gj][s]) continue;
+        bsAnd(MASK[A.idx * NSIT + s], MASK[B.idx * NSIT + s], _scratch2);
+        if (bsEmpty(_scratch2)){ clash = true; break; }
+      }
+      if (clash) exact.pairsClash++;
+    }
+
+    // ---- exact, order-free layer
+    const origActive = [], origFeas = [];
+    let badSits = 0;
+    for (let s = 0; s < NSIT; s++){
+      const act = activeRules(rules, s);
+      origActive.push(act);
+      const cnt = bsCount(satSet(act, _scratch));
+      origFeas.push(cnt > 0);
+      exact.cases++;
+      if (cnt > 0){
+        exact.latitude += cnt;
+        if (cnt < exact.latitudeMin) exact.latitudeMin = cnt;
+        if (cnt === 1) exact.pinned++;
+      } else {
+        exact.infeasCases++; badSits++;
+        const sz = minCoreSize(act, c.coreCap);
+        exact.coreSize[sz] = (exact.coreSize[sz] || 0) + 1;
+        exact.coreObs++;
+        const g = greedyCore(act);
+        exact.greedySize += g.length;
+        if (g.length > sz) exact.greedyGtMin++;
+        if (sz >= 3){
+          const allNeg = g.every(x => x.r.ref.neg);
+          const attrs = {};
+          g.forEach(x => x.r.ref.attrs.forEach(a => attrs[a] = 1));
+          if (allNeg) exact.coreNeg++;
+          if (allNeg && Object.keys(attrs).length === 1) exact.coreNegAllOneAttr++;
+        }
+      }
+    }
+    if (badSits > 0){ exact.promptsWithAny++; exact.sitsPerBadPrompt += badSits; }
+
+    // ---- the policies asked for
+    for (const pol of POLICIES){
+      if (!wanted[pol]) continue;
+      const ap = applyPolicy(pol, rules, c);
+      const m = M[pol];
+      m.tok += ap.tokens;
+      m.kept += ap.rules.length;
+      m.deletions += ap.edits.deletions || 0;
+      m.narrowings += ap.edits.narrowings || 0;
+      m.fallbacks += ap.edits.fallbacks || 0;
+      m.overNarrow += ap.edits.overNarrow || 0;
+      const nn = ap.rules.length;
+      const edits = EDITING[pol];
+      for (let s = 0; s < NSIT; s++){
+        const act = activeRules(ap.rules, s);
+        const cnt = bsCount(satSet(act, _scratch));
+        if (cnt > 0){ m.latitude += cnt; m.feasCases++; } else m.infeas++;
+        // All weights are positive, so the argmax lands INSIDE the satisfying set whenever that
+        // set is non-empty (asserted, not assumed). For a policy that did not EDIT the rule list
+        // that means every original rule is kept, so there is nothing to compute - which is why
+        // the expensive argmax only runs where it can actually change an answer.
+        if (cnt > 0 && !edits){
+          m.comply += 1; m.wComply += 1;
+          if (origFeas[s]) m.cleanCases++;
+          continue;
+        }
+        const out = resolve(act, nn, c);
+        // score against the ORIGINAL rules active here
+        const orig = origActive[s];
+        let sat = 0, wsat = 0, wtot = 0, crit = false, broke = 0;
+        for (const a of orig){
+          wtot += a.r.prio;
+          if (bsGet(a.m, out)){ sat++; wsat += a.r.prio; }
+          else { broke++; if (a.r.prio >= c.criticalPrio) crit = true; }
+        }
+        m.comply += orig.length ? sat / orig.length : 1;
+        m.wComply += wtot ? wsat / wtot : 1;
+        m.brokenRules += broke;
+        if (crit) m.critBreak++;
+        if (origFeas[s]){ m.cleanCases++; if (broke > 0) m.collateral++; }
+      }
+    }
+  }
+
+  const cases = exact.cases;
+  const res = { cfg: c, n: N, cases: cases, exact: exact, policy: {} };
+  res.infeasRate = exact.infeasCases / cases;
+  res.promptBadRate = exact.promptsWithAny / N;
+  res.sitsPerBadPrompt = exact.promptsWithAny ? exact.sitsPerBadPrompt / exact.promptsWithAny : 0;
+  res.latitude = (cases - exact.infeasCases) ? exact.latitude / (cases - exact.infeasCases) : 0;
+  res.pinnedRate = (cases - exact.infeasCases) ? exact.pinned / (cases - exact.infeasCases) : 0;
+  res.pairwiseRecall = exact.coreObs ? (exact.coreSize[2] || 0) / exact.coreObs : 1;
+  res.greedyMean = exact.coreObs ? exact.greedySize / exact.coreObs : 0;
+  res.greedyGtMinRate = exact.coreObs ? exact.greedyGtMin / exact.coreObs : 0;
+  res.funnel = {
+    total: exact.pairsTotal, collide: exact.pairsCollide,
+    coFire: exact.pairsCoFire, clash: exact.pairsClash
+  };
+  for (const p of runPols){
+    const m = M[p];
+    res.policy[p] = {
+      name: p, tok: m.tok / N, infeas: m.infeas / cases, critBreak: m.critBreak / cases,
+      comply: m.comply / cases, wComply: m.wComply / cases,
+      collateral: m.cleanCases ? m.collateral / m.cleanCases : 0,
+      latitude: m.feasCases ? m.latitude / m.feasCases : 0,
+      kept: m.kept / N, brokenPerCase: m.brokenRules / cases,
+      deletions: m.deletions / N, narrowings: m.narrowings / N,
+      fallbacks: m.fallbacks / N, overNarrow: m.overNarrow / N
+    };
+  }
+  return res;
+}
+
+// ---------------------------------------------------------------- sweeps and one-prompt inspection
+function sweep(field, values, cfg, seed){
+  return values.map(v => {
+    const o = Object.assign({}, cfg || {}); o[field] = v;
+    return { value: v, run: runCorpus(o, seed) };
+  });
+}
+
+// P(at least one of n rules lands on an attribute already used), the birthday bound for a prompt.
+// Conflicts can only live where two rules touch the same thing, so this is the ceiling on trouble.
+function birthday(n, k){
+  let p = 1;
+  for (let i = 0; i < n; i++) p *= Math.max(0, (k - i)) / k;
+  return 1 - p;
+}
+
+function inspect(cfg, seed, promptIdx, sitIdx){
+  const c = withDefaults(cfg);
+  const rnd = mulberry32(seed);
+  let rules = null;
+  for (let p = 0; p <= promptIdx; p++) rules = samplePrompt(c, rnd);
+  const act = activeRules(rules, sitIdx);
+  const sat = bsCount(satSet(act, bsNew()));
+  const core = sat === 0 ? greedyCore(act) : [];
+  const minSize = sat === 0 ? minCoreSize(act, c.coreCap) : 0;
+  const rows = [];
+  for (const pol of POLICIES){
+    const ap = applyPolicy(pol, rules, c);
+    const a2 = activeRules(ap.rules, sitIdx);
+    const cnt = bsCount(satSet(a2, bsNew()));
+    const out = ap.rules.length ? resolve(a2, ap.rules.length, c) : 0;
+    const broken = act.filter(a => !bsGet(a.m, out)).map(a => a.r.ref.req.id);
+    rows.push({
+      policy: pol, tokens: ap.tokens, feasible: cnt > 0, out: OUTPUTS[out], outIdx: out,
+      broken: broken, critBroken: act.some(a => !bsGet(a.m, out) && a.r.prio >= c.criticalPrio),
+      kept: ap.rules.length, edits: ap.edits
+    });
+  }
+  let bad = 0;
+  for (let s = 0; s < NSIT; s++) if (!feasible(activeRules(rules, s))) bad++;
+  return {
+    rules: rules, situation: SITUATIONS[sitIdx], active: act, satCount: sat,
+    core: core, minCoreSize: minSize, rows: rows, badSits: bad,
+    satExample: sat ? OUTPUTS[(function(){ const m = satSet(act, bsNew()); for (let o = 0; o < NOUT; o++) if (bsGet(m, o)) return o; return 0; })()] : null
+  };
+}
+// ===== ENGINE:END =====
+
+const $ = id => document.getElementById(id);
+const SEED = 2026;
+const pc = x => (100 * x).toFixed(2) + "%";
+const pc1 = x => (100 * x).toFixed(1) + "%";
+const KIND_CLASS = { baseline: "p-baseline", free: "p-free", cheap: "p-cheap", paid: "p-paid", edit: "p-edit" };
+const N_POINTS = [2, 4, 6, 8, 10, 12, 16, 20, 24];
+const REC_POINTS = [0, 0.1, 0.2, 0.35, 0.55, 0.8, 1.2, 2.0];
+const OBEY_POINTS = [0, 0.2, 0.4, 0.8, 1.2, 2.0, 4.0];
+const SWEEP_N = 120;
+
+function cfg(){
+  return {
+    nRules: +$("sN").value,
+    nPrompts: +$("sP").value,
+    criticalPrio: +$("sC").value,
+    recency: +$("sR").value / 100,
+    obeyPriority: +$("sO").value / 100,
+    emphasis: +$("sE").value / 100,
+    plausible: $("cPlaus").checked,
+    authorEye: $("cEye").checked
+  };
+}
+
+function sitText(s){
+  return s.channel + " &middot; asked for " + s.asked + " &middot; user wrote " +
+    s.userLang.toUpperCase() + " &middot; " + (s.urgent ? "URGENT" : "not urgent");
+}
+function outText(o){
+  return o.len + (o.len === 1 ? " sentence" : " sentences") + ", " + o.tone + ", " + o.fmt +
+    ", " + o.lang.toUpperCase() + (o.code ? ", code" : "") + (o.greet ? ", greeting" : "");
+}
+
+// ---------------------------------------------------------------- one prompt, one situation
+function renderInspect(c){
+  const idx = +$("sIdx").value, sit = +$("sSit").value;
+  const I = inspect(c, SEED, idx, sit);
+  $("sitLine").innerHTML = "Situation <strong>" + sit + "</strong> of 36 — " + sitText(I.situation) +
+    ". This prompt has <strong>" + I.rules.length + "</strong> rules and is impossible in <strong>" +
+    I.badSits + "</strong> of the 36 situations.";
+
+  const coreIds = {};
+  I.core.forEach(x => coreIds[x.r.pos] = 1);
+  $("ruleRows").innerHTML = I.rules.map(function(r, i){
+    const m = MASK[r.cat * NSIT + sit];
+    const inCore = coreIds[r.pos];
+    return "<tr class='" + (inCore ? "mis" : (m ? "" : "off")) + "'><td>" + (i + 1) +
+      "</td><td style='text-align:left'>" + r.ref.text + "</td><td>" + r.prio +
+      (r.prio >= c.criticalPrio ? " <span class='bad'>&#9733;</span>" : "") +
+      "</td><td>" + r.ref.attrs.join("+") + "</td><td>" + (m ? "<span class='ok'>yes</span>" : "<span class='dim'>no</span>") +
+      "</td><td>" + (m ? bsCount(m) : "&mdash;") + "</td><td>" +
+      (inCore ? "<span class='bad'>&#10003;</span>" : "") + "</td></tr>";
+  }).join("");
+
+  if (I.satCount > 0){
+    $("verdict").innerHTML = "<span class='ok'>Satisfiable here</span> &mdash; " + I.satCount +
+      " of the 576 answers obey all " + I.active.length + " rules that fire. One of them: " +
+      outText(I.satExample) + ".";
+  } else {
+    $("verdict").innerHTML = "<span class='bad'>IMPOSSIBLE here</span> &mdash; 0 of 576 answers obey all " +
+      I.active.length + " rules that fire. The smallest impossible subset has size <strong>" +
+      I.minCoreSize + "</strong>; the highlighted rows are one minimal core (" +
+      I.core.map(x => x.r.ref.req.id).join(" + ") + ").";
+  }
+
+  $("polRows").innerHTML = I.rows.map(function(r){
+    const brk = r.broken.length ? r.broken.join(", ") : "<span class='ok'>nothing</span>";
+    return "<tr class='" + (r.critBroken ? "mis" : "") + "'><td style='text-align:left'><span class='pill " +
+      KIND_CLASS[POLICY_KIND[r.policy]] + "'>" + POLICY_KIND[r.policy] + "</span> " +
+      POLICY_LABEL[r.policy] + "</td><td>" + r.tokens + "</td><td>" + r.kept + "</td><td>" +
+      (r.feasible ? "<span class='ok'>yes</span>" : "<span class='bad'>no</span>") +
+      "</td><td>" + outText(r.out) + "</td><td style='text-align:left'>" + brk +
+      (r.critBroken ? " <span class='bad'>&#9733;</span>" : "") + "</td></tr>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------- the tables
+function row(label, value, note){
+  return "<tr><td style='text-align:left'>" + label + "</td><td><strong>" + value +
+    "</strong></td><td style='text-align:left;color:#64748b;font-size:11.5px'>" + (note || "") + "</td></tr>";
+}
+
+function render(){
+  const c = cfg();
+  $("vN").textContent = c.nRules; $("vP").textContent = c.nPrompts;
+  $("vC").textContent = c.criticalPrio;
+  $("vR").textContent = c.recency.toFixed(2); $("vO").textContent = c.obeyPriority.toFixed(2);
+  $("vE").textContent = c.emphasis.toFixed(2);
+  $("sIdx").max = Math.max(0, c.nPrompts - 1);
+
+  const t0 = Date.now();
+  const R = runCorpus(c, SEED);
+  const ms = Date.now() - t0;
+  $("corpusNote").innerHTML = R.cases.toLocaleString() + " (prompt, situation) pairs &middot; " + ms + " ms";
+
+  renderInspect(c);
+
+  // --- exact layer
+  const E1 = R.exact;
+  $("exactRows").innerHTML =
+    row("situations with NO valid answer", pc(R.infeasRate), R.exact.infeasCases.toLocaleString() + " of " + R.cases.toLocaleString() + " (prompt, situation) pairs") +
+    row("prompts impossible SOMEWHERE", pc1(R.promptBadRate), "in at least 1 of the 36 situations") +
+    row("...and in how many of the 36", R.sitsPerBadPrompt.toFixed(1), "so it is a slice of traffic, not all of it") +
+    row("answers still permitted, of 576", R.latitude.toFixed(1), pc1(R.latitude / NOUT) + " of the space, averaged over satisfiable cases") +
+    row("pinned to exactly one answer", pc(R.pinnedRate), "over-constraint is not what goes wrong here") +
+    row("minimal core, deletion-based", R.greedyMean.toFixed(3) + " rules", "bigger than the true minimum in " + pc(R.greedyGtMinRate) + " of cases");
+
+  // --- funnel
+  const F = R.funnel, p = F.clash / F.total, C2 = c.nRules * (c.nRules - 1) / 2;
+  const model = 1 - Math.pow(1 - p, C2);
+  $("funnelRows").innerHTML =
+    row("rule pairs in the corpus", F.total.toLocaleString(), "C(" + c.nRules + ",2) = " + C2 + " per prompt") +
+    row("...touching the same attribute", pc1(F.collide / F.total), "a conflict cannot live anywhere else") +
+    row("...whose conditions can co-fire", pc1(F.coFire / F.total), "on paper is not in production") +
+    row("...actually contradictory", pc(p), "the number that travels") +
+    row("1 &minus; (1&minus;p)^" + C2, pc1(model), "if pair failures were independent") +
+    row("measured prompts hit", pc1(R.promptBadRate), "lower, because pairs share rules and cluster");
+  $("funnelNote").innerHTML = "A per-pair rate of <strong>" + pc(p) +
+    "</strong> is the sort of number you would accept as the cost of a growing prompt. Raised to " +
+    C2 + " pairs it is <strong>" + pc1(model) + "</strong>.";
+
+  // --- policies
+  const base = R.policy.asWritten;
+  let bestCrit = 1;
+  for (const q of POLICIES) bestCrit = Math.min(bestCrit, R.policy[q].critBreak);
+  $("policyRows").innerHTML = POLICIES.map(function(q){
+    const m = R.policy[q], d = m.tok - base.tok;
+    const hit = Math.abs(m.critBreak - bestCrit) < 1e-12;
+    return "<tr class='" + (hit ? "hi" : "") + "'><td style='text-align:left'><span class='pill " +
+      KIND_CLASS[POLICY_KIND[q]] + "'>" + POLICY_KIND[q] + "</span> " + POLICY_LABEL[q] +
+      "</td><td>" + m.tok.toFixed(1) + "</td><td class='" + (d > 0 ? "bad" : (d < 0 ? "ok" : "dim")) +
+      "'>" + (d > 0 ? "+" : "") + d.toFixed(1) + "</td><td>" + pc(m.infeas) + "</td><td><strong>" +
+      pc(m.critBreak) + "</strong></td><td>" + pc1(m.comply) + "</td><td>" + pc1(m.wComply) +
+      "</td><td class='" + (m.collateral > 0.01 ? "bad" : "dim") + "'>" + pc(m.collateral) +
+      "</td><td>" + m.latitude.toFixed(1) + "</td><td>" + m.kept.toFixed(2) + "</td></tr>";
+  }).join("");
+  const oL = R.policy.orderLast, nb = R.policy.numbered, oN = R.policy.orderNumber;
+  const dc = R.policy.deleteCore, nc = R.policy.narrowCore, co = R.policy.criticalOnly;
+  $("policyNote").innerHTML =
+    "Free re-ordering takes critical violations from <strong>" + pc(base.critBreak) + "</strong> to <strong>" +
+    pc(oL.critBreak) + "</strong> at <strong>+0.0 tokens</strong>; printing a priority number on all " +
+    c.nRules + " rules costs <strong>+" + (nb.tok - base.tok).toFixed(0) +
+    " tokens every call</strong> and scores <strong>" + pc(nb.critBreak) + "</strong>. On top of the free fix it is worth <strong>" +
+    (100 * (oL.critBreak - oN.critBreak)).toFixed(3) + " points</strong>. " +
+    "Three strategies tie at <strong>" + pc(co.critBreak) + "</strong> &mdash; including throwing away every non-critical rule, at " +
+    co.tok.toFixed(0) + " tokens against " + nc.tok.toFixed(0) +
+    " &mdash; and the column that separates them is <em>collateral</em>: " + pc(co.collateral) +
+    " against " + pc(nc.collateral) + ". Narrowing costs " + nc.narrowings.toFixed(2) +
+    " exception clauses and " + nc.overNarrow.toFixed(1) +
+    " situations of over-reach per prompt, and falls back to deletion on " + nc.fallbacks.toFixed(2) +
+    " rules where no clause in the language covers the conflict.";
+
+  // --- cores
+  const sizes = Object.keys(E1.coreSize).map(Number).sort(function(a, b){ return a - b; });
+  const tot = E1.coreObs || 1;
+  $("coreRows").innerHTML = sizes.map(function(s){
+    return "<tr class='" + (s === 2 ? "hi" : "mis") + "'><td style='text-align:left'>" +
+      (s > DEFAULTS.coreCap ? "&gt; " + DEFAULTS.coreCap : s + " rules") + "</td><td>" + E1.coreSize[s].toLocaleString() +
+      "</td><td>" + pc(E1.coreSize[s] / tot) + "</td><td>" +
+      (s === 2 ? "<span class='ok'>finds it</span>" : "<span class='bad'>blind</span>") + "</td></tr>";
+  }).join("");
+  $("coreNote").innerHTML = "A pairwise linter finds <strong>" + pc(R.pairwiseRecall) +
+    "</strong> of them for C(n,2) intersections. Of the " + (tot - (E1.coreSize[2] || 0)) +
+    " it cannot see, <strong>" + E1.coreNeg + "</strong> are made only of negative instructions and <strong>" +
+    E1.coreNegAllOneAttr + "</strong> of those sit on a single attribute &mdash; a set of &quot;do not&quot; rules is impossible " +
+    "only once it is <em>complete</em>, and no subset of a complete set is impossible.";
+
+  // --- dials
+  const only4 = ["asWritten", "orderLast", "numbered", "orderNumber"];
+  $("recRows").innerHTML = REC_POINTS.map(function(v){
+    const r = runCorpus(Object.assign({}, c, { recency: v, nPrompts: SWEEP_N, only: only4 }), 7);
+    const win = r.policy.orderLast.critBreak <= r.policy.numbered.critBreak;
+    return "<tr class='" + (Math.abs(v - c.recency) < 1e-9 ? "hi" : "") + "'><td style='text-align:left'>" +
+      v.toFixed(2) + "</td><td>" + pc(r.policy.asWritten.critBreak) + "</td><td class='" +
+      (win ? "ok" : "") + "'>" + pc(r.policy.orderLast.critBreak) + "</td><td class='" +
+      (win ? "" : "ok") + "'>" + pc(r.policy.numbered.critBreak) + "</td><td>" +
+      pc(r.policy.orderNumber.critBreak) + "</td></tr>";
+  }).join("");
+  const only2 = ["orderLast", "numbered"];
+  $("obeyRows").innerHTML = OBEY_POINTS.map(function(v){
+    const r = runCorpus(Object.assign({}, c, { obeyPriority: v, nPrompts: SWEEP_N, only: only2 }), 7);
+    const a = r.policy.orderLast.critBreak, b = r.policy.numbered.critBreak;
+    return "<tr class='" + (Math.abs(v - c.obeyPriority) < 1e-9 ? "hi" : "") + "'><td style='text-align:left'>" +
+      v.toFixed(2) + "</td><td>" + pc(a) + "</td><td>" + pc(b) + "</td><td style='text-align:left'>" +
+      (b < a ? "<span class='bad'>the annotation earns its tokens</span>"
+             : "<span class='ok'>free re-ordering wins</span>") + "</td></tr>";
+  }).join("");
+
+  // --- the n curve
+  $("curveRows").innerHTML = N_POINTS.map(function(n){
+    const r = runCorpus(Object.assign({}, c, { nRules: n, nPrompts: SWEEP_N, only: [] }), 7);
+    const pp = r.funnel.clash / r.funnel.total, cc = n * (n - 1) / 2;
+    const mo = 1 - Math.pow(1 - pp, cc);
+    const ge3 = r.exact.coreObs - (r.exact.coreSize[2] || 0);
+    return "<tr class='" + (n === c.nRules ? "hi" : "") + "'><td style='text-align:left'>" + n +
+      "</td><td>" + pc(r.infeasRate) + "</td><td>" + pc1(r.promptBadRate) + "</td><td>" + pc1(mo) +
+      "</td><td class='dim'>" + (100 * (mo - r.promptBadRate)).toFixed(1) + "</td><td>" + pc(pp) +
+      "</td><td>" + (r.exact.coreSize[2] || 0).toLocaleString() + "</td><td>" + ge3 +
+      "</td><td>" + r.latitude.toFixed(1) + "</td></tr>";
+  }).join("");
+  $("curveNote").innerHTML = "The per-pair contradiction rate barely moves across the whole range. " +
+    "What moves is C(n,2), which is why a prompt does not become contradictory because someone wrote " +
+    "a bad rule &mdash; it becomes contradictory because someone wrote another one.";
+
+  // --- the filters
+  const variants = [
+    ["both filters on (the default)", {}],
+    ["without the author's eye", { authorEye: false }],
+    ["raw sampling, no filters at all", { authorEye: false, plausible: false }]
+  ];
+  $("filterRows").innerHTML = variants.map(function(v){
+    const r = runCorpus(Object.assign({}, c, v[1], { nPrompts: SWEEP_N, only: [] }), 7);
+    const ge3 = r.exact.coreObs - (r.exact.coreSize[2] || 0);
+    return "<tr><td style='text-align:left'>" + v[0] + "</td><td>" + pc(r.infeasRate) + "</td><td>" +
+      pc1(r.promptBadRate) + "</td><td>" + pc(r.funnel.clash / r.funnel.total) + "</td><td>" + ge3 +
+      "</td></tr>";
+  }).join("");
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selfTest(){
+  const lines = [];
+  let pass = 0, fail = 0;
+  const ok = (cond, label) => { if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } };
+  const near = (a, b, tol) => Math.abs(a - b) <= tol;
+  const c = withDefaults({});
+  const R = runCorpus({}, SEED), P = R.policy;
+
+  // 1. the space is what the page says it is
+  ok(NOUT === 576, "the output space is not 576 answers");
+  ok(NSIT === 36, "the situation space is not 36 requests");
+  ok(NCAT === REQS.length * GUARDS.length, "the catalogue is not requirements x guards");
+  ok(new Set(OUTPUTS.map(o => JSON.stringify(o))).size === NOUT, "the output space has duplicates");
+  ok(bsCount(ALL_ONES) === NOUT, "the all-ones bitset does not cover the space");
+
+  // 2. every single rule in the catalogue is satisfiable ON ITS OWN, in every situation it fires.
+  //    No instruction here is the bug; the failure is always relational.
+  let alone = 0;
+  for (let i = 0; i < NCAT; i++) for (let s = 0; s < NSIT; s++){
+    const m = MASK[i * NSIT + s];
+    if (m){ alone++; ok(!bsEmpty(m), "catalogue rule " + i + " is impossible alone in situation " + s); }
+  }
+
+  // 3. feasibility is a set INTERSECTION, so it cannot depend on the order of the rules
+  {
+    const rnd = mulberry32(4242);
+    let shuffles = 0;
+    for (let p = 0; p < 60; p++){
+      const rules = samplePrompt(c, rnd);
+      const sh = rules.slice().reverse();
+      renumberLocal(sh);
+      for (let s = 0; s < NSIT; s++){
+        const a = satSet(activeRules(rules, s), bsNew());
+        const b = satSet(activeRules(sh, s), bsNew());
+        let same = true;
+        for (let w = 0; w < WORDS; w++) if (a[w] !== b[w]) same = false;
+        shuffles++;
+        ok(same, "reversing the rule order changed the satisfying set");
+      }
+    }
+    lines.push("  order-independence  : satisfying set bit-identical under reversal, " + shuffles + " checks");
+  }
+
+  // 4. the argmax lands INSIDE the satisfying set whenever there is one (all weights positive)
+  {
+    const rnd = mulberry32(31);
+    let checked = 0, viol = 0;
+    for (let p = 0; p < 120; p++){
+      const rules = samplePrompt(c, rnd);
+      for (let s = 0; s < NSIT; s++){
+        const act = activeRules(rules, s);
+        const m = satSet(act, bsNew());
+        if (bsEmpty(m)) continue;
+        checked++;
+        if (!bsGet(m, resolve(act, rules.length, c))) viol++;
+      }
+    }
+    ok(viol === 0, "the argmax left the satisfying set " + viol + " times");
+    // ...and the maximum is a TIE every time, which is why the tie-break is not an edge case
+    const r2 = mulberry32(31);
+    let ties = 0, all = 0;
+    for (let q = 0; q < 40; q++){
+      const rules = samplePrompt(c, r2);
+      for (let s = 0; s < NSIT; s++){
+        const act = activeRules(rules, s);
+        const scores = [];
+        for (let o = 0; o < NOUT; o++){
+          let sc = 0;
+          for (const a of act) if (bsGet(a.m, o)) sc += weightOf(a.r, rules.length, c);
+          scores.push(sc);
+        }
+        const mx = Math.max.apply(null, scores);
+        all++;
+        if (scores.filter(v => v >= mx - 1e-9).length > 1) ties++;
+      }
+    }
+    ok(ties === all, "the maximum is unique in " + (all - ties) + " cases - the page says it never is");
+    lines.push("  argmax in SAT       : " + (checked - viol) + " / " + checked +
+      " feasible cases, and the maximum is a TIE in " + ties + " / " + all + " of them");
+  }
+
+  // 5. NO ranking strategy escapes a contradiction, and the four that only re-arrange words
+  //    cannot change feasibility at all
+  for (const q of ["asWritten", "orderLast", "emphasis", "numbered", "orderNumber"]){
+    ok(P[q].infeas === R.infeasRate, q + " changed the impossibility rate by re-arranging words");
+    ok(P[q].collateral === 0, q + " damaged a situation that was already satisfiable");
+    ok(P[q].kept === DEFAULTS.nRules, q + " did not keep every rule");
+    ok(P[q].critBreak > 0, q + " reached zero critical violations, which a contradiction forbids");
+  }
+  ok(P.orderLast.tok === P.asWritten.tok, "re-ordering is not free - it is a sort, not a rewrite");
+  ok(P.numbered.tok > P.asWritten.tok, "printing a priority number cost nothing");
+  ok(near(P.numbered.tok - P.asWritten.tok, DEFAULTS.nRules * DEFAULTS.prioTokens, 1e-9),
+     "the annotation cost is not tokens x rules");
+
+  // 6. THE NULL RESULT, pinned: the free re-order beats the paid annotation, and adding the
+  //    annotation on top of it is worth almost nothing
+  ok(P.orderLast.critBreak < P.asWritten.critBreak / 2,
+     "free re-ordering must remove most of the critical violations");
+  ok(P.orderLast.critBreak < P.numbered.critBreak,
+     "the FREE fix must beat the PAID one at the declared defaults - if not, rewrite the page");
+  ok(P.orderNumber.critBreak < P.orderLast.critBreak,
+     "the annotation must still buy something on top of ordering, however small");
+  ok(P.orderLast.critBreak - P.orderNumber.critBreak < 0.002,
+     "...and that something must be under 0.2 points, which is what makes it a null result");
+
+  // 7. the structural FLOOR: three strategies land on the same cases, exactly
+  {
+    const rnd = mulberry32(SEED);
+    let critInfeas = 0, cases = 0;
+    for (let p = 0; p < DEFAULTS.nPrompts; p++){
+      const rules = samplePrompt(c, rnd);
+      const crit = rules.filter(r => r.prio >= c.criticalPrio);
+      for (let s = 0; s < NSIT; s++){ cases++; if (!feasible(activeRules(crit, s))) critInfeas++; }
+    }
+    const floor = critInfeas / cases;
+    ok(P.deleteCore.critBreak === floor, "deleteCore is not sitting on the critical-subset floor");
+    ok(P.narrowCore.critBreak === floor, "narrowCore is not sitting on the critical-subset floor");
+    ok(P.criticalOnly.critBreak === floor, "criticalOnly is not sitting on the critical-subset floor");
+    ok(P.criticalOnly.infeas === floor, "criticalOnly's violations are not exactly its impossibilities");
+    lines.push("  the floor           : " + critInfeas + " / " + cases + " = " + pc(floor) +
+      "  reached by deleteCore, narrowCore AND criticalOnly, exactly");
+  }
+
+  // 8. the edits work, and the price of each is printed
+  ok(P.deleteCore.infeas === 0, "deleting the core did not remove every impossibility");
+  ok(P.narrowCore.infeas === 0, "narrowing the core did not remove every impossibility");
+  ok(P.deleteCore.tok < P.asWritten.tok, "deleting rules did not shorten the prompt");
+  ok(P.deleteCore.collateral > 0.1, "deletion must damage situations that were already fine");
+  ok(P.narrowCore.collateral < P.deleteCore.collateral / 2,
+     "an exception clause must be much less destructive than a deletion, or it is not worth 7 tokens");
+  ok(P.narrowCore.collateral > 0, "narrowing reached zero collateral damage, which over-reach forbids");
+  ok(P.criticalOnly.comply < P.asWritten.comply - 0.2,
+     "throwing away the non-critical rules must show up somewhere");
+  ok(P.criticalOnly.tok < P.asWritten.tok / 2, "the crude edit is not the cheap one");
+
+  // 9. all four dials at zero => the annotation strategies are IDENTICAL. Integer weights, so this
+  //    is exact; with only recency at zero the sums are floats and ties break the other way.
+  {
+    const Z = runCorpus({ recency: 0, emphasis: 0, specificity: 0, obeyPriority: 0, nPrompts: 120,
+                          only: ["asWritten", "orderLast", "emphasis", "numbered", "orderNumber"] }, 7);
+    const v = Z.policy.asWritten.critBreak;
+    for (const q of ["orderLast", "emphasis", "numbered", "orderNumber"])
+      ok(Z.policy[q].critBreak === v, "with every dial at zero, " + q + " must be identical to as-written");
+    const Q = runCorpus({ recency: 0, nPrompts: 120, only: ["asWritten", "orderLast"] }, 7);
+    ok(Q.policy.orderLast.critBreak !== Q.policy.asWritten.critBreak,
+       "recency=0 alone was expected to differ by float summation order - it did not");
+    ok(near(Q.policy.orderLast.critBreak, Q.policy.asWritten.critBreak, 0.01),
+       "the float tie-break difference is larger than a rounding effect");
+    lines.push("  the dials           : all four at 0 -> " + pc(v) +
+      " for all five, identically. recency alone at 0 -> " + pc(Q.policy.asWritten.critBreak) +
+      " vs " + pc(Q.policy.orderLast.critBreak) + ", pure summation order");
+  }
+
+  // 10. cores: the greedy one is minimal, and everything above size 2 is negative and complete
+  {
+    const rnd = mulberry32(SEED);
+    let ge3 = 0, structural = 0, minimalOk = 0, minimalBad = 0;
+    for (let p = 0; p < 250; p++){
+      const rules = samplePrompt(c, rnd);
+      for (let s = 0; s < NSIT; s++){
+        const act = activeRules(rules, s);
+        if (feasible(act)) continue;
+        const g = greedyCore(act);
+        let minimal = true;
+        for (const x of g) if (!feasible(g.filter(y => y !== x))) minimal = false;
+        if (minimal) minimalOk++; else minimalBad++;
+        const sz = minCoreSize(act, c.coreCap);
+        if (sz < 3) continue;
+        ge3++;
+        const doms = new Set(g.map(x => x.r.ref.dom));
+        if (g.every(x => x.r.ref.neg) && doms.size === 1 && doms.has(sz)) structural++;
+      }
+    }
+    ok(minimalBad === 0, minimalBad + " deletion-based cores were not minimal");
+    ok(ge3 > 0, "no core above size 2 turned up at all, so the claim is untested");
+    ok(structural === ge3, "a core above size 2 was not all-negative-on-one-attribute (" +
+       structural + " of " + ge3 + ")");
+    lines.push("  cores               : " + (minimalOk) + " minimal, 0 not; " + ge3 +
+      " of size >= 3 and all " + structural + " are complete negative sets on ONE attribute");
+  }
+  ok(R.pairwiseRecall > 0.95, "a pairwise linter should find nearly all of them");
+  ok(R.pairwiseRecall < 1, "a pairwise linter must NOT find all of them - the blind spot is real");
+
+  // 11. the funnel only ever narrows, and the token estimator is monotone
+  const F = R.funnel;
+  ok(F.collide <= F.total && F.coFire <= F.collide && F.clash <= F.coFire, "the funnel widened");
+  ok(tokens("") === 0, "the empty string costs tokens");
+  ok(tokens("never use tables") < tokens("never use tables, and do not dump raw JSON at the user"),
+     "the token estimator is not monotone in length");
+  ok(tokens("a") === 1, "a one-letter word is not one token");
+
+  // 12. guard logic
+  ok(implies(0, 0) && implies(1, 0) && !implies(0, 1), "guard implication is wrong for the trivial guard");
+  ok(nested(GUARD_IDX.email, GUARD_IDX.urgMail), "email and urgent-email are not nested");
+  ok(!nested(GUARD_IDX.email, GUARD_IDX.urgent), "email and urgent must CROSS, not nest");
+  ok(!coFire(GUARD_IDX.chat, GUARD_IDX.email), "chat and email must never co-fire");
+  ok(coFire(GUARD_IDX.email, GUARD_IDX.urgent), "email and urgent must be able to co-fire");
+
+  // 13. reproducibility
+  const d1 = runCorpus({ nPrompts: 120 }, 77).infeasRate, d2 = runCorpus({ nPrompts: 120 }, 77).infeasRate;
+  ok(d1 === d2, "the same seed must reproduce");
+  ok(runCorpus({ nPrompts: 120 }, 78).infeasRate !== d1, "two different seeds gave an identical result");
+
+  const head = "  " + (fail ? "FAILED" : "all green") + "  |  asserts " + (pass + fail) +
+    "  |  pass " + pass + "  |  fail " + fail + "   (run once, at the engine's declared defaults)";
+  $("selftest").textContent = [head, ""].concat(lines).concat([
+    "  every one of the " + alone + " (rule, situation) pairs in the catalogue is satisfiable ALONE",
+    "  impossible: " + pc(R.infeasRate) + " of situations, " + pc1(R.promptBadRate) +
+      " of prompts somewhere, " + R.sitsPerBadPrompt.toFixed(1) + " of 36 each",
+    "  a pair contradicts " + pc(F.clash / F.total) + " of the time -> raised to " +
+      (DEFAULTS.nRules * (DEFAULTS.nRules - 1) / 2) + " pairs that is " +
+      pc1(1 - Math.pow(1 - F.clash / F.total, DEFAULTS.nRules * (DEFAULTS.nRules - 1) / 2)) +
+      ", measured " + pc1(R.promptBadRate),
+    "  as written " + pc(P.asWritten.critBreak) + "  ->  ordered " + pc(P.orderLast.critBreak) +
+      " at +0 tokens  ->  numbered " + pc(P.numbered.critBreak) + " at +" +
+      (P.numbered.tok - P.asWritten.tok).toFixed(0) + " tokens EVERY CALL",
+    "  the annotation on top of the free fix: " +
+      (100 * (P.orderLast.critBreak - P.orderNumber.critBreak)).toFixed(3) + " points",
+    "  deleteCore " + pc(P.deleteCore.critBreak) + " at " + P.deleteCore.tok.toFixed(0) +
+      " tok but " + pc(P.deleteCore.collateral) + " collateral   vs   narrowCore " +
+      pc(P.narrowCore.critBreak) + " at " + P.narrowCore.tok.toFixed(0) + " tok and " +
+      pc(P.narrowCore.collateral),
+    "  the crude control ties them both at " + pc(P.criticalOnly.critBreak) + " on " +
+      P.criticalOnly.tok.toFixed(0) + " tokens, and pays " + pc1(P.criticalOnly.comply) +
+      " whole-rule obedience against " + pc1(P.asWritten.comply),
+    "  pairwise linter recall " + pc(R.pairwiseRecall) + ", and the blind spot is negative rules only"
+  ]).join("\n");
+}
+
+// the reverse-order check needs the same renumbering the policies use
+function renumberLocal(rules){ rules.forEach((r, i) => r.pos = i); return rules; }
+
+let pending = 0;
+function scheduleRender(){
+  clearTimeout(pending);
+  pending = setTimeout(render, 120);
+}
+["sN", "sP", "sC", "sR", "sO", "sE", "sIdx", "sSit"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+  $(id).addEventListener("change", scheduleRender);
+});
+["cPlaus", "cEye"].forEach(function(id){ $(id).addEventListener("change", scheduleRender); });
+render();
+selfTest();
+</script>
+</body>
+</html>

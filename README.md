@@ -71,6 +71,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 66 — Spotlighting](https://dev48.infy.uk/prompt/day66-spotlighting.html) — `day66-spotlighting.html`
 - [PromptFromZero · Day 67 — CoT-decoding](https://dev48.infy.uk/prompt/day67-cot-decoding.html) — `day67-cot-decoding.html`
 - [PromptFromZero · Day 68 — Batch prompting](https://dev48.infy.uk/prompt/day68-batch-prompting.html) — `day68-batch-prompting.html`
+- [PromptFromZero · Day 69 — Instruction precedence](https://dev48.infy.uk/prompt/day69-instruction-precedence.html) — `day69-instruction-precedence.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
