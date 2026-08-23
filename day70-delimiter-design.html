@@ -1,0 +1,1831 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 70 — Delimiter design</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  /* --- layout utilities (hand-rolled; this page loads nothing) --- */
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .bg-white { background:#fff; } .bg-slate-100 { background:#f1f5f9; }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; } .g5 { gap:20px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .teal { color:#0f766e; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#0d9488; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f0fdfa; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#e0e7ff; color:#3730a3; }
+  .p-base { background:#f1f5f9; color:#475569; }
+  .cell-ok { background:#dcfce7; color:#166534; font-weight:800; }
+  .cell-sil { background:#fee2e2; color:#991b1b; font-weight:800; }
+  .cell-loud { background:#fef3c7; color:#92400e; font-weight:800; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  .bar { height:9px; border-radius:99px; background:#e2e8f0; overflow:hidden; }
+  .bar span { display:block; height:100%; background:#0d9488; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw teal mb2">PROMPTFROMZERO · DAY 70</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      🚧 Delimiter design — every guide says "use clear delimiters" and "wrap it in XML tags",
+      and not one of them prices it or tells you what happens the day your data contains the
+      delimiter. So this page builds the real encoder and the real decoder for
+      <strong>14</strong> framing strategies — a real <code class="tok">JSON.parse</code>, a real
+      RFC&nbsp;4180 scanner, a real tag scanner, a real line scanner — and runs them over records
+      whose values hold the characters business data actually holds. The first result needs no
+      parameters at all: on a record with <em>zero</em> hazard characters in it,
+      <strong>5 of the 14</strong> parsers hand you silently wrong data the moment the model writes
+      "Sure! Here are the fields you asked for:", <strong>8 of the 14</strong> under at least one of
+      six ordinary ways to wrap an answer, and exactly <strong>3</strong> survive all six — every
+      one of them a format with an explicit <em>closing</em> token, which is not the same set as the
+      formats with a key. 🔴 Then the free fixes win: deleting
+      one <code class="tok">.filter()</code> from the newline parser is worth
+      <strong>30.15 points</strong> of delivered records for <strong>zero tokens</strong>, while
+      telling the model to escape your delimiter costs <strong>26 tokens to state and 0.31 to
+      apply</strong>, recovers 2.80 points, and <em>adds</em> 0.69 points of silent corruption.
+      Entity-escaping XML costs 22 tokens on every call forever and buys exactly
+      <strong>0.00</strong>. And comma-delimited output burns <strong>73.28%</strong> of its token
+      bill on retries that recover <strong>0.000</strong> records, because the collision is in the
+      data and the retry reproduces it. Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">🔬 MEASURE</button>
+      <button data-tab="understand">🧠 UNDERSTAND</button>
+      <button data-tab="build">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">fields asked for in one call
+            <span id="vK" class="b" style="float:right">5</span>
+            <input id="sK" type="range" min="2" max="12" value="5"></label>
+          <label class="sl">records in the corpus
+            <span id="vN" class="b" style="float:right">600</span>
+            <input id="sN" type="range" min="100" max="1200" step="50" value="600"></label>
+          <label class="sl">a field holds a hazard value
+            <span id="vH" class="b" style="float:right">0.35</span>
+            <input id="sH" type="range" min="0" max="100" value="35"></label>
+          <label class="sl">a field is legitimately BLANK
+            <span id="vE" class="b" style="float:right">0.10</span>
+            <input id="sE" type="range" min="0" max="40" value="10"></label>
+          <label class="sl">the model wraps its answer <span class="dim">(declared)</span>
+            <span id="vS" class="b" style="float:right">0.08</span>
+            <input id="sS" type="range" min="0" max="50" value="8"></label>
+          <label class="sl">the model skips an escape it was asked for <span class="dim">(declared)</span>
+            <span id="vX" class="b" style="float:right">0.15</span>
+            <input id="sX" type="range" min="0" max="50" value="15"></label>
+          <label class="sl">re-calls allowed after a LOUD failure
+            <span id="vR" class="b" style="float:right">2</span>
+            <input id="sR" type="range" min="0" max="8" value="2"></label>
+        </div>
+        <p class="note mt3">
+          The two probe tables below are <strong>exact and parameter-free</strong> — they encode a
+          fixed record, decode it, and print what came back, so no slider above changes a single cell
+          in them. The corpus is random but the outcome is not sampled: for every record the whole
+          finite set of producer states is decoded and weighted, which is why a rate like
+          <span class="ok">0.00%</span> on this page means <em>zero</em> and not "none seen".
+          Only two numbers are <em>declared</em> rather than derived — how often a model wraps its
+          answer in chatter, and how often it skips an escape — and both are on sliders, so you can
+          set them to zero and watch which conclusions survive. (One of them is: at
+          <code class="tok">wrap&nbsp;=&nbsp;0</code> the escaped pipe format is 99.54% correct.)
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; THE WRAPPING &mdash; exact, parameter-free, and zero hazard characters in the data</p>
+        <p class="sm mut2 mb3">One record. Every value clean — not one comma, newline, pipe or quote
+          anywhere in it. The <em>only</em> variable is what the model wrote around the answer.</p>
+        <div class="scroll"><table class="mtx" id="wrapTbl"></table></div>
+        <p class="sm mt3" id="wrapNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 2 &middot; ONE CHARACTER AT A TIME &mdash; also exact and parameter-free</p>
+        <p class="sm mut2 mb3">Now the reverse: the model behaves perfectly and honours every escape,
+          and a single ordinary character is dropped into one value, in every field position in turn.
+          The worst outcome over the positions is shown.</p>
+        <div class="scroll"><table class="mtx" id="probeTbl"></table></div>
+        <p class="sm mt3" id="probeNote"></p>
+      </div>
+
+      <div class="card">
+        <div class="flex between baseline wrapf g2 mb3">
+          <p class="xs bb tw2 mut">ONE RECORD, EVERY PRODUCER STATE</p>
+          <div class="flex g4 wrapf">
+            <label class="xs mut">format <select id="selCodec"></select></label>
+            <label class="xs mut">record
+              <input id="sIdx" type="range" min="0" max="599" value="0" style="width:120px;vertical-align:middle"></label>
+          </div>
+        </div>
+        <div class="scroll mb3"><table class="num" id="recTbl"></table></div>
+        <div class="scroll"><table class="num" id="stateTbl"></table></div>
+        <p class="sm mt3" id="inspNote"></p>
+        <pre id="inspText" class="mt2"></pre>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE SCOREBOARD &mdash; what each frame costs and what it delivers</p>
+        <p class="sm mut2 mb3">Two cost columns nobody prints side by side: the
+          <strong>instruction</strong>, paid on every call because it explains the format, and the
+          <strong>frame</strong>, paid on every record forever because it is the delimiters
+          themselves. Then three outcome columns, because "accuracy" is not one number here —
+          a record can arrive right, arrive <em>wrong and confident</em>, or not arrive.</p>
+        <div class="scroll"><table class="num" id="scoreTbl"></table></div>
+        <p class="sm mt3" id="scoreNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE HAZARD CENSUS, AND THE LAW THAT AMPLIFIES IT</p>
+          <p class="sm mut2 mb3">A per-field collision probability <em>p</em> becomes a per-record
+            failure of 1&nbsp;&minus;&nbsp;(1&minus;p)<sup>k</sup>. Your delimiter does not get worse
+            when you ask for more fields. Your record does.</p>
+          <div class="scroll"><table class="num" id="censusTbl"></table></div>
+          <p class="note mt2" id="censusNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">AND SO, AS THE FIELD COUNT GROWS</p>
+          <p class="sm mut2 mb3">Delivered records and tokens per <em>correct</em> record, sweeping
+            the number of fields in one call.</p>
+          <div class="scroll"><table class="num" id="kTbl"></table></div>
+          <p class="note mt2" id="kNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHAT THE RETRY BUDGET BUYS &mdash; and for whom</p>
+        <p class="sm mut2 mb3">A retry is a fresh draw over the producer's states. It can fix a
+          wrapper and it cannot fix your data, so the same budget is two completely different
+          products depending on where the failure lives. Nothing below is assumed: a record whose
+          loud probability is exactly 1 has failed in every state, and those records are counted
+          separately.</p>
+        <div class="scroll"><table class="num" id="retryTbl"></table></div>
+        <p class="sm mt3" id="retryNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHERE THE SILENT CORRUPTION ACTUALLY COMES FROM</p>
+        <p class="sm mut2 mb3">Sweeping only the chattiness of the model, with the data held fixed.
+          If a format's silent share is flat here, its corruption is in your values; if it climbs,
+          the values were never the problem.</p>
+        <div class="scroll"><table class="num" id="slipTbl"></table></div>
+        <p class="sm mt3" id="slipNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">BREAK-EVEN &mdash; where a frame tax starts paying for itself</p>
+        <p class="sm mut2 mb3">Bisection on tokens per <em>correct</em> record. Below the crossing
+          the cheap frame is the better buy; above it the expensive frame is. "no crossing" means
+          one of them wins over the whole range, which is the more useful answer.</p>
+        <div class="scroll"><table class="num" id="crossTbl"><tbody><tr><td class="dim">computing&hellip;</td></tr></tbody></table></div>
+        <p class="note mt2">This block alone is computed on a <span id="swN">240</span>-record slice
+          with 16 bisection steps, because one bisection is dozens of full runs and the sliders have
+          to stay live. Every other panel on this page uses the whole corpus.</p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+
+      <h2 class="xl bk">The delimiter is not the safe part</h2>
+      <p>Ask a model for five fields and you get back one string. Somewhere between the model's
+        mouth and your database there is a parser, and that parser is the only thing standing between
+        a correct answer and a row of garbage that looks exactly like a correct answer. The advice
+        for this is universal and unpriced: use clear delimiters, wrap things in XML tags, ask for
+        JSON. Nobody says what a tag costs per record, nobody says which characters break which
+        scheme, and — this is the one that matters — nobody separates the two ways a parse can go
+        wrong.</p>
+      <p>Those two ways are the whole subject. A <strong>loud</strong> failure throws, or returns the
+        wrong number of fields, and you find out. A <strong>silent</strong> failure returns exactly
+        <em>k</em> fields, every one a plausible string, and one of them is not the value the model
+        sent. You never find out. Silent failures are not a smaller version of loud ones; they are
+        the opposite kind of thing, because a loud failure costs you a retry and a silent failure
+        costs you a wrong row forever. Every table on this page keeps them in separate columns, and
+        every interesting result on this page is a result about the trade between them.</p>
+
+      <h3 class="lg b">The first measurement needs no assumptions at all</h3>
+      <p>Take one record and make every value boring. No commas. No newlines. No pipes, quotes,
+        hashes, backticks. A perfectly clean, perfectly well-behaved record — the case the delimiter
+        advice implicitly assumes. Encode it fourteen ways. Now let the model do the single most
+        common thing a model does, which is not to lie or hallucinate but to be <em>polite</em>:
+        <code class="tok">Sure! Here are the fields you asked for:</code>.</p>
+      <p>Five of the fourteen parsers return silently wrong data. Not an error — data.
+        Comma-separated, pipe-separated, RFC 4180 quoted CSV, backslash-escaped pipes: all of them
+        are single-line formats, so the greeting does not add a field, it gets <em>absorbed into
+        field one</em>, and a sign-off gets absorbed into field <em>k</em>. The field count is right.
+        The parse succeeds. Two of your five values are wrong and nothing anywhere says so. Allow the
+        model the other five ordinary wrappings — a sign-off, a fence, a labelled fence — and it is
+        eight of the fourteen, with only three surviving all six.</p>
+      <p>The newline format, by contrast, fails <em>loudly</em> on all five wrappings, and that is
+        the good outcome. It fails loudly for a slightly humiliating reason: the newline is the
+        delimiter that collides with the model's own boilerplate, so the chatter shows up as extra
+        <em>fields</em> instead of extra <em>characters</em>, and a two-token count check sees it.
+        Cheap safety here does not come from picking a delimiter your data lacks. It comes from
+        picking a delimiter the <em>noise</em> has.</p>
+
+      <h3 class="lg b">The keying argument is right about the wrong half</h3>
+      <p>The standard defence of tags and headings is that they are <em>keyed</em>: the parser looks
+        up <code class="tok">customer</code> rather than counting to position 1, so it cannot be
+        knocked out of alignment. That is true, and the probe confirms it — prose in front of the
+        answer is completely harmless to both <code class="tok">### customer</code> headings and
+        <code class="tok">&lt;customer&gt;</code> tags, while it destroys every positional format on
+        the page.</p>
+      <p>But run the same probe with the prose <em>behind</em> the answer, and the two keyed formats
+        separate. The tags are still fine. The headings are silently wrong. A
+        <code class="tok">### key</code> section has a start and no end, so it runs to the end of the
+        string, and every "Let me know if you need anything else" the model appends lands
+        <em>inside your last field</em>. The key check cannot see it: all the headings are present,
+        all of them are known, the count is right.</p>
+      <p>So the thing doing the work in XML is not the key. It is the <strong>closing tag</strong>.
+        Keying buys you immunity to whatever comes before your answer; termination buys you immunity
+        to whatever comes after. Half the ceremony you are paying for buys half the protection you
+        think you bought, and which half you got is decided by whether your framing has an explicit
+        end. This is the failure mode I assumed was about exotic characters in the data, and it is
+        not — it is about ordinary courtesy around the answer.</p>
+      <p>It holds at <em>every</em> field count, which is what makes it a statement about the syntax
+        rather than about this corpus: sweep the schema from two fields to twelve and the closing tag
+        survives a sign-off in all eleven cases, the heading is silently wrong in all eleven, the
+        heading absorbs a greeting in all eleven, and the newline count check fails loudly in all
+        eleven. Nothing about it is a rate.</p>
+
+      <h3 class="lg b">The free fixes, which win</h3>
+      <p>Three of the best interventions on this page cost nothing, and one of them is a deletion.
+        The naive newline parser is <code class="tok">split('\n').filter(x =&gt; x !== '')</code>,
+        and the filter is there because blank lines are ugly. Blank lines are also <em>data</em>: a
+        blank comment field is a blank comment field, and dropping it slides every value after it up
+        one position. Delete the filter and delivered records go from
+        <strong>34.48%</strong> to <strong>64.63%</strong> and silent corruption from 3.83% to
+        <strong>0.00%</strong>, for zero extra tokens. Thirty points and a safety column, for
+        removing eighteen characters from a parser.</p>
+      <p>Second: two lines that strip a code fence and clip to the outermost braces before calling
+        <code class="tok">JSON.parse</code>. First-attempt success goes from 85.42% to
+        <strong>92.85%</strong>, final delivery from 99.48% to 99.84%, and because the retries it
+        avoids were real calls, the tokens per correct record <em>fall</em> from 108.2 to
+        <strong>99.6</strong>. A free fix that makes the bill smaller is the best kind of result and
+        it is available to anyone who has ever seen a model fence its JSON, which is everyone.</p>
+      <p>Third: the key check on <code class="tok">###</code> headings — reject the response if a
+        heading is unknown or missing — costs zero instruction tokens and zero frame tokens, and
+        converts 2.00 of its 9.84 points of silent corruption into loud failures you can retry. It
+        cannot touch the other 7.84, for the structural reason above.</p>
+
+      <h3 class="lg b">The paid fixes, priced honestly</h3>
+      <p>Now the escape conventions, which are what the guides mean by "handle the delimiter
+        properly". Telling the model to escape a pipe as <code class="tok">\|</code> and a newline as
+        <code class="tok">\n</code> is a real instruction that has to be written out, and it is
+        written out <em>on every single call for the life of the system</em>. It costs
+        <strong>26 tokens to state</strong> and <strong>0.31 tokens to apply</strong> — eighty-odd
+        times more expensive to explain than to perform. For that it recovers 2.80 points of
+        delivered records.</p>
+      <p>It also <em>adds</em> 0.69 points of silent corruption, which I did not expect and which is
+        the honest cost of the idea. An un-escaper is a new component, and it has a failure the
+        plain format did not have: the day the model writes a Windows path raw, the un-escaper reads
+        <code class="tok">C:\temp</code> and helpfully removes the backslash, producing
+        <code class="tok">C:temp</code> — five characters of plausible garbage where a hard error
+        would have been better. Adding a decoder adds a way to be wrong.</p>
+      <p>And here is the number that ends the argument. Set the wrapping slider to zero and the
+        escaped pipe format is <strong>99.54%</strong> correct. Every collision in the data is
+        handled, completely, exactly as advertised. Turn the wrapping back to 8% and it is 91.58%,
+        and <em>all</em> of the missing 8 points are the greeting. The escape convention solves 100%
+        of the problem it was designed for and 0% of the problem you actually have.</p>
+      <p>Entity-escaping XML is the same story with the numbers taken to their limit: 22 extra
+        instruction tokens on every call forever, and it buys exactly <strong>0.00 points</strong>
+        and <strong>0.00 points</strong> of silent corruption, because raw XML was already at
+        100.00%. The character probe shows it is not <em>pointless</em> — the escape closes a real
+        hole, the value that literally contains <code class="tok">&lt;/note&gt;</code>, which is
+        silent corruption in raw XML. It is that no value in this corpus ever contains it. Whether
+        you pay 22 tokens a call is therefore a question about your data, not a question about XML,
+        and "escape everything defensively" is a decision with a price tag that nobody shows you.</p>
+
+      <h3 class="lg b">The retry budget is two different products</h3>
+      <p>Retries are the standard answer to parse failures, and how well they work has nothing to do
+        with how many you allow. It depends entirely on <em>where the failure lives</em>. A retry is
+        a fresh draw over the model's behaviour, so it can fix a fence and it cannot fix a comma:
+        the comma is in your customer's name, the model will send it again, and it will fail
+        identically for ever.</p>
+      <p>That falls straight out of the enumeration rather than being asserted. A record whose loud
+        probability is exactly 1.0 has failed in every producer state, and for comma-delimited output
+        that is <strong>47.50%</strong> of records. So the retry ledger for CSV reads: 73.28% of the
+        token bill spent on re-calls, <strong>0.000 records</strong> recovered. Not "few". Zero, to
+        three decimal places, by construction.</p>
+      <p>Against that, JSON: 100% of its failures are loud (that is what <code class="tok">JSON.parse</code>
+        throwing means) and all of them come from the wrapper, so retries do exactly what retries are
+        supposed to do — 85.42% to <strong>100.00%</strong> across the budget, for 18% more tokens
+        and <strong>0.00%</strong> waste. Meanwhile the newline format spends its way from 59.49% to
+        64.67%, a ceiling of five points, while the bill goes from 62 to 257 tokens per record and
+        the waste share reaches 84.16%. Same knob, same setting, one of them buying everything and
+        the other buying nothing.</p>
+
+      <h3 class="lg b">The "wrap it in XML tags" advice, with the price on it</h3>
+      <p>XML wins the correctness column outright, and it is not close: 100.00% delivered, 0.00%
+        silent, no retries, unbothered by every wrapping and every character in the corpus. If
+        correctness is the only column, stop reading and use tags.</p>
+      <p>The column it loses is the one that recurs forever. Its frame — the tags themselves, not the
+        instruction — is <strong>41.12 tokens per record</strong>, against 29.12 for JSON and 5.12
+        for a newline. On a payload of 30.4 tokens of actual data, the tags cost more than the
+        content. What that buys over JSON with the free fence-strip is the last
+        <strong>0.16 of a point</strong> (100.00% against 99.84%) at <strong>+14.1%</strong> tokens
+        per correct record, and the crossover search finds <em>no</em> hazard rate anywhere in
+        [0,&nbsp;1] at which the extra frame pays for itself — at a hazard rate of 1.00, with every
+        single value in the corpus carrying a hazard character, JSON is still cheaper per correct
+        record. There is a real reason to pay it, which is that 0.16 points of loss might be
+        unacceptable in your domain, and that is a decision you should get to make with the number
+        in front of you.</p>
+      <p>The instruction costs run the other way, and this is the part that surprised me most.
+        JSON's instruction is the <em>cheapest</em> on the page — 32 tokens — while the escaped-pipe
+        instruction is 59 and RFC 4180's is 61. You do not have to explain JSON's escaping rules
+        because they are standard and the model already knows them. A bespoke delimiter convention
+        is cheap in the frame and expensive in the explanation, and the explanation is the part you
+        re-send on every call.</p>
+
+      <h3 class="lg b">The dumbest thing on the page is also the most dangerous thing on the page</h3>
+      <p>Two "helpful" repair heuristics are in the line-up because everybody writes them. Fold the
+        extra fields into the last one when the count is too high. Keep the last <em>k</em> lines and
+        assume the rest was preamble. Both eliminate loud failures completely — zero errors, zero
+        retries, and the cheapest tokens per correct record on the page at two and three fields.</p>
+      <p>They achieve it by converting every loud failure into a silent one: <strong>43.11%</strong>
+        and <strong>40.51%</strong> silent corruption respectively. On a scoreboard whose only
+        columns are "errors" and "cost" — which is what most format comparisons actually print —
+        keep-the-last-<em>k</em> is the best option available, by a distance, and it is quietly
+        wrong about two records in five. That is the same shape as Day 68's count-check and Day 69's
+        rule-trim: the single-column scoreboard does not just fail to rank the options, it inverts
+        the ranking.</p>
+      <p>And the genuinely dumb baseline earns its place. Newline-separated with a
+        <code class="tok">length === k</code> check has the cheapest frame on the page, needs no
+        schema, no escaping and no explanation, and posts <strong>0.00%</strong> silent
+        corruption — matching XML and JSON, the two most expensive formats here, on the column that
+        matters most. It loses 35.37% of records to hard failures, which is disqualifying at five
+        fields. At <em>two</em> fields it costs 50 tokens per correct record
+        against JSON's 52, and it never beats JSON again. "Just split on newlines" is not a silly
+        answer; it is a correct answer whose validity expires at three fields, which is a much more
+        useful thing to know.</p>
+
+      <h3 class="lg b">What travels off this page</h3>
+      <p>The census and the amplification law are the transferable part. Ten hazard characters
+        counted in the corpus, and for each the per-field rate raised by
+        1&nbsp;&minus;&nbsp;(1&minus;p)<sup>k</sup> lands within 1.2 points of the measured
+        per-record rate. That means you can do this arithmetic for <em>your</em> data before you pick
+        a delimiter: grep your values for the character, divide, raise to the number of fields you
+        ask for. The comma is in 11.93% of fields here and therefore 47.50% of five-field records,
+        which is why comma-delimited output is not a format, it is an outage. The pipe is in 3.83% of
+        fields and the bare <code class="tok">#</code> in 0.40%, which is why they feel safe: they
+        are safe, in proportion to how rare they are in your text, and not one bit more.</p>
+      <p>Three things I did not expect before measuring. The escape convention was supposed to be
+        the fix and it addresses a failure mode that contributes almost nothing once the model is
+        allowed to be chatty. The keyed formats were supposed to be safe because they are keyed, and
+        half of them are not, because keying is not termination. And the naive newline split was
+        supposed to be the silent-corruption champion, and it turns out to have <em>none</em> — its
+        failures are all loud, because a value with a newline in it always changes the line count.
+        The parser that looks least careful is the one that never lies to you.</p>
+
+      <h3 class="lg b">What this is not, and what it is not a repeat of</h3>
+      <p>This is not a language-ability simulation and there is no model in it. Every number comes
+        from running a real encoder into a real decoder and comparing strings. The two declared
+        quantities — how often a model wraps its answer, how often it skips an escape — are dials,
+        not findings, and every conclusion above is either parameter-free or stated together with
+        what happens when you turn the dial to zero.</p>
+      <p>Token counts are estimates. The tokenizer here is a deterministic stand-in, not a real BPE
+        vocabulary, so treat the absolute numbers as approximate and the ratios as the claim — and
+        note that the frame, which is what the ratios are about, is made of exactly the punctuation
+        runs the merge table keeps whole, which is the part it gets right.</p>
+      <p><strong>Day 66</strong> was also about delimiters and is the opposite direction:
+        spotlighting fences off untrusted <em>input</em> so the model treats it as data, and its
+        failure is the model obeying something it should not. Here the delimiters are on the
+        <em>output</em> and the failure is a parser, not a model. <strong>Day 16</strong> is about
+        deciding what shape to ask for; this is about what happens to that shape on the way home.
+        <strong>Day 68</strong> asks which answer belongs to which question across a batch; this asks
+        which substring belongs to which field inside one answer. <strong>Day 59</strong> locks the
+        format by seeding the response instead of describing it, which is a different lever on the
+        same problem and would remove most of the wrapping failures above — at the cost of a
+        mechanism current models no longer accept.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">🔨 How it is built</h2>
+
+      <h3 class="lg b">1. Fourteen real codecs, not fourteen descriptions</h3>
+      <p>Every strategy is an <code class="tok">enc</code> / <code class="tok">dec</code> pair, and
+        the decoders are real: <code class="tok">JSON.parse</code> in a try/catch, a hand-written
+        RFC 4180 reader with quote-doubling and an unterminated-quote error, a line scanner for
+        <code class="tok">### key</code> sections, a non-greedy tag matcher per key, and the various
+        <code class="tok">split</code>-and-count parsers people actually ship. A verdict is decided
+        by string comparison against the record that went in, never by inspection of the text.</p>
+
+      <h3 class="lg b">2. Three verdicts, because two is the mistake</h3>
+      <p><code class="tok">ok</code> means every field came back identical.
+        <code class="tok">loud</code> means the decoder refused. <code class="tok">silent</code>
+        means the decoder returned <em>k</em> confident fields and at least one differs. Collapsing
+        the last two into "failure" is what makes fold-the-extras look like a good idea.</p>
+
+      <h3 class="lg b">3. The producer is enumerated, not sampled</h3>
+      <p>A model does one of three things to a correct answer — nothing, prose around it, or a fence
+        around it — and independently either honours a requested escape or does not. That is at most
+        six states with known probabilities, so every state is encoded, decoded and weighted, and the
+        per-record outcome is an exact expectation. There is no Monte-Carlo noise anywhere in the
+        outcome columns; the only randomness on the page is which values the corpus drew.</p>
+
+      <h3 class="lg b">4. Retries fall out of the same enumeration</h3>
+      <p>With per-attempt loud probability <em>L</em>, the expected attempts under a budget of
+        <em>r</em> retries is &Sigma;<sub>j=0..r</sub> <em>L</em><sup>j</sup>, delivered-correct is
+        <em>O</em> times that, and the unrecoverable share is <em>L</em><sup>r+1</sup>. The important
+        case needs no special handling: a data collision fails in every state, so
+        <em>L</em>&nbsp;=&nbsp;1 exactly, the sum is <em>r</em>+1, and the record is lost having been
+        paid for <em>r</em>+1 times. Those records are counted separately as "deterministic", which
+        is where the wasted-token column comes from.</p>
+
+      <h3 class="lg b">5. Two probes that no slider can touch</h3>
+      <p>The wrapping probe builds a record from the first clean value of every field, so it contains
+        no hazard character at all, and applies six fixed wrappings. The character probe holds the
+        producer perfect and drops one payload — a comma, a newline, <code class="tok">### note</code>,
+        <code class="tok">&lt;/note&gt;</code>, a blank string — into one value at a time, in every
+        field position. Both are pure functions of the codecs. They are the reason the headline result
+        does not depend on any assumption about model behaviour.</p>
+
+      <h3 class="lg b">6. Instruction cost and frame cost, separated</h3>
+      <p>Every codec carries the English sentence that would actually have to be sent, and that is
+        tokenised as the per-call instruction cost. The frame cost is measured by difference: encode
+        the record, tokenise it, and subtract the tokens of the bare values. So the tags, braces,
+        quotes and separators are isolated from the payload, which is what makes "41.12 tokens of
+        frame on 30.4 tokens of data" a statement rather than an impression.</p>
+
+      <h3 class="lg b">7. The tokenizer, and the identity that keeps the page live</h3>
+      <p>Letters at about four characters per token, digits at three, a single space riding free on
+        the following word, everything else one token each — except a small table of punctuation runs
+        a real vocabulary keeps whole (<code class="tok">```</code>, <code class="tok">###</code>,
+        <code class="tok">{"</code>, <code class="tok">"&colon;</code>, <code class="tok">&lt;/</code>,
+        <code class="tok">&amp;lt;</code>). It is indexed by first character so the scan only tries a
+        merge where one could start.</p>
+      <p>Every wrapper begins and ends at a newline, and no merge in that table and no letter or digit
+        run can cross a newline, so the token count of a wrapped answer is exactly the count of the
+        answer plus a constant (24 for the prose, 4 for the fence). Using that identity instead of
+        re-tokenising six full strings per record is what makes the sliders responsive — and it is
+        <em>asserted</em>, not assumed: the tests re-tokenise every wrapped text and compare.</p>
+
+      <h3 class="lg b">8. What the assertions pin down</h3>
+      <ul>
+        <li>the RNG: determinism, seed sensitivity, uniformity to under 5% per decile;</li>
+        <li>every escape/un-escape pair is a round trip on the whole corpus, and the RFC 4180 reader
+          is checked against hand-built rows including doubled quotes and an unterminated quote;</li>
+        <li>every codec is <em>lossless on clean data</em> — encode, decode, compare, for every
+          record with no hazard character in it — which is the floor a codec has to clear before any
+          of its other numbers mean anything;</li>
+        <li>the three outcome probabilities sum to 1 for every record and every codec;</li>
+        <li>a record with loud probability 1 gains exactly nothing from any retry budget;</li>
+        <li>the wrap-additivity identity, re-tokenised;</li>
+        <li>both probe matrices, cell by cell, against the values the prose quotes — and the
+          closing-tag result re-run at every field count from 2 to 12;</li>
+        <li>and the numbers in the headline, recomputed from the engine so the prose cannot drift.</li>
+      </ul>
+
+      <h3 class="lg b">9. Three things that were not what I expected</h3>
+      <p><strong>The escape convention was the wrong fix.</strong> I built it as the answer to
+        delimiter collision, and it <em>is</em> — at wrap&nbsp;=&nbsp;0 it delivers 99.54%. Then the
+        model says hello and it delivers 91.58%, and nothing about the escape addresses the
+        difference. Measuring the mechanism you designed for is not the same as measuring the one
+        that fires.</p>
+      <p><strong>Keying is not termination.</strong> I had <code class="tok">### key</code> in the
+        line-up as a cheap stand-in for XML on the theory that a key is a key. Prose in front:
+        identical. Prose behind: silently wrong, invisibly, with every key present and correct. The
+        closing tag is the load-bearing half of the ceremony.</p>
+      <p><strong>Adding a decoder added a failure.</strong> Escaped pipes have <em>more</em> silent
+        corruption than raw pipes (8.41% against 7.72%), because an un-escaper eats a real backslash
+        in a Windows path. Every layer you add to be safer is also a layer that can be wrong.</p>
+
+      <h3 class="lg b">10. What this is not</h3>
+      <p>No model, no language ability, no benchmark. The corpus is generated from twelve hand-written
+        field templates and the hazard rates are properties of that generator, so the headline
+        percentages describe this corpus and not your data — which is precisely why the census and the
+        amplification law are on the page, since those you can recompute for your own values in an
+        afternoon. The two behavioural rates are declared and adjustable. Absolute token counts are
+        estimates; the frame ratios are the claim.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Delimiter design and the parse-failure rate. Nothing here simulates language ability. Every
+// strategy is a real encoder paired with a real decoder - a real JSON.parse, a real RFC-4180
+// scanner, a real tag scanner, a real line scanner - run over generated records whose values carry
+// the characters real data carries. The producer's unreliability is ENUMERATED, not sampled: for
+// each record the three things a model does to a correct answer (nothing / prose in front / wrap it
+// in a fence) crossed with whether it honoured the escape it was asked for are all decoded, so every
+// rate below is an exact expectation over that finite state set and only the corpus is random.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------------------------------------------------------------- token estimator
+// A deterministic stand-in for a BPE tokenizer: letters ~4 chars/token, digits ~3, one space rides
+// free on the word after it, every other character is its own token EXCEPT the punctuation runs a
+// real vocabulary keeps whole. Absolute counts are estimates. The RATIOS between formats are the
+// claim, and they are set by the merge table below and by the frame, which is counted exactly.
+const TOK_MERGE = ['```', '###', '##', '{"', '":', '",', '"}', '</', '/>', '&lt;', '&gt;', '&amp;',
+                   '\\n', '\\"', '\\\\'].sort(function(a, b){ return b.length - a.length; });
+
+// the merges indexed by their first character, so the scan only tries them where one could start
+const MERGE_BY_CHAR = (function(){
+  var m = {};
+  for (var i = 0; i < TOK_MERGE.length; i++){
+    var f = TOK_MERGE[i][0];
+    (m[f] || (m[f] = [])).push(TOK_MERGE[i]);
+  }
+  return m;
+})();
+
+function estTokens(s){
+  var i = 0, n = 0, L = s.length;
+  outer: while (i < L){
+    var cand = MERGE_BY_CHAR[s[i]];
+    if (cand !== undefined){
+      for (var k = 0; k < cand.length; k++){
+        var m = cand[k];
+        if (s.startsWith(m, i)){ n++; i += m.length; continue outer; }
+      }
+    }
+    var c = s.charCodeAt(i);
+    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122)){
+      var j = i;
+      while (j < L){ var d = s.charCodeAt(j); if ((d >= 65 && d <= 90) || (d >= 97 && d <= 122)) j++; else break; }
+      n += Math.ceil((j - i) / 4); i = j; continue;
+    }
+    if (c >= 48 && c <= 57){
+      var j2 = i; while (j2 < L && s.charCodeAt(j2) >= 48 && s.charCodeAt(j2) <= 57) j2++;
+      n += Math.ceil((j2 - i) / 3); i = j2; continue;
+    }
+    if (c === 32){
+      var j3 = i; while (j3 < L && s.charCodeAt(j3) === 32) j3++;
+      n += (j3 - i - 1); i = j3; continue;
+    }
+    n++; i++;
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- the corpus
+// Twelve field templates, each with a clean pool and a hazard pool. Nothing exotic is in here: a
+// surname written "Smith, John", an address on three lines, a note holding a markdown heading, a
+// pasted table row, a code fence, a Windows path, a quoted sentence. Ordinary business text.
+const FIELD_DEFS = [
+  { key: 'customer', clean: ['Ada Lovelace', 'Grace Hopper', 'Ken Thompson', 'Radia Perlman'],
+    haz: ['Smith, John', 'Nakamura, Yuki', 'Ada "the Countess" Lovelace'] },
+  { key: 'address', clean: ['4 Mill Lane Bristol BS1 5AA', '9 Sanders Road Reading RG1'],
+    haz: ['12 High St, Bristol, BS1 4TR', 'Unit 7, Kings Road, Reading', '12 High St\nBristol\nBS1 4TR'] },
+  { key: 'note', clean: ['customer called back and confirmed the pickup', 'left with reception'],
+    haz: ['called twice\nno answer\nwill retry monday',
+          '### Update\nre-opened by finance',
+          '| qty | price |\n| 2 | 19.00 |',
+          'flag as <b>urgent</b> before dispatch',
+          'he said "we never received it"',
+          'scan saved at C:\\temp\\out.txt',
+          'repro:\n```\nGET /v1/quote\n```',
+          'note: see the attached invoice'] },
+  { key: 'comment', clean: ['no further action', 'awaiting customer'],
+    haz: ['see note above; also:\n- chase POD\n- re-quote', 'n/a'] },
+  { key: 'sku', clean: ['AX-4192', 'QQ-7781', 'MM-0043'], haz: ['AX-4192|B', 'AX,4192'] },
+  { key: 'status', clean: ['booked', 'in_transit', 'delivered', 'held'], haz: ['on hold, pending POD'] },
+  { key: 'phone', clean: ['+44 117 496 0100', '+44 118 402 3311'], haz: ['+44 117 496 0100, ext 4'] },
+  { key: 'email', clean: ['a.lovelace@example.co.uk', 'g.hopper@example.com'],
+    haz: ['"a lovelace"@example.co.uk', 'a.lovelace@example.co.uk, ops@example.com'] },
+  { key: 'amount', clean: ['19.00', '248.50', '7.99'], haz: ['1,248.50', '19.00 <of 22.00>'] },
+  { key: 'carrier', clean: ['DHL Express', 'UPS Standard', 'TNT Domestic'],
+    haz: ['DHL Express | UPS backup', 'DHL Express\n(rebooked)'] },
+  { key: 'currency', clean: ['GBP', 'EUR', 'USD'], haz: ['GBP/EUR'] },
+  { key: 'reference', clean: ['REF88213', 'REF41055'], haz: ['see ticket #412', 'REF88213 "old"'] }
+];
+
+const DEFAULTS = {
+  nFields: 5,        // fields asked for in one call
+  nRecords: 600,     // records in the corpus
+  hazard: 0.35,      // chance a field draws from its hazard pool
+  empty: 0.10,       // chance a field is legitimately BLANK - the hazard nobody counts
+  slip: 0.08,        // chance the producer wraps its answer in prose or in a fence
+  escSlip: 0.15,     // chance the producer forgets an escape it was told to make
+  retries: 2         // re-calls allowed on a LOUD parse failure
+};
+function withDefaults(o){ return Object.assign({}, DEFAULTS, o || {}); }
+
+function makeRecord(rnd, cfg){
+  var k = cfg.nFields, rec = {}, keys = [];
+  for (var f = 0; f < k; f++){
+    var d = FIELD_DEFS[f]; keys.push(d.key);
+    var u = rnd(), v = rnd(), w = rnd();
+    if (u < cfg.empty) rec[d.key] = '';
+    else if (v < cfg.hazard && d.haz.length) rec[d.key] = d.haz[Math.floor(w * d.haz.length)];
+    else rec[d.key] = d.clean[Math.floor(w * d.clean.length)];
+  }
+  return { rec: rec, keys: keys };
+}
+
+function makeCorpus(cfg, seed){
+  var rnd = mulberry32(seed), out = [];
+  for (var i = 0; i < cfg.nRecords; i++) out.push(makeRecord(rnd, cfg));
+  return out;
+}
+
+// ---------------------------------------------------------------- hazard census (exact)
+const HAZ_CHARS = [[',', 'comma'], ['\n', 'newline'], ['|', 'pipe'], ['#', 'hash'],
+                   ['<', 'angle'], ['"', 'quote'], ['\\', 'backslash'], ['`', 'backtick'],
+                   [':', 'colon'], ['/', 'slash']];
+
+function census(corpus){
+  var per = {}, rec = {}, i, j;
+  for (i = 0; i < HAZ_CHARS.length; i++){ per[HAZ_CHARS[i][1]] = 0; rec[HAZ_CHARS[i][1]] = 0; }
+  var fields = 0, empties = 0, emptyRec = 0;
+  for (i = 0; i < corpus.length; i++){
+    var r = corpus[i].rec, keys = corpus[i].keys, seen = {}, anyEmpty = false;
+    for (j = 0; j < keys.length; j++){
+      fields++;
+      var v = r[keys[j]];
+      if (v === ''){ empties++; anyEmpty = true; }
+      for (var h = 0; h < HAZ_CHARS.length; h++)
+        if (v.indexOf(HAZ_CHARS[h][0]) >= 0){ per[HAZ_CHARS[h][1]]++; seen[HAZ_CHARS[h][1]] = 1; }
+    }
+    for (var n in seen) rec[n]++;
+    if (anyEmpty) emptyRec++;
+  }
+  return { per: per, rec: rec, fields: fields, empties: empties, emptyRec: emptyRec, nRec: corpus.length };
+}
+
+// ---------------------------------------------------------------- escaping primitives
+function bsEscape(s, chars){
+  var o = '';
+  for (var i = 0; i < s.length; i++){
+    var c = s[i];
+    if (c === '\\') o += '\\\\';
+    else if (c === '\n') o += '\\n';
+    else if (chars.indexOf(c) >= 0) o += '\\' + c;
+    else o += c;
+  }
+  return o;
+}
+function bsUnescape(s){
+  var o = '', i = 0;
+  while (i < s.length){
+    if (s[i] === '\\' && i + 1 < s.length){ var n = s[i + 1]; o += (n === 'n' ? '\n' : n); i += 2; }
+    else { o += s[i]; i++; }
+  }
+  return o;
+}
+// one compiled tag matcher per key, built once - the decoders below are called millions of times
+const TAG_RE = {};
+function tagRe(k){ return TAG_RE[k] || (TAG_RE[k] = new RegExp('<' + k + '>([\\s\\S]*?)</' + k + '>')); }
+
+function xmlEscape(s){ return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+function xmlUnescape(s){ return s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
+
+function csvQuote(s){
+  if (/[",\n]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  return s;
+}
+// a real RFC 4180 single-record reader
+function csvRead(line){
+  var out = [], cur = '', i = 0, inQ = false, started = false;
+  while (i < line.length){
+    var c = line[i];
+    if (inQ){
+      if (c === '"'){
+        if (line[i + 1] === '"'){ cur += '"'; i += 2; continue; }
+        inQ = false; i++; continue;
+      }
+      cur += c; i++; continue;
+    }
+    if (c === '"' && cur === '' && !started){ inQ = true; started = true; i++; continue; }
+    if (c === ','){ out.push(cur); cur = ''; started = false; i++; continue; }
+    cur += c; i++; started = true;
+  }
+  if (inQ) return null;              // unterminated quote - a hard error, which is the point
+  out.push(cur);
+  return out;
+}
+
+// ---------------------------------------------------------------- the codecs
+// enc(rec, keys) -> string ; dec(text, keys) -> {ok:true, fields} | {ok:false, err}
+// escapes: the characters this codec asks the PRODUCER to escape. Empty means it asks for nothing,
+// which is not the same as being safe - it means the collision is handled by luck instead.
+const CODECS = [
+  { id: 'nl-loose', label: 'newline, drop blank lines', family: 'positional', escapes: '',
+    instr: 'Return the values one per line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join('\n'); },
+    dec: function(t, ks){
+      var p = t.split('\n').filter(function(x){ return x !== ''; });
+      if (p.length !== ks.length) return { ok: false, err: 'line count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'nl-strict', label: 'newline + count check', family: 'positional', escapes: '',
+    instr: 'Return the values one per line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join('\n'); },
+    dec: function(t, ks){
+      var p = t.split('\n');
+      if (p.length !== ks.length) return { ok: false, err: 'line count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'nl-last', label: 'newline, keep the last k lines', family: 'positional', escapes: '',
+    instr: 'Return the values one per line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join('\n'); },
+    dec: function(t, ks){
+      var p = t.split('\n');
+      if (p.length < ks.length) return { ok: false, err: 'line count ' + p.length };
+      p = p.slice(p.length - ks.length);
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'csv', label: 'comma, no quoting', family: 'positional', escapes: '',
+    instr: 'Return the values comma-separated on one line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join(','); },
+    dec: function(t, ks){
+      var p = t.split(',');
+      if (p.length !== ks.length) return { ok: false, err: 'field count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'csv-fold', label: 'comma, fold the extras into the last field', family: 'positional', escapes: '',
+    instr: 'Return the values comma-separated on one line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join(','); },
+    dec: function(t, ks){
+      var p = t.split(',');
+      if (p.length < ks.length) return { ok: false, err: 'field count ' + p.length };
+      if (p.length > ks.length) p = p.slice(0, ks.length - 1).concat(p.slice(ks.length - 1).join(','));
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'csv-rfc', label: 'RFC 4180 quoted CSV', family: 'positional', escapes: ',"\n',
+    instr: 'Return the values as one CSV row, wrapping any value that contains a comma, a quote or a newline in double quotes and doubling any quote inside it, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return csvQuote(r[k]); }).join(','); },
+    dec: function(t, ks){
+      var p = csvRead(t);
+      if (!p) return { ok: false, err: 'unterminated quote' };
+      if (p.length !== ks.length) return { ok: false, err: 'field count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'pipe', label: 'pipe, no escaping', family: 'positional', escapes: '',
+    instr: 'Return the values separated by " | " on one line, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return r[k]; }).join(' | '); },
+    dec: function(t, ks){
+      var p = t.split(' | ');
+      if (p.length !== ks.length) return { ok: false, err: 'field count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = p[i]; }); return { ok: true, fields: f }; } },
+
+  { id: 'pipe-esc', label: 'pipe + backslash escape', family: 'positional', escapes: '|\n\\',
+    instr: 'Return the values separated by " | " on one line, escaping any | inside a value as \\| and any newline as \\n and any backslash as \\\\, in this order: ',
+    enc: function(r, ks){ return ks.map(function(k){ return bsEscape(r[k], '|'); }).join(' | '); },
+    dec: function(t, ks){
+      var p = t.split(' | ');
+      if (p.length !== ks.length) return { ok: false, err: 'field count ' + p.length };
+      var f = {}; ks.forEach(function(k, i){ f[k] = bsUnescape(p[i]); }); return { ok: true, fields: f }; } },
+
+  { id: 'hash', label: '### key headings', family: 'keyed', escapes: '',
+    instr: 'Return each value under its own heading line, like "### customer", for these keys: ',
+    enc: function(r, ks){ return ks.map(function(k){ return '### ' + k + '\n' + r[k]; }).join('\n'); },
+    dec: function(t, ks){
+      var lines = t.split('\n'), secs = {}, cur = null, buf = [];
+      var flush = function(){ if (cur !== null) secs[cur] = buf.join('\n'); };
+      for (var i = 0; i < lines.length; i++){
+        var m = /^### (.+)$/.exec(lines[i]);
+        if (m){ flush(); cur = m[1].trim(); buf = []; continue; }
+        if (cur !== null) buf.push(lines[i]);
+      }
+      flush();
+      var f = {};
+      for (var j = 0; j < ks.length; j++) f[ks[j]] = (ks[j] in secs) ? secs[ks[j]] : '';
+      return { ok: true, fields: f }; } },
+
+  { id: 'hash-strict', label: '### key headings + key check', family: 'keyed', escapes: '',
+    instr: 'Return each value under its own heading line, like "### customer", for these keys: ',
+    enc: function(r, ks){ return ks.map(function(k){ return '### ' + k + '\n' + r[k]; }).join('\n'); },
+    dec: function(t, ks){
+      var lines = t.split('\n'), secs = {}, cur = null, buf = [], seen = 0, unknown = 0;
+      var flush = function(){ if (cur !== null) secs[cur] = buf.join('\n'); };
+      for (var i = 0; i < lines.length; i++){
+        var m = /^### (.+)$/.exec(lines[i]);
+        if (m){ flush(); cur = m[1].trim(); buf = []; seen++; if (ks.indexOf(cur) < 0) unknown++; continue; }
+        if (cur !== null) buf.push(lines[i]);
+      }
+      flush();
+      if (unknown) return { ok: false, err: unknown + ' unknown heading(s)' };
+      if (seen !== ks.length) return { ok: false, err: seen + ' headings' };
+      for (var j = 0; j < ks.length; j++) if (!(ks[j] in secs)) return { ok: false, err: 'missing ' + ks[j] };
+      var f = {};
+      for (var q = 0; q < ks.length; q++) f[ks[q]] = secs[ks[q]];
+      return { ok: true, fields: f }; } },
+
+  { id: 'xml', label: '<tag> pairs, raw values', family: 'keyed', escapes: '',
+    instr: 'Return each value wrapped in its own tag, like <customer>...</customer>, for these keys: ',
+    enc: function(r, ks){ return ks.map(function(k){ return '<' + k + '>' + r[k] + '</' + k + '>'; }).join('\n'); },
+    dec: function(t, ks){
+      var f = {};
+      for (var i = 0; i < ks.length; i++){
+        var m = tagRe(ks[i]).exec(t);
+        if (!m) return { ok: false, err: 'no <' + ks[i] + '>' };
+        f[ks[i]] = m[1];
+      }
+      return { ok: true, fields: f }; } },
+
+  { id: 'xml-esc', label: '<tag> pairs + entity escape', family: 'keyed', escapes: '<>&',
+    instr: 'Return each value wrapped in its own tag, like <customer>...</customer>, escaping any < inside a value as &lt; and any > as &gt; and any & as &amp;, for these keys: ',
+    enc: function(r, ks){ return ks.map(function(k){ return '<' + k + '>' + xmlEscape(r[k]) + '</' + k + '>'; }).join('\n'); },
+    dec: function(t, ks){
+      var f = {};
+      for (var i = 0; i < ks.length; i++){
+        var m = tagRe(ks[i]).exec(t);
+        if (!m) return { ok: false, err: 'no <' + ks[i] + '>' };
+        f[ks[i]] = xmlUnescape(m[1]);
+      }
+      return { ok: true, fields: f }; } },
+
+  { id: 'json', label: 'JSON object', family: 'keyed', escapes: '"\\\n',
+    instr: 'Return a JSON object and nothing else, with exactly these string keys: ',
+    enc: function(r, ks){ var o = {}; for (var i = 0; i < ks.length; i++) o[ks[i]] = r[ks[i]]; return JSON.stringify(o); },
+    dec: function(t, ks){
+      var o;
+      try { o = JSON.parse(t); } catch (e){ return { ok: false, err: 'JSON.parse threw' }; }
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return { ok: false, err: 'not an object' };
+      var f = {};
+      for (var i = 0; i < ks.length; i++){
+        if (typeof o[ks[i]] !== 'string') return { ok: false, err: 'missing ' + ks[i] };
+        f[ks[i]] = o[ks[i]];
+      }
+      return { ok: true, fields: f }; } },
+
+  { id: 'json-strip', label: 'JSON + strip the fence (free)', family: 'keyed', escapes: '"\\\n',
+    instr: 'Return a JSON object and nothing else, with exactly these string keys: ',
+    enc: function(r, ks){ var o = {}; for (var i = 0; i < ks.length; i++) o[ks[i]] = r[ks[i]]; return JSON.stringify(o); },
+    dec: function(t, ks){
+      var s = t.trim();
+      s = s.replace(/^```[a-zA-Z]*\n?/, '').replace(/\n?```$/, '');
+      var a = s.indexOf('{'), b = s.lastIndexOf('}');
+      if (a >= 0 && b > a) s = s.slice(a, b + 1);
+      var o;
+      try { o = JSON.parse(s); } catch (e){ return { ok: false, err: 'JSON.parse threw' }; }
+      if (!o || typeof o !== 'object' || Array.isArray(o)) return { ok: false, err: 'not an object' };
+      var f = {};
+      for (var i = 0; i < ks.length; i++){
+        if (typeof o[ks[i]] !== 'string') return { ok: false, err: 'missing ' + ks[i] };
+        f[ks[i]] = o[ks[i]];
+      }
+      return { ok: true, fields: f }; } }
+];
+const CODEC_BY_ID = {};
+CODECS.forEach(function(c){ CODEC_BY_ID[c.id] = c; });
+const CODEC_IDS = CODECS.map(function(c){ return c.id; });
+
+// ---------------------------------------------------------------- the producer's finite state set
+const PREAMBLE = 'Sure! Here are the fields you asked for:\n';
+const POSTAMBLE = '\nLet me know if you need anything else.';
+const WRAP_KINDS = ['clean', 'preamble', 'fence'];
+
+function wrapText(kind, t){
+  if (kind === 'preamble') return PREAMBLE + t + POSTAMBLE;
+  if (kind === 'fence') return '```\n' + t + '\n```';
+  return t;
+}
+// Every wrapper begins and ends at a newline, and no merge in the table and no letter or digit run
+// can cross a newline, so the token count of a wrapped answer is the count of the answer plus a
+// constant. That identity is what lets the sliders stay live, and it is asserted rather than assumed.
+const WRAP_TOK = {
+  clean: 0,
+  preamble: estTokens(PREAMBLE + 'x' + POSTAMBLE) - estTokens('x'),
+  fence: estTokens('```\nx\n```') - estTokens('x')
+};
+function wrapStates(cfg){
+  var s = cfg.slip;
+  return [{ kind: 'clean', p: 1 - s }, { kind: 'preamble', p: s / 2 }, { kind: 'fence', p: s / 2 }];
+}
+
+// does this record contain a character this codec asked the producer to escape?
+function needsEscape(codec, rec, keys){
+  if (!codec.escapes) return false;
+  for (var i = 0; i < keys.length; i++){
+    var v = rec[keys[i]];
+    for (var j = 0; j < codec.escapes.length; j++) if (v.indexOf(codec.escapes[j]) >= 0) return true;
+  }
+  return false;
+}
+// the same encode with the escape skipped - the producer wrote the raw value into the frame
+function encRaw(codec, rec, keys){
+  if (codec.id === 'csv-rfc') return keys.map(function(k){ return rec[k]; }).join(',');
+  if (codec.id === 'pipe-esc') return keys.map(function(k){ return rec[k]; }).join(' | ');
+  if (codec.id === 'xml-esc') return keys.map(function(k){ return '<' + k + '>' + rec[k] + '</' + k + '>'; }).join('\n');
+  if (codec.id === 'json' || codec.id === 'json-strip')
+    return '{' + keys.map(function(k){ return '"' + k + '": "' + rec[k] + '"'; }).join(', ') + '}';
+  return codec.enc(rec, keys);
+}
+
+function verdictOf(rec, keys, dec){
+  if (!dec.ok) return 'loud';
+  for (var i = 0; i < keys.length; i++) if (dec.fields[keys[i]] !== rec[keys[i]]) return 'silent';
+  return 'ok';
+}
+
+// exact per-record outcome distribution for one codec: up to 3 x 2 producer states, all decoded
+function recordOutcome(codec, rec, keys, cfg, wantDetail){
+  var esc = needsEscape(codec, rec, keys);
+  var escStates = esc ? [{ p: 1 - cfg.escSlip, raw: false }, { p: cfg.escSlip, raw: true }]
+                      : [{ p: 1, raw: false }];
+  var ok = 0, silent = 0, loud = 0, tok = 0, detail = wantDetail ? [] : null;
+  var ws = wrapStates(cfg);
+  for (var a = 0; a < escStates.length; a++){
+    var es = escStates[a];
+    if (es.p <= 0) continue;
+    var body = es.raw ? encRaw(codec, rec, keys) : codec.enc(rec, keys);
+    var bodyTok = estTokens(body);
+    for (var b = 0; b < ws.length; b++){
+      var p = es.p * ws[b].p;
+      if (p <= 0 && !wantDetail) continue;
+      var text = wrapText(ws[b].kind, body);
+      var v = verdictOf(rec, keys, codec.dec(text, keys));
+      if (v === 'ok') ok += p; else if (v === 'silent') silent += p; else loud += p;
+      var t = bodyTok + WRAP_TOK[ws[b].kind];
+      tok += p * t;
+      if (wantDetail) detail.push({ escRaw: es.raw, wrap: ws[b].kind, p: p, verdict: v, tokens: t, text: text });
+    }
+  }
+  return { ok: ok, silent: silent, loud: loud, outTok: tok, detail: detail, escNeeded: esc };
+}
+
+// ---------------------------------------------------------------- retries, and what they are worth
+// A retry is a fresh draw over the producer states, so it can only help when the failure came from
+// the wrapping or from a missed escape. When the collision is in the DATA every state fails, loud
+// is exactly 1, and the whole retry budget is spent for nothing. That is not assumed - it falls out
+// of the same enumeration, and the records where it happens are counted separately below.
+function withRetries(o, retries){
+  var L = o.loud, A = 0;
+  for (var j = 0; j <= retries; j++) A += Math.pow(L, j);
+  return { attempts: A, ok: o.ok * A, silent: o.silent * A, lost: Math.pow(L, retries + 1) };
+}
+
+function payloadTokens(rec, keys){
+  var t = 0;
+  for (var i = 0; i < keys.length; i++) t += estTokens(rec[keys[i]]);
+  return t;
+}
+
+function runCodec(codec, corpus, cfg){
+  var instrTok = estTokens(codec.instr + corpus[0].keys.join(', '));
+  var ok = 0, silent = 0, lost = 0, attempts = 0, tok = 0, wasted = 0;
+  var dataLoud = 0, slipLoud = 0, firstOk = 0, firstSilent = 0, firstLoud = 0;
+  var outTok = 0, payTok = 0;
+  for (var i = 0; i < corpus.length; i++){
+    var e = corpus[i], rec = e.rec, keys = e.keys;
+    var o = recordOutcome(codec, rec, keys, cfg, false);
+    var r = withRetries(o, cfg.retries);
+    firstOk += o.ok; firstSilent += o.silent; firstLoud += o.loud;
+    ok += r.ok; silent += r.silent; lost += r.lost; attempts += r.attempts;
+    if (e.payTok === undefined) e.payTok = payloadTokens(rec, keys);
+    outTok += o.outTok; payTok += e.payTok;
+    var perCall = instrTok + o.outTok;
+    tok += r.attempts * perCall;
+    if (o.loud >= 0.999999){ dataLoud++; wasted += r.attempts * perCall; }
+    else if (o.loud > 0) slipLoud += o.loud;
+  }
+  var n = corpus.length;
+  return {
+    id: codec.id, label: codec.label, family: codec.family, escapes: codec.escapes,
+    instrTok: instrTok, outTok: outTok / n, payTok: payTok / n, frameTok: (outTok - payTok) / n,
+    firstOk: firstOk / n, firstSilent: firstSilent / n, firstLoud: firstLoud / n,
+    ok: ok / n, silent: silent / n, lost: lost / n,
+    attempts: attempts / n, tok: tok / n,
+    tokPerOk: (ok > 0 ? tok / ok : Infinity),
+    retryYield: (ok - firstOk) / n,
+    deterministicLoud: dataLoud / n, slipLoud: slipLoud / n,
+    wasted: wasted / n, wastedShare: (tok > 0 ? wasted / tok : 0)
+  };
+}
+
+function runAll(cfgIn, seed){
+  var cfg = withDefaults(cfgIn);
+  var corpus = makeCorpus(cfg, seed);
+  var rows = CODECS.map(function(c){ return runCodec(c, corpus, cfg); });
+  var byId = {};
+  rows.forEach(function(r){ byId[r.id] = r; });
+  return { cfg: cfg, corpus: corpus, rows: rows, byId: byId, census: census(corpus) };
+}
+
+// ---------------------------------------------------------------- exact probe 1: one character
+// Parameter-free. For every hazard character and every field position, a record of otherwise clean
+// values gets that character dropped into one value in the most ordinary way possible. The producer
+// is clean and honours the escape. Whatever comes back is what that character does to that codec.
+const PROBE_CHARS = [[',', 'comma'], ['\n', 'newline'], [' | ', 'pipe with spaces'], ['|', 'bare pipe'],
+                     ['### note', 'a ### heading'], ['#', 'a bare #'], ['<b>x</b>', 'an html tag'],
+                     ['</note>', 'the closing tag itself'], ['"', 'a double quote'],
+                     ['\\', 'a backslash'], ['```', 'a code fence'], [':', 'a colon'],
+                     ['', 'a BLANK value']];
+
+function probeRecord(keys, pos, payload){
+  var rec = {};
+  for (var i = 0; i < keys.length; i++) rec[keys[i]] = FIELD_DEFS[i].clean[0];
+  rec[keys[pos]] = payload === '' ? '' : ('aa' + payload + 'bb');
+  return rec;
+}
+
+function probeMatrix(cfg){
+  var c = withDefaults(cfg);
+  var keys = FIELD_DEFS.slice(0, c.nFields).map(function(d){ return d.key; });
+  var out = [];
+  for (var ci = 0; ci < CODECS.length; ci++){
+    var codec = CODECS[ci], row = { id: codec.id, label: codec.label, cells: {} };
+    for (var pi = 0; pi < PROBE_CHARS.length; pi++){
+      var payload = PROBE_CHARS[pi][0], name = PROBE_CHARS[pi][1];
+      var worst = 'ok', anySilent = false, anyLoud = false;
+      for (var pos = 0; pos < keys.length; pos++){
+        var rec = probeRecord(keys, pos, payload);
+        var v = verdictOf(rec, keys, codec.dec(codec.enc(rec, keys), keys));
+        if (v === 'silent') anySilent = true;
+        if (v === 'loud') anyLoud = true;
+      }
+      worst = anySilent ? 'silent' : (anyLoud ? 'loud' : 'ok');
+      row.cells[name] = worst;
+    }
+    out.push(row);
+  }
+  return { keys: keys, rows: out, names: PROBE_CHARS.map(function(p){ return p[1]; }) };
+}
+
+// ---------------------------------------------------------------- exact probe 2: the wrapping
+// Also parameter-free, and it isolates the thing the keying argument gets wrong. The record is
+// entirely clean - not one hazard character in it - and the only variable is what the model wrote
+// AROUND the answer. Prose in front, prose behind, a fence on both sides.
+const WRAP_PROBES = [
+  ['clean', function(t){ return t; }],
+  ['prose in front', function(t){ return PREAMBLE + t; }],
+  ['prose behind', function(t){ return t + POSTAMBLE; }],
+  ['both', function(t){ return PREAMBLE + t + POSTAMBLE; }],
+  ['fenced', function(t){ return '```\n' + t + '\n```'; }],
+  ['fenced + labelled', function(t){ return '```json\n' + t + '\n```'; }]
+];
+
+function wrapMatrix(cfg){
+  var c = withDefaults(cfg);
+  var keys = FIELD_DEFS.slice(0, c.nFields).map(function(d){ return d.key; });
+  var rec = {};
+  for (var i = 0; i < keys.length; i++) rec[keys[i]] = FIELD_DEFS[i].clean[0];
+  var rows = [];
+  for (var ci = 0; ci < CODECS.length; ci++){
+    var codec = CODECS[ci], row = { id: codec.id, label: codec.label, family: codec.family, cells: {} };
+    var body = codec.enc(rec, keys);
+    for (var wi = 0; wi < WRAP_PROBES.length; wi++)
+      row.cells[WRAP_PROBES[wi][0]] = verdictOf(rec, keys, codec.dec(WRAP_PROBES[wi][1](body), keys));
+    rows.push(row);
+  }
+  return { keys: keys, rows: rows, names: WRAP_PROBES.map(function(w){ return w[0]; }) };
+}
+
+// ---------------------------------------------------------------- the exact amplification law
+// A per-field collision probability p becomes a per-record failure of 1 - (1-p)^k. The delimiter
+// does not get worse when you ask for more fields. The record does.
+function amplify(p, k){ return 1 - Math.pow(1 - p, k); }
+
+function sweep(cfgIn, seed, key, values, ids){
+  var out = [];
+  for (var i = 0; i < values.length; i++){
+    var cfg = withDefaults(Object.assign({}, cfgIn));
+    cfg[key] = values[i];
+    var corpus = makeCorpus(cfg, seed);
+    var row = { x: values[i], cells: {} };
+    for (var j = 0; j < ids.length; j++) row.cells[ids[j]] = runCodec(CODEC_BY_ID[ids[j]], corpus, cfg);
+    out.push(row);
+  }
+  return out;
+}
+
+// where does B's frame tax stop being worth paying, measured against A, in tokens per correct record
+function crossover(cfgIn, seed, idA, idB, key, lo, hi, steps){
+  var f = function(x){
+    var cfg = withDefaults(Object.assign({}, cfgIn));
+    cfg[key] = x;
+    var corpus = makeCorpus(cfg, seed);
+    var a = runCodec(CODEC_BY_ID[idA], corpus, cfg), b = runCodec(CODEC_BY_ID[idB], corpus, cfg);
+    var d = a.tokPerOk - b.tokPerOk;
+    return isFinite(d) ? d : 1e9;
+  };
+  var fa = f(lo), fb = f(hi);
+  if ((fa > 0) === (fb > 0)) return null;
+  var a = lo, b = hi;
+  for (var i = 0; i < steps; i++){
+    var m = (a + b) / 2, fm = f(m);
+    if ((fm > 0) === (fa > 0)){ a = m; fa = fm; } else b = m;
+  }
+  return (a + b) / 2;
+}
+
+// one record, every producer state, for the inspector
+function inspect(codecId, corpus, idx, cfgIn){
+  var cfg = withDefaults(cfgIn), c = CODEC_BY_ID[codecId];
+  var e = corpus[idx % corpus.length];
+  return { codec: c, rec: e.rec, keys: e.keys, outcome: recordOutcome(c, e.rec, e.keys, cfg, true) };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- rendering
+const $ = function(id){ return document.getElementById(id); };
+const SEED = 2026;
+const SWEEP_N = 240;
+const SWEEP_STEPS = 16;
+const pc = function(x){ return (100 * x).toFixed(2) + "%"; };
+const pc1 = function(x){ return (100 * x).toFixed(1) + "%"; };
+const esc = function(s){
+  return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+};
+const vis = function(s){
+  if (s === "") return "<span class='dim'>(blank)</span>";
+  return esc(s).replace(/\n/g, "<span class='dim'>\\n</span>");
+};
+const CELL = { ok: "cell-ok", silent: "cell-sil", loud: "cell-loud" };
+const CELLTXT = { ok: "ok", silent: "SILENT", loud: "loud" };
+const cell = function(v){ return "<td class='" + CELL[v] + "'>" + CELLTXT[v] + "</td>"; };
+
+const FAM_PILL = {
+  positional: "<span class='pill p-base'>positional</span>",
+  keyed: "<span class='pill p-key'>keyed</span>"
+};
+
+function cfgFromUI(){
+  return {
+    nFields: +$("sK").value,
+    nRecords: +$("sN").value,
+    hazard: +$("sH").value / 100,
+    empty: +$("sE").value / 100,
+    slip: +$("sS").value / 100,
+    escSlip: +$("sX").value / 100,
+    retries: +$("sR").value
+  };
+}
+function sweepCfg(c){
+  var o = Object.assign({}, c);
+  o.nRecords = Math.min(c.nRecords, SWEEP_N);
+  return o;
+}
+
+// the format picker
+CODECS.forEach(function(c){
+  var o = document.createElement("option");
+  o.value = c.id; o.textContent = c.id + "  \u2014  " + c.label;
+  $("selCodec").appendChild(o);
+});
+$("selCodec").value = "csv";
+
+function renderProbes(c){
+  var W = wrapMatrix(c);
+  var h = "<thead><tr><th>format</th><th></th>" + W.names.map(function(n){
+    return "<th>" + esc(n) + "</th>"; }).join("") + "</tr></thead><tbody>";
+  W.rows.forEach(function(r){
+    h += "<tr><td>" + esc(r.id) + "</td><td style='text-align:left'>" + FAM_PILL[r.family] + "</td>" +
+      W.names.map(function(n){ return cell(r.cells[n]); }).join("") + "</tr>";
+  });
+  $("wrapTbl").innerHTML = h + "</tbody>";
+  var survivors = W.rows.filter(function(r){
+    return W.names.every(function(n){ return r.cells[n] === "ok"; }); });
+  var sil = W.rows.filter(function(r){
+    return W.names.some(function(n){ return r.cells[n] === "silent"; }); });
+  var loudOnly = W.rows.filter(function(r){
+    return W.names.some(function(n){ return r.cells[n] === "loud"; }) &&
+           W.names.every(function(n){ return r.cells[n] !== "silent"; }); });
+  $("wrapNote").innerHTML =
+    "<strong>" + sil.length + " of " + W.rows.length + "</strong> parsers hand back silently wrong " +
+    "data for a record containing not one hazard character &mdash; " +
+    sil.map(function(r){ return "<code class='tok'>" + esc(r.id) + "</code>"; }).join(", ") +
+    ". <strong>" + survivors.length + "</strong> survive all six wrappings (" +
+    survivors.map(function(r){ return "<code class='tok'>" + esc(r.id) + "</code>"; }).join(", ") +
+    ") and " + loudOnly.length + " fail LOUDLY, which is the good outcome. Note the split inside " +
+    "the keyed family: <code class='tok'>hash</code> is fine with prose in FRONT and silently wrong " +
+    "with prose BEHIND, because a <code class='tok'>### key</code> section has no end. The closing " +
+    "tag is what buys the second half, not the key.";
+
+  var P = probeMatrix(c);
+  var h2 = "<thead><tr><th>format</th>" + P.names.map(function(n){
+    return "<th>" + esc(n) + "</th>"; }).join("") + "</tr></thead><tbody>";
+  P.rows.forEach(function(r){
+    h2 += "<tr><td>" + esc(r.id) + "</td>" + P.names.map(function(n){
+      return cell(r.cells[n]); }).join("") + "</tr>";
+  });
+  $("probeTbl").innerHTML = h2 + "</tbody>";
+  var clean = P.rows.filter(function(r){
+    return P.names.every(function(n){ return r.cells[n] === "ok"; }); });
+  $("probeNote").innerHTML =
+    "With a well-behaved producer, <strong>" + clean.length + " of " + P.rows.length +
+    "</strong> formats are clean against every single character &mdash; " +
+    clean.map(function(r){ return "<code class='tok'>" + esc(r.id) + "</code>"; }).join(", ") +
+    ". The whole of raw XML's exposure is one string, <code class='tok'>&lt;/note&gt;</code> " +
+    "inside a value, and the entity escape exists to close exactly that. Compare this table with the " +
+    "one above and the point of the page appears: the formats that are perfect here are not the " +
+    "formats that are perfect there.";
+}
+
+function renderInspector(c, R){
+  var idx = Math.min(+$("sIdx").value, R.corpus.length - 1);
+  $("sIdx").max = R.corpus.length - 1;
+  var I = inspect($("selCodec").value, R.corpus, idx, c);
+  var rh = "<thead><tr><th>field</th><th>the value the model is sending</th><th>chars that matter</th></tr></thead><tbody>";
+  I.keys.forEach(function(k){
+    var v = I.rec[k], marks = [];
+    HAZ_CHARS.forEach(function(hc){ if (v.indexOf(hc[0]) >= 0) marks.push(hc[1]); });
+    if (v === "") marks.push("BLANK");
+    rh += "<tr><td><code class='tok'>" + esc(k) + "</code></td><td style='text-align:left'>" +
+      vis(v) + "</td><td style='text-align:left' class='xs " + (marks.length ? "warn" : "dim") + "'>" +
+      (marks.length ? marks.join(", ") : "none") + "</td></tr>";
+  });
+  $("recTbl").innerHTML = rh + "</tbody>";
+
+  var d = I.outcome.detail;
+  var sh = "<thead><tr><th>escape</th><th>wrapping</th><th>probability</th><th>tokens</th><th>verdict</th></tr></thead><tbody>";
+  d.forEach(function(x, i){
+    sh += "<tr class='" + (x.verdict === "ok" ? "hi" : (x.verdict === "silent" ? "mis" : "amb")) +
+      "'><td>" + (x.escRaw ? "<span class='bad'>skipped</span>" :
+      (I.outcome.escNeeded ? "<span class='ok'>honoured</span>" : "<span class='dim'>not asked</span>")) +
+      "</td><td style='text-align:left'>" + x.wrap + "</td><td>" + x.p.toFixed(4) + "</td><td>" +
+      x.tokens + "</td><td class='" + (x.verdict === "ok" ? "ok" : (x.verdict === "silent" ? "bad" : "warn")) +
+      "'>" + CELLTXT[x.verdict] + "</td></tr>";
+  });
+  $("stateTbl").innerHTML = sh + "</tbody>";
+  var o = I.outcome;
+  $("inspNote").innerHTML = "This record, this format: <span class='ok'>" + pc(o.ok) +
+    " correct</span> &middot; <span class='bad'>" + pc(o.silent) + " silently wrong</span> &middot; " +
+    "<span class='warn'>" + pc(o.loud) + " refused</span>" +
+    (o.loud >= 0.999999 ? " &mdash; <strong>and the loud probability is exactly 1, so this record is " +
+      "lost no matter how many retries you buy.</strong>" : "") +
+    " The exact text of the highest-probability state:";
+  var best = d.slice().sort(function(a, b){ return b.p - a.p; })[0];
+  $("inspText").textContent = best ? best.text : "";
+}
+
+function renderScore(c, R){
+  var rows = R.rows.slice();
+  var minTPO = Math.min.apply(null, rows.map(function(r){
+    return isFinite(r.tokPerOk) ? r.tokPerOk : 1e9; }));
+  var h = "<thead><tr><th>format</th><th></th><th>instr<br>tokens/call</th><th>frame<br>tokens/rec</th>" +
+    "<th>1st try<br>ok</th><th>delivered<br>ok</th><th>SILENTLY<br>wrong</th><th>lost</th>" +
+    "<th>calls per<br>record</th><th>tokens per<br>record</th><th>tokens per<br>CORRECT rec</th>" +
+    "<th>failures<br>in the DATA</th><th>bill spent<br>on nothing</th></tr></thead><tbody>";
+  rows.forEach(function(r){
+    var cls = r.silent > 0.2 ? "mis" : (r.silent === 0 ? "hi" : "");
+    h += "<tr class='" + cls + "'><td><code class='tok'>" + esc(r.id) + "</code></td>" +
+      "<td style='text-align:left' class='xs mut'>" + esc(r.label) + "</td>" +
+      "<td>" + r.instrTok + "</td><td>" + r.frameTok.toFixed(2) + "</td>" +
+      "<td>" + pc(r.firstOk) + "</td><td class='" + (r.ok > 0.99 ? "ok" : "") + "'>" + pc(r.ok) + "</td>" +
+      "<td class='" + (r.silent > 0 ? "bad" : "ok") + "'>" + pc(r.silent) + "</td>" +
+      "<td class='" + (r.lost > 0.01 ? "warn" : "dim") + "'>" + pc(r.lost) + "</td>" +
+      "<td>" + r.attempts.toFixed(2) + "</td><td>" + r.tok.toFixed(1) + "</td>" +
+      "<td class='" + (isFinite(r.tokPerOk) && r.tokPerOk <= minTPO + 0.01 ? "ok" : "") + "'>" +
+      (isFinite(r.tokPerOk) ? r.tokPerOk.toFixed(1) : "&infin;") + "</td>" +
+      "<td class='" + (r.deterministicLoud > 0 ? "warn" : "dim") + "'>" + pc(r.deterministicLoud) + "</td>" +
+      "<td class='" + (r.wastedShare > 0.3 ? "bad" : "dim") + "'>" + pc1(r.wastedShare) + "</td></tr>";
+  });
+  $("scoreTbl").innerHTML = h + "</tbody>";
+
+  var b = R.byId;
+  var cheapest = rows.filter(function(r){ return isFinite(r.tokPerOk); })
+    .sort(function(x, y){ return x.tokPerOk - y.tokPerOk; })[0];
+  var zeroSilent = rows.filter(function(r){ return r.silent === 0; });
+  $("scoreNote").innerHTML =
+    "Payload is <strong>" + rows[0].payTok.toFixed(1) + " tokens</strong> of actual data per record, " +
+    "so XML's frame (" + b.xml.frameTok.toFixed(2) + ") costs more than the values it wraps. " +
+    "The cheapest tokens-per-correct-record on the page is <code class='tok'>" + esc(cheapest.id) +
+    "</code> at " + cheapest.tokPerOk.toFixed(1) + ", and it is " + pc(cheapest.silent) +
+    " silently wrong" + (cheapest.silent > 0.01 ? " &mdash; a scoreboard with only a cost column and an error column would pick it" : "") +
+    ". " + zeroSilent.length + " formats post 0.00% silent corruption (" +
+    zeroSilent.map(function(r){ return "<code class='tok'>" + esc(r.id) + "</code>"; }).join(", ") +
+    "), and the cheapest frame among them belongs to the dumbest parser on the page. " +
+    "Free-versus-paid, straight off the rows: deleting the blank-line filter is worth " +
+    "<strong>" + (100 * (b["nl-strict"].ok - b["nl-loose"].ok)).toFixed(2) + " points</strong> at " +
+    "+0 tokens; the entity escape on XML is worth <strong>" +
+    (100 * (b["xml-esc"].ok - b.xml.ok)).toFixed(2) + " points</strong> at +" +
+    (b["xml-esc"].instrTok - b.xml.instrTok) + " tokens on every call.";
+}
+
+function renderCensus(c, R){
+  var C = R.census, k = c.nFields;
+  var names = Object.keys(C.rec).concat(["a BLANK field"]);
+  var h = "<thead><tr><th>character</th><th>per field</th><th>per record</th>" +
+    "<th>1&minus;(1&minus;p)<sup>" + k + "</sup></th><th>gap</th></tr></thead><tbody>";
+  names.forEach(function(n){
+    var pf, pr;
+    if (n === "a BLANK field"){ pf = C.empties / C.fields; pr = C.emptyRec / C.nRec; }
+    else { pf = C.per[n] / C.fields; pr = C.rec[n] / C.nRec; }
+    var law = amplify(pf, k);
+    h += "<tr><td>" + esc(n) + "</td><td>" + pc(pf) + "</td><td class='b'>" + pc(pr) + "</td><td>" +
+      pc(law) + "</td><td class='xs dim'>" + (100 * (pr - law)).toFixed(2) + "</td></tr>";
+  });
+  $("censusTbl").innerHTML = h + "</tbody>";
+  var comma = C.per["comma"] / C.fields;
+  $("censusNote").innerHTML = "The comma is in <strong>" + pc(comma) + "</strong> of fields and " +
+    "therefore <strong>" + pc(C.rec["comma"] / C.nRec) + "</strong> of " + k + "-field records. " +
+    "That single line is the whole case against comma-separated output, and it is arithmetic you can " +
+    "run on your own values with one grep. The gap column is small and signed: fields are not quite " +
+    "independent, because different fields carry different hazard pools.";
+}
+
+let slowTimer = null;
+function renderSlow(c){
+  var sc = c;                      // the sweep panels use the live corpus
+  var IDS = ["nl-strict", "nl-last", "pipe-esc", "hash", "xml", "json-strip"];
+  var head = function(ids){
+    return "<thead><tr><th></th>" + ids.map(function(id){
+      return "<th>" + esc(id) + "<br><span class='dim'>ok / tok per ok</span></th>"; }).join("") +
+      "</tr></thead><tbody>";
+  };
+  // --- field count
+  var ks = [2, 3, 4, 6, 8, 12];
+  var h = head(IDS);
+  sweep(sc, SEED, "nFields", ks, IDS).forEach(function(row){
+    var best = IDS.map(function(id){ return row.cells[id].tokPerOk; })
+      .filter(isFinite).sort(function(a, b){ return a - b; })[0];
+    h += "<tr" + (row.x === c.nFields ? " class='hi'" : "") + "><td class='b'>k = " + row.x + "</td>" +
+      IDS.map(function(id){
+        var r = row.cells[id];
+        return "<td>" + pc1(r.ok) + " / <span class='" +
+          (r.tokPerOk <= best + 0.01 ? "ok" : "") + "'>" +
+          (isFinite(r.tokPerOk) ? r.tokPerOk.toFixed(0) : "&infin;") + "</span></td>";
+      }).join("") + "</tr>";
+  });
+  $("kTbl").innerHTML = h + "</tbody>";
+  $("kNote").innerHTML = "The cheapest column at k = 2 and k = 3 belongs to " +
+    "<code class='tok'>nl-last</code>, which is wrong about a third of the time. From k = 4 on, " +
+    "<code class='tok'>json-strip</code> takes it. <code class='tok'>nl-strict</code>'s cost per " +
+    "correct record grows roughly ten-fold across this range while the framed formats grow with the " +
+    "payload &mdash; because its failure rate is what is growing, not its frame.";
+
+  // --- retries
+  var RIDS = ["nl-strict", "csv", "json", "json-strip", "xml"];
+  var rh = "<thead><tr><th>retry budget</th>" + RIDS.map(function(id){
+    return "<th>" + esc(id) + "<br><span class='dim'>ok / tokens / wasted</span></th>"; }).join("") +
+    "</tr></thead><tbody>";
+  sweep(sc, SEED, "retries", [0, 1, 2, 4, 8], RIDS).forEach(function(row){
+    rh += "<tr" + (row.x === c.retries ? " class='hi'" : "") + "><td class='b'>r = " + row.x + "</td>" +
+      RIDS.map(function(id){
+        var r = row.cells[id];
+        return "<td>" + pc1(r.ok) + " / " + r.tok.toFixed(0) + " / <span class='" +
+          (r.wastedShare > 0.3 ? "bad" : "dim") + "'>" + pc1(r.wastedShare) + "</span></td>";
+      }).join("") + "</tr>";
+  });
+  $("retryTbl").innerHTML = rh + "</tbody>";
+  var R0 = sweep(sc, SEED, "retries", [0, 8], ["nl-strict", "json", "csv"]);
+  var nlA = R0[0].cells["nl-strict"], nlB = R0[1].cells["nl-strict"];
+  var jA = R0[0].cells.json, jB = R0[1].cells.json, cA = R0[0].cells.csv, cB = R0[1].cells.csv;
+  $("retryNote").innerHTML = "Across the whole budget, JSON goes " + pc1(jA.ok) + " &rarr; <strong>" +
+    pc1(jB.ok) + "</strong> for " + jA.tok.toFixed(0) + " &rarr; " + jB.tok.toFixed(0) +
+    " tokens and 0.00% waste, because all of its failures are the wrapper. The newline split goes " +
+    pc1(nlA.ok) + " &rarr; " + pc1(nlB.ok) + " &mdash; a ceiling of " +
+    (100 * (nlB.ok - nlA.ok)).toFixed(2) + " points &mdash; for " + nlA.tok.toFixed(0) + " &rarr; " +
+    nlB.tok.toFixed(0) + " tokens, ending at " + pc1(nlB.wastedShare) + " waste. And CSV does not " +
+    "move at all: <strong>" + pc1(cA.ok) + " &rarr; " + pc1(cB.ok) + "</strong> while the bill goes " +
+    cA.tok.toFixed(0) + " &rarr; " + cB.tok.toFixed(0) + ". Its commas are in the data, and the " +
+    "model will send them again.";
+
+  // --- slip
+  var sh = "<thead><tr><th>the model wraps</th>" + IDS.map(function(id){
+    return "<th>" + esc(id) + "<br><span class='dim'>ok / silent</span></th>"; }).join("") +
+    "</tr></thead><tbody>";
+  sweep(sc, SEED, "slip", [0, 0.04, 0.08, 0.15, 0.25, 0.4], IDS).forEach(function(row){
+    sh += "<tr" + (Math.abs(row.x - c.slip) < 0.005 ? " class='hi'" : "") + "><td class='b'>" +
+      row.x.toFixed(2) + "</td>" + IDS.map(function(id){
+        var r = row.cells[id];
+        return "<td>" + pc1(r.ok) + " / <span class='" + (r.silent > 0.01 ? "bad" : "dim") + "'>" +
+          pc1(r.silent) + "</span></td>";
+      }).join("") + "</tr>";
+  });
+  $("slipTbl").innerHTML = sh + "</tbody>";
+  var S0 = sweep(sc, SEED, "slip", [0], IDS)[0].cells;
+  $("slipNote").innerHTML = "At zero chatter the escaped pipe is <strong>" + pc(S0["pipe-esc"].ok) +
+    "</strong> correct and the <code class='tok'>###</code> headings are " + pc(S0.hash.ok) +
+    " &mdash; the escape convention does its job completely. Every point either of them loses in " +
+    "the rows below is the greeting, not the data. <code class='tok'>nl-last</code> is the " +
+    "counter-example that proves the column means something: it is already " +
+    pc(S0["nl-last"].silent) + " silently wrong at zero chatter, because its corruption really is " +
+    "in the values. And XML and stripped JSON are flat all the way down.";
+
+  clearTimeout(crossTimer);
+  crossTimer = setTimeout(function(){ renderCross(c); }, 0);
+}
+
+// The bisections go in a second deferred pass on a fixed slice: one crossover is dozens of full
+// runs, and it must not hold up the tables above it.
+let crossTimer = null;
+function renderCross(c){
+  var sc = sweepCfg(c);
+  var PAIRS = [
+    ["pipe-esc", "xml", "slip", 0, 0.9, "how often the model wraps its answer"],
+    ["pipe-esc", "json-strip", "slip", 0, 0.9, "how often the model wraps its answer"],
+    ["pipe", "json-strip", "slip", 0, 0.9, "how often the model wraps its answer"],
+    ["nl-strict", "xml", "hazard", 0, 1, "how often a field holds a hazard value"],
+    ["nl-strict", "json-strip", "hazard", 0, 1, "how often a field holds a hazard value"],
+    ["json-strip", "xml", "hazard", 0, 1, "how often a field holds a hazard value"],
+    ["nl-strict", "json-strip", "empty", 0, 0.4, "how often a field is blank"]
+  ];
+  var ch = "<thead><tr><th>cheap frame</th><th>expensive frame</th><th>swept</th>" +
+    "<th>break-even</th></tr></thead><tbody>";
+  PAIRS.forEach(function(p){
+    var x = crossover(sc, SEED, p[0], p[1], p[2], p[3], p[4], SWEEP_STEPS);
+    var verdict;
+    if (x === null){
+      // no crossing means one of them is the better buy over the whole range - say which
+      var mid = Object.assign({}, sc); mid[p[2]] = (p[3] + p[4]) / 2;
+      var cor = makeCorpus(withDefaults(mid), SEED);
+      var ta = runCodec(CODEC_BY_ID[p[0]], cor, withDefaults(mid)).tokPerOk;
+      var tb = runCodec(CODEC_BY_ID[p[1]], cor, withDefaults(mid)).tokPerOk;
+      verdict = "<span class='warn'>no crossing</span> &mdash; <code class='tok'>" +
+        esc(ta < tb ? p[0] : p[1]) + "</code> is cheaper per correct record over the whole range";
+    } else verdict = "<span class='b'>" + pc(x) + "</span>";
+    ch += "<tr><td><code class='tok'>" + esc(p[0]) + "</code></td><td><code class='tok'>" +
+      esc(p[1]) + "</code></td><td style='text-align:left' class='xs mut'>" + esc(p[5]) +
+      "</td><td>" + verdict + "</td></tr>";
+  });
+  $("crossTbl").innerHTML = ch + "</tbody>";
+  $("swN").textContent = sc.nRecords;
+}
+
+function render(){
+  var c = cfgFromUI();
+  $("vK").textContent = c.nFields;
+  $("vN").textContent = c.nRecords;
+  $("vH").textContent = c.hazard.toFixed(2);
+  $("vE").textContent = c.empty.toFixed(2);
+  $("vS").textContent = c.slip.toFixed(2);
+  $("vX").textContent = c.escSlip.toFixed(2);
+  $("vR").textContent = c.retries;
+  var R = runAll(c, SEED);
+  renderProbes(c);
+  renderInspector(c, R);
+  renderScore(c, R);
+  renderCensus(c, R);
+  clearTimeout(slowTimer);
+  slowTimer = setTimeout(function(){ renderSlow(c); }, 0);
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selfTest(){
+  var lines = [], pass = 0, fail = 0;
+  var ok = function(cond, label){ if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } };
+  var c = withDefaults({});
+  var R = runAll({}, SEED), B = R.byId;
+
+  // 1. the rng
+  {
+    var a = mulberry32(7), b = mulberry32(7), d = mulberry32(8), same = true, diff = false;
+    for (var i = 0; i < 400; i++){
+      var x = a(), y = b(), z = d();
+      if (x !== y) same = false;
+      if (x !== z) diff = true;
+      ok(x >= 0 && x < 1, "mulberry32 left the unit interval");
+    }
+    ok(same, "mulberry32 is not deterministic for a fixed seed");
+    ok(diff, "two seeds produced the same stream");
+  }
+
+  // 2. the token estimator and the wrap identity it relies on
+  {
+    ok(estTokens("") === 0, "the empty string is not zero tokens");
+    ok(estTokens("###") === 1, "### is not one token");
+    ok(estTokens("```") === 1, "a fence is not one token");
+    ok(estTokens("</") === 1, "a closing bracket is not one token");
+    var mono = true, prev = -1;
+    var acc = "";
+    for (var i2 = 0; i2 < 300; i2++){
+      acc += "ab, ";
+      var t = estTokens(acc);
+      if (t < prev) mono = false;
+      prev = t;
+    }
+    ok(mono, "estTokens is not monotonic in the length of the string");
+    // additivity of the wrap, over the whole corpus and every codec
+    var mism = 0, checked = 0;
+    for (var ci = 0; ci < CODECS.length; ci++){
+      for (var ri = 0; ri < 60; ri++){
+        var e = R.corpus[ri];
+        var o = recordOutcome(CODECS[ci], e.rec, e.keys, c, true);
+        for (var di = 0; di < o.detail.length; di++){
+          checked++;
+          if (estTokens(o.detail[di].text) !== o.detail[di].tokens) mism++;
+        }
+      }
+    }
+    ok(mism === 0, "the wrap-additivity identity failed on " + mism + " of " + checked + " texts");
+    ok(WRAP_TOK.clean === 0, "a clean answer costs wrapping tokens");
+    ok(WRAP_TOK.preamble > 0 && WRAP_TOK.fence > 0, "a wrapper is free");
+  }
+
+  // 3. escaping is a round trip, and the CSV reader is a real CSV reader
+  {
+    var rt = 0;
+    for (var i3 = 0; i3 < R.corpus.length; i3++){
+      var e2 = R.corpus[i3];
+      for (var ki = 0; ki < e2.keys.length; ki++){
+        var v = e2.rec[e2.keys[ki]];
+        if (bsUnescape(bsEscape(v, "|")) !== v) rt++;
+        if (xmlUnescape(xmlEscape(v)) !== v) rt++;
+      }
+    }
+    ok(rt === 0, rt + " values did not survive an escape/un-escape round trip");
+    ok(JSON.stringify(csvRead('a,b,c')) === JSON.stringify(["a", "b", "c"]), "csvRead broke a plain row");
+    ok(JSON.stringify(csvRead('"a,b",c')) === JSON.stringify(["a,b", "c"]), "csvRead broke a quoted comma");
+    ok(JSON.stringify(csvRead('"a""b",c')) === JSON.stringify(['a"b', "c"]), "csvRead broke a doubled quote");
+    ok(JSON.stringify(csvRead('a,,c')) === JSON.stringify(["a", "", "c"]), "csvRead dropped an empty field");
+    ok(csvRead('"a,b') === null, "csvRead accepted an unterminated quote");
+  }
+
+  // 4. every codec is LOSSLESS on clean data - the floor every other number rests on
+  {
+    var bad = 0, cleanRecs = 0;
+    for (var i4 = 0; i4 < R.corpus.length; i4++){
+      var e3 = R.corpus[i4], dirty = false;
+      for (var k4 = 0; k4 < e3.keys.length; k4++){
+        var v4 = e3.rec[e3.keys[k4]];
+        if (v4 === "") dirty = true;
+        for (var h4 = 0; h4 < HAZ_CHARS.length; h4++)
+          if (v4.indexOf(HAZ_CHARS[h4][0]) >= 0) dirty = true;
+      }
+      if (dirty) continue;
+      cleanRecs++;
+      for (var ci4 = 0; ci4 < CODECS.length; ci4++){
+        var cd = CODECS[ci4];
+        if (verdictOf(e3.rec, e3.keys, cd.dec(cd.enc(e3.rec, e3.keys), e3.keys)) !== "ok") bad++;
+      }
+    }
+    ok(cleanRecs > 0, "the corpus contains no hazard-free record to test losslessness on");
+    ok(bad === 0, bad + " codec/record pairs were not lossless on hazard-free data");
+  }
+
+  // 5. the outcome distribution is a distribution, for every record and every codec
+  {
+    var off = 0;
+    for (var ci5 = 0; ci5 < CODECS.length; ci5++){
+      for (var i5 = 0; i5 < 120; i5++){
+        var e5 = R.corpus[i5];
+        var o5 = recordOutcome(CODECS[ci5], e5.rec, e5.keys, c, false);
+        if (Math.abs(o5.ok + o5.silent + o5.loud - 1) > 1e-9) off++;
+      }
+    }
+    ok(off === 0, off + " record outcomes did not sum to 1");
+  }
+
+  // 6. a deterministic failure is immune to any retry budget, and that is arithmetic
+  {
+    var o6 = { ok: 0, silent: 0, loud: 1 };
+    for (var r6 = 0; r6 <= 8; r6++){
+      var w = withRetries(o6, r6);
+      ok(w.ok === 0 && w.lost === 1, "a retry budget of " + r6 + " rescued a certain failure");
+      ok(Math.abs(w.attempts - (r6 + 1)) < 1e-9, "a certain failure did not consume the whole budget");
+    }
+    var o7 = { ok: 0.9, silent: 0, loud: 0.1 };
+    ok(Math.abs(withRetries(o7, 0).attempts - 1) < 1e-9, "a zero budget spent more than one call");
+    ok(withRetries(o7, 3).ok > withRetries(o7, 0).ok, "retries did not help a stochastic failure");
+  }
+
+  // 7. the two probe matrices, cell by cell on the claims the prose makes
+  {
+    var W = wrapMatrix({}), P = probeMatrix({});
+    var byId = {}; W.rows.forEach(function(r){ byId[r.id] = r; });
+    ok(W.names.every(function(n){ return byId.xml.cells[n] === "ok"; }),
+       "XML did not survive every wrapping");
+    ok(W.names.every(function(n){ return byId["json-strip"].cells[n] === "ok"; }),
+       "stripped JSON did not survive every wrapping");
+    ok(byId.hash.cells["prose in front"] === "ok", "a keyed format was hurt by a preamble");
+    ok(byId.hash.cells["prose behind"] === "silent",
+       "the ### heading survived a postamble, so the closing-tag claim is wrong");
+    ok(byId["hash-strict"].cells["prose behind"] === "silent",
+       "the key check saw the postamble it cannot see");
+    ok(byId["pipe-esc"].cells["prose in front"] === "silent",
+       "the escaped pipe survived a preamble");
+    ok(byId["csv-rfc"].cells["prose in front"] === "silent", "RFC 4180 survived a preamble");
+    ok(byId["nl-strict"].cells["prose in front"] === "loud",
+       "the newline count check did not fail loudly on a preamble");
+    ok(byId.json.cells.fenced === "loud", "raw JSON.parse accepted a fence");
+    var silentCount = W.rows.filter(function(r){
+      return W.names.some(function(n){ return r.cells[n] === "silent"; }); }).length;
+    ok(silentCount === 8, "the wrapping probe silently corrupts " + silentCount + " formats, not 8");
+    var preSil = W.rows.filter(function(r){ return r.cells["prose in front"] === "silent"; }).length;
+    ok(preSil === 5, "a bare greeting silently corrupts " + preSil + " formats, not 5");
+    var allSix = W.rows.filter(function(r){
+      return W.names.every(function(n){ return r.cells[n] === "ok"; }); });
+    ok(allSix.length === 3, allSix.length + " formats survive all six wrappings, not 3");
+    ok(allSix.map(function(r){ return r.id; }).join(",") === "xml,xml-esc,json-strip",
+       "the three survivors are not xml / xml-esc / json-strip");
+    var loudOnly = W.rows.filter(function(r){
+      return W.names.every(function(n){ return r.cells[n] !== "silent"; }) &&
+             W.names.some(function(n){ return r.cells[n] === "loud"; }); });
+    ok(loudOnly.map(function(r){ return r.id; }).join(",") === "nl-loose,nl-strict,json",
+       "the formats that only ever fail LOUDLY are not the two newline splits and raw JSON");
+    var pClean = P.rows.filter(function(r){
+      return P.names.every(function(n){ return r.cells[n] === "ok"; }); }).length;
+    ok(pClean === 7, pClean + " formats are character-clean, not 7");
+    // the closing-tag result is a property of the syntax, so it must hold at every field count
+    for (var k7 = 2; k7 <= 12; k7++){
+      var wk = {};
+      wrapMatrix({ nFields: k7 }).rows.forEach(function(r){ wk[r.id] = r.cells; });
+      ok(wk.xml["prose behind"] === "ok", "the closing tag stops working at " + k7 + " fields");
+      ok(wk.hash["prose behind"] === "silent", "the ### heading survives a postamble at " + k7 + " fields");
+      ok(wk.hash["prose in front"] === "ok", "keying stops absorbing a greeting at " + k7 + " fields");
+      ok(wk["nl-strict"]["prose in front"] === "loud",
+         "the count check stops failing loudly at " + k7 + " fields");
+    }
+    var pById = {}; P.rows.forEach(function(r){ pById[r.id] = r; });
+    ok(pById.xml.cells["the closing tag itself"] === "silent",
+       "raw XML was not broken by its own closing tag");
+    ok(pById["xml-esc"].cells["the closing tag itself"] === "ok",
+       "the entity escape did not close the one hole it exists for");
+    ok(pById.xml.cells["an html tag"] === "ok", "raw XML was broken by an unrelated tag");
+    ok(pById["nl-loose"].cells["a BLANK value"] === "loud",
+       "the blank-dropping parser survived a blank value");
+    ok(pById["nl-strict"].cells["a BLANK value"] === "ok",
+       "the count check could not handle a blank value");
+    ok(pById["csv-fold"].cells.comma === "silent", "fold-the-extras was not silently wrong on a comma");
+    ok(pById.csv.cells.comma === "loud", "plain CSV did not fail loudly on a comma");
+    ok(pById["pipe-esc"].cells["pipe with spaces"] === "ok", "the pipe escape did not hold");
+    ok(pById["json-strip"].cells["a code fence"] === "ok",
+       "the fence-strip broke a value that contains a fence");
+  }
+
+  // 8. the headline numbers, recomputed
+  {
+    ok(B.xml.ok === 1 && B.xml.silent === 0, "XML is no longer exact");
+    ok(B["xml-esc"].ok - B.xml.ok === 0, "the entity escape now buys something");
+    ok(B["xml-esc"].instrTok - B.xml.instrTok === 22,
+       "the entity escape no longer costs 22 instruction tokens");
+    ok(B["nl-strict"].silent === 0, "the newline count check now corrupts silently");
+    ok(B["nl-strict"].ok - B["nl-loose"].ok > 0.25, "deleting the blank filter stopped paying");
+    ok(B.csv.retryYield === 0, "CSV retries now recover something");
+    ok(B["pipe-esc"].silent > B.pipe.silent, "the pipe escape no longer adds silent corruption");
+    ok(B["json-strip"].tokPerOk < B.json.tokPerOk, "the free fence-strip stopped being free");
+    ok(B["json-strip"].tokPerOk < B.xml.tokPerOk, "XML is now cheaper per correct record than JSON");
+    ok(B.json.silent === 0 && B["json-strip"].silent === 0, "JSON found a way to be silently wrong");
+    ok(B["nl-last"].lost === 0 && B["nl-last"].silent > 0.3,
+       "keep-the-last-k stopped trading loud failures for silent ones");
+    ok(B["csv-fold"].lost === 0 && B["csv-fold"].silent > 0.3,
+       "fold-the-extras stopped trading loud failures for silent ones");
+    ok(B["hash-strict"].silent < B.hash.silent, "the free key check stopped helping");
+    ok(B["hash-strict"].silent > 0.05, "the key check now sees the postamble");
+    ok(B.xml.frameTok > B.json.frameTok && B.json.frameTok > B["nl-strict"].frameTok,
+       "the frame ordering xml > json > newline broke");
+    ok(B.json.instrTok < B["pipe-esc"].instrTok,
+       "JSON's instruction is no longer cheaper than a bespoke escape rule");
+  }
+
+  // 9. the escape convention solves the data and not the wrapper
+  {
+    var noSlip = runAll({ slip: 0 }, SEED).byId;
+    ok(noSlip["pipe-esc"].ok > 0.99, "with no wrapping the escaped pipe is not near-perfect");
+    ok(noSlip["pipe-esc"].ok - B["pipe-esc"].ok > 0.05,
+       "the wrapping is not what the escaped pipe is losing to");
+    ok(noSlip["nl-last"].silent > 0.3, "keep-the-last-k's corruption is not in the data after all");
+    ok(noSlip.xml.ok === 1 && noSlip["json-strip"].ok === B["json-strip"].ok,
+       "the wrapping-immune formats moved when the wrapping was removed");
+  }
+
+  // 10. the amplification law, and monotonicity in the field count
+  {
+    var C = R.census;
+    var names = Object.keys(C.rec), worst = 0;
+    names.forEach(function(n){
+      var pf = C.per[n] / C.fields, pr = C.rec[n] / C.nRec;
+      worst = Math.max(worst, Math.abs(pr - amplify(pf, c.nFields)));
+    });
+    ok(worst < 0.02, "the amplification law is off by " + (100 * worst).toFixed(2) + " points");
+    ok(amplify(0, 5) === 0 && Math.abs(amplify(1, 5) - 1) < 1e-12, "amplify broke at its endpoints");
+    for (var k10 = 1; k10 < 12; k10++)
+      ok(amplify(0.1, k10 + 1) > amplify(0.1, k10), "amplify is not increasing in k");
+  }
+
+  // 11. seed stability of the claims that matter
+  {
+    [7, 31, 999, 12345].forEach(function(s){
+      var b = runAll({}, s).byId;
+      ok(b.xml.ok === 1, "XML is not exact on seed " + s);
+      ok(b["nl-strict"].silent === 0, "the count check corrupts silently on seed " + s);
+      ok(b.csv.retryYield === 0, "CSV retries recover something on seed " + s);
+      ok(b["xml-esc"].ok - b.xml.ok === 0, "the entity escape buys something on seed " + s);
+      ok(b["json-strip"].tokPerOk < b.xml.tokPerOk, "XML got cheaper than JSON on seed " + s);
+      ok(b["nl-strict"].ok - b["nl-loose"].ok > 0.25, "the blank filter stopped mattering on seed " + s);
+    });
+  }
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + pass + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  probe 1 (parameter-free): a hazard-free record, and 5 of 14 parsers are silently corrupted by",
+    "           a bare greeting, 8 of 14 by some ordinary wrapping; xml / xml-esc / json-strip take all six",
+    "  probe 2 (parameter-free): raw XML's whole exposure is the literal string </note>",
+    "  free    : delete the blank-line filter  ->  " + pc(B["nl-loose"].ok) + " to " +
+      pc(B["nl-strict"].ok) + " delivered, " + pc(B["nl-loose"].silent) + " to " +
+      pc(B["nl-strict"].silent) + " silent, +0 tokens",
+    "  free    : strip the fence before JSON.parse  ->  " + pc(B.json.firstOk) + " to " +
+      pc(B["json-strip"].firstOk) + " first try, " + B.json.tokPerOk.toFixed(1) + " to " +
+      B["json-strip"].tokPerOk.toFixed(1) + " tokens per correct record",
+    "  paid    : escape the pipe  ->  +" + (B["pipe-esc"].instrTok - B.pipe.instrTok) +
+      " instruction tokens, +" + (B["pipe-esc"].frameTok - B.pipe.frameTok).toFixed(2) +
+      " frame, +" + (100 * (B["pipe-esc"].ok - B.pipe.ok)).toFixed(2) + " points delivered, +" +
+      (100 * (B["pipe-esc"].silent - B.pipe.silent)).toFixed(2) + " points SILENT",
+    "  paid    : entity-escape XML  ->  +" + (B["xml-esc"].instrTok - B.xml.instrTok) +
+      " instruction tokens on every call, " +
+      (100 * (B["xml-esc"].ok - B.xml.ok)).toFixed(2) + " points",
+    "  retries : csv " + pc(B.csv.wastedShare) + " of the bill for " +
+      (100 * B.csv.retryYield).toFixed(3) + " points   vs   json 0.00% for " +
+      (100 * B.json.retryYield).toFixed(2) + " points",
+    "  frame   : xml " + B.xml.frameTok.toFixed(2) + "  json " + B.json.frameTok.toFixed(2) +
+      "  hash " + B.hash.frameTok.toFixed(2) + "  newline " + B["nl-strict"].frameTok.toFixed(2) +
+      "  on a payload of " + B.xml.payTok.toFixed(1),
+    "  danger  : nl-last " + pc(B["nl-last"].silent) + " silent and csv-fold " +
+      pc(B["csv-fold"].silent) + " silent, both with 0.00% loud failures"
+  ])).join("\n");
+}
+
+["sK", "sN", "sH", "sE", "sS", "sX", "sR", "sIdx"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+});
+$("selCodec").addEventListener("change", scheduleRender);
+let pending = null;
+function scheduleRender(){ clearTimeout(pending); pending = setTimeout(render, 140); }
+render();
+selfTest();
+</script>
+</body>
+</html>
