@@ -1,0 +1,1684 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 71 — Prompt caching</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .teal { color:#0f766e; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#0d9488; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f0fdfa; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#e0e7ff; color:#3730a3; }
+  .cell-ok { background:#dcfce7; color:#166534; font-weight:800; }
+  .cell-sil { background:#fee2e2; color:#991b1b; font-weight:800; }
+  .cell-loud { background:#fef3c7; color:#92400e; font-weight:800; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw teal mb2">PROMPTFROMZERO · DAY 71</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      💾 Prompt caching — everyone quotes the discount (a cache read is a tenth of the price) and
+      nobody quotes the surcharge, the floor, the window, or the fact that the one-line version of
+      the feature is a pure tax on one of the two most common workload shapes. So this page builds
+      the mechanism instead of describing it: a byte-prefix matcher over an ordered block list, a
+      TTL clock, the published price schedule and the four published minimum-prefix tiers, run
+      forward over deterministic traces. The centrepiece needs no parameters at all — take one
+      <strong>14-token</strong> line, <code class="tok">Current date: …</code>, which is
+      <strong>0.22%</strong> of a 6,324-token prompt, and move it through the eight slots of that
+      prompt in turn. The bill takes <strong>two</strong> values, not eight: slots 0–5 are
+      <em>bit-identical</em> at <strong>1.245×</strong> with a <strong>0.00%</strong> hit rate, slots
+      6–7 are bit-identical at <strong>0.157×</strong>. Note the direction of the first number —
+      above 1.000, so caching a badly-ordered prompt costs <em>more</em> than not caching it.
+      🔴 Then the traps, each of which returns HTTP 200: top-level auto-caching on a shared-prefix
+      workload scores <strong>0.00%</strong> and bills <strong>1.250×</strong>; past the TTL the bill
+      is <strong>1.245× forever</strong> at a 0.00% hit rate while <em>under</em> the minimum prefix
+      the same 0.00% costs exactly <strong>1.000×</strong> — two silent zeros with opposite bills;
+      an agent turn appending <strong>21</strong> blocks falls off the lookback window and re-reads
+      the whole conversation at full price, which one extra array entry and <strong>zero tokens</strong>
+      fixes; and <strong>32</strong> concurrent identical prefixes pay <strong>8.173×</strong> the
+      staggered bill. 🔴 The claim I built the page to make died: four breakpoints spread "to be
+      safe" do not tie two well-placed ones, they lose to <em>one</em> — <strong>0.357×</strong>
+      against <strong>0.155×</strong>. Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">🔬 MEASURE</button>
+      <button data-tab="understand">🧠 UNDERSTAND</button>
+      <button data-tab="build">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">calls in the trace
+            <span id="vCalls" class="b" style="float:right">30</span>
+            <input id="sCalls" type="range" min="2" max="120" value="30"></label>
+          <label class="sl">seconds between calls
+            <span id="vGap" class="b" style="float:right">45</span>
+            <input id="sGap" type="range" min="1" max="900" value="45"></label>
+          <label class="sl">retrieved reference, tokens
+            <span id="vDoc" class="b" style="float:right">900</span>
+            <input id="sDoc" type="range" min="0" max="4000" step="50" value="900"></label>
+          <label class="sl">blocks appended per agent turn
+            <span id="vBpt" class="b" style="float:right">2</span>
+            <input id="sBpt" type="range" min="1" max="40" value="2"></label>
+          <label class="sl">boolean flags gating system sections
+            <span id="vFlag" class="b" style="float:right">1</span>
+            <input id="sFlag" type="range" min="0" max="6" value="1"></label>
+          <label class="sl">calls per user in the tenant trace
+            <span id="vPer" class="b" style="float:right">6</span>
+            <input id="sPer" type="range" min="1" max="60" value="6"></label>
+        </div>
+        <div class="flex g4 wrapf mt3">
+          <label class="xs mut">cache TTL <select id="selTTL">
+            <option value="5m" selected>5m &mdash; write &times;1.25</option>
+            <option value="1h">1h &mdash; write &times;2.00</option></select></label>
+          <label class="xs mut">minimum cacheable prefix <select id="selMin">
+            <option value="512">512</option><option value="1024" selected>1024</option>
+            <option value="2048">2048</option><option value="4096">4096</option></select></label>
+          <label class="xs mut">lookback window, blocks <select id="selLook">
+            <option value="10">10</option><option value="20" selected>20</option>
+            <option value="40">40</option></select></label>
+        </div>
+        <p class="note mt3">
+          Only three numbers on this page are <em>declared</em> rather than derived, and all three
+          are published constants of the feature rather than guesses about a model: the read
+          multiplier <strong>0.10</strong>, the write multipliers <strong>1.25</strong> (5&nbsp;minute)
+          and <strong>2.00</strong> (1&nbsp;hour), and the block lookback window, whose exact
+          off-by-one is a reading — the <em>existence</em> and <em>position</em> of the cliff it
+          causes are not. The four minimum-prefix tiers in the dropdown are the four published
+          ones. Everything else — every hit rate, every bill, every ratio — is the prefix matcher
+          run forward over a trace, so a <span class="ok">0.00%</span> here means zero and not
+          "none seen".
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; ONE LINE, EIGHT SLOTS &mdash; exact and parameter-free</p>
+        <p class="sm mut2 mb3">The same prompt every time. The same breakpoint every time. The only
+          thing that moves is where a 14-token <code class="tok">Current date:</code> line sits.
+          Two placements are shown: the one a person writes once by hand and never revisits
+          (<span class="pill p-paid">fixed</span> &mdash; <code class="tok">cache_control</code> attached
+          to a specific block), and the one three lines of code can do
+          (<span class="pill p-free">adaptive</span> &mdash; put it on the last block that did not
+          change since the previous call).</p>
+        <div class="scroll"><table class="num" id="posTbl"></table></div>
+        <p class="sm mt3" id="posNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 2 &middot; THE AUDIT CHECKLIST, ENUMERATED &mdash; all 16 subsets</p>
+        <p class="sm mut2 mb3">Four defects every caching guide lists, in the same breath, as things
+          to remove from your prefix. Every subset of them is run, so the question "what is fixing
+          this one worth?" is answered for all sixteen states rather than asserted for one.</p>
+        <div class="scroll"><table class="num" id="subTbl"></table></div>
+        <p class="sm mt3" id="subNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">AND THE FOURTH DEFECT IS NOT LIKE THE OTHER THREE</p>
+          <p class="sm mut2 mb3">A conditional system section does not zero your cache. It
+            <em>divides</em> it, into 2<sup>F</sup> separate entries, each of which has to be
+            written before it can be read.</p>
+          <div class="scroll"><table class="num" id="flagTbl"></table></div>
+          <p class="note mt2" id="flagNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE FLOOR &mdash; four published minimums, one prompt</p>
+          <p class="sm mut2 mb3">Below the minimum, nothing is cached and nothing says so:
+            <code class="tok">cache_creation_input_tokens</code> comes back 0 and the request
+            succeeds. The tiers are not monotonic across model generations.</p>
+          <div class="scroll"><table class="num" id="floorTbl"></table></div>
+          <p class="note mt2" id="floorNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="flex between baseline wrapf g2 mb3">
+          <p class="xs bb tw2 mut">FIVE BREAKPOINT SCHEMES, TWO WORKLOADS, TWO ORDERINGS</p>
+          <label class="xs mut">workload <select id="selWl">
+            <option value="repeat" selected>shared prefix, new question each call</option>
+            <option value="convo">one conversation, growing</option></select></label>
+        </div>
+        <p class="sm mut2 mb3">The costs nobody prints beside the discount: what the scheme
+          <em>wrote</em>, and what it billed against writing nothing at all. A ratio above 1.000
+          means turning caching on made this workload more expensive.</p>
+        <div class="scroll"><table class="num" id="schemeTbl"></table></div>
+        <p class="sm mt3" id="schemeNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">BREAK-EVEN &mdash; how many reads pay for one write</p>
+          <p class="sm mut2 mb3">Exact, and it is not a modelling choice: the write costs
+            <em>m</em>&times; and every later read costs 0.1&times;, so the crossing is where
+            <em>m</em>&nbsp;+&nbsp;0.1(<em>n</em>&minus;1)&nbsp;=&nbsp;<em>n</em>.</p>
+          <div class="scroll"><table class="num" id="reuseTbl"></table></div>
+          <p class="note mt2" id="reuseNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">AND WHAT HAPPENS WHEN THE CALLS ARE FURTHER APART THAN THE TTL</p>
+          <p class="sm mut2 mb3">Every entry has expired before the next call arrives, so every call
+            is a write and no call is ever a read. The hit rate is not low. It is zero, and the bill
+            is not neutral.</p>
+          <div class="scroll"><table class="num" id="gapTbl"></table></div>
+          <p class="note mt2" id="gapNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE LOOKBACK CLIFF &mdash; and the breakpoint that costs nothing</p>
+        <p class="sm mut2 mb3">A breakpoint searches backwards a bounded number of content blocks
+          for something to extend. An agentic turn that appends more blocks than that fits nowhere
+          in the window, so the whole conversation is re-read at full price and the request still
+          succeeds. The fix is a second breakpoint on the <em>first</em> new block: zero extra
+          tokens, one array entry.</p>
+        <div class="scroll"><table class="num" id="lookTbl"></table></div>
+        <p class="sm mt3" id="lookNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">FAN-OUT &mdash; N identical prefixes at once</p>
+          <p class="sm mut2 mb3">An entry is readable only once the first response has begun. Fire
+            <em>N</em> together and none of them can read what the others are still writing.</p>
+          <div class="scroll"><table class="num" id="fanTbl"></table></div>
+          <p class="note mt2" id="fanNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">WHAT SURVIVES WHAT &mdash; derived, not restated</p>
+          <p class="sm mut2 mb3">Change exactly one thing on call <em>k</em> and measure what call
+            <em>k</em> could still read. The published tier table falls straight out of "a prefix
+            is a prefix".</p>
+          <div class="scroll"><table class="num" id="hierTbl"></table></div>
+          <p class="note mt2" id="hierNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE MULTI-TENANT BLIND SPOT</p>
+        <p class="sm mut2 mb3">Two defects on the same checklist behave completely differently:
+          a per-<em>request</em> invalidator costs you a rate, and a per-<em>user</em> one costs you
+          a constant — one extra write per user, forever invisible to a benchmark with one user in
+          it. Sweeping calls-per-user with 40 users in the trace.</p>
+        <div class="scroll"><table class="num" id="tenantTbl"></table></div>
+        <p class="sm mt3" id="tenantNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE MID-CONVERSATION INSTRUCTION, PRICED</p>
+        <p class="sm mut2 mb3">Turn 8 of a 15-turn session needs a new operator instruction. You can
+          append it to the top-level system prompt, which sits in front of everything, or send it as
+          a message after the history. Same words, same tokens, different position.</p>
+        <div class="scroll"><table class="num" id="hatchTbl"></table></div>
+        <p class="sm mt3" id="hatchNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">The discount is the boring half</h2>
+      <p>Prompt caching is sold as a discount, and the discount is real: a token served from cache
+        costs a tenth of a token processed fresh. Every page that explains the feature leads with
+        that number, shows where to put <code class="tok">cache_control</code>, and stops. What none
+        of them price is the other side of the ledger, which has four entries — a write surcharge you
+        pay whether or not anyone ever reads the entry, a minimum length below which nothing is
+        cached and nothing is reported, a bounded backwards search that fails silently on exactly the
+        workload people build agents out of, and a visibility delay that makes concurrency the worst
+        case rather than the best one.</p>
+      <p>All four have the same shape: <strong>the request succeeds</strong>. There is no error, no
+        warning, no exception. The only symptom is a number in
+        <code class="tok">usage</code> that nobody looks at, and a bill that is somewhere between
+        slightly and dramatically higher than the one you budgeted for. That is what this page
+        measures — not "does caching save money", which is a settled question, but "what does the
+        thing cost when it is quietly not working", which is not.</p>
+
+      <h3 class="lg b">There is exactly one invariant, and everything is downstream of it</h3>
+      <p>A cache key is the bytes of the prompt up to a breakpoint. Not a summary of them, not a
+        semantic fingerprint — the bytes. Change one character at position <em>n</em> and every
+        breakpoint at or after <em>n</em> misses. That is the whole mechanism, and the reason it is
+        worth building rather than describing is that the consequences are counter-intuitive in both
+        directions.</p>
+      <p>Downward: the cost of a stray token is not proportional to the token. A 14-character date
+        stamp and a 2,600-token system prompt do exactly the same damage if they sit in the same
+        place, because what you lose is not the changed thing, it is everything after it.
+        Probe&nbsp;1 makes that literal — the same 14 tokens are moved through eight slots and the
+        bill takes two values, not eight.</p>
+      <p>Upward: the damage is bounded by position in a way that rewards a rule nobody writes.
+        A breakpoint placed by hand sits on one specific block forever, so a volatile line inserted
+        anywhere in front of it destroys the entire prefix. A breakpoint placed by a three-line rule
+        — put it on the last block that is byte-identical to last call's — keeps whatever prefix
+        survives, so the volatile line only costs you the part of the prompt that is behind it. The
+        two columns of Probe&nbsp;1 are the same prompt, the same trace, the same volatile line, and
+        the difference between them is entirely the placement rule.</p>
+
+      <h3 class="lg b">The one-line version of the feature has a workload it is wrong for</h3>
+      <p>Top-level automatic caching puts the breakpoint on the last cacheable block, which is the
+        simplest possible instruction and is correct for a conversation: this turn's last block is
+        next turn's history, so the entry you wrote is exactly the entry you want to read. Run the
+        same line of code against the other extremely common shape — a large shared preamble with a
+        different question stapled to the end of it, which is every classifier, every extraction
+        job, every fan-out — and the breakpoint lands after the question. The key is unique on every
+        call. It is written every call, read never.</p>
+      <p>That does not cost you the benefit. It costs you the surcharge <em>and</em> the benefit:
+        the bill is strictly above the bill for not caching at all, and the hit rate is exactly zero.
+        The scheme table has both workloads and the same five schemes in each, and the interesting
+        column is the last one, where a ratio above 1.000 means enabling the feature made this
+        workload more expensive than leaving it off.</p>
+
+      <h3 class="lg b">Two silent zeros with opposite bills</h3>
+      <p>A prefix shorter than the model's minimum is not cached. A prefix whose calls are further
+        apart than the TTL is cached and always expired. Both report a hit rate of zero, and they
+        are not the same failure at all. Below the floor there is no entry, so there is no write, so
+        the bill is exactly the uncached bill — the feature does nothing, for nothing, and the only
+        cost is the hour you spend wondering why. Beyond the TTL the entry <em>is</em> written,
+        every single call, and read on none of them, so the bill is the write multiplier applied to
+        your entire prefix, forever. One is a no-op and one is a standing 25% surcharge, and
+        <code class="tok">cache_read_input_tokens === 0</code> is the same in both.</p>
+      <p>The floor has a second edge worth knowing about: the four published minimums are 512,
+        1024, 2048 and 4096 tokens, and they are not ordered by model generation. The same prompt,
+        the same code, the same breakpoint caches on one model and silently does not on another, and
+        the direction is not the one you would guess.</p>
+
+      <h3 class="lg b">The checklist mixes two categories that measure differently</h3>
+      <p>Every guide's audit list runs the same way: no timestamps in the system prompt, no request
+        IDs, sort your JSON keys, don't build the tool list per user, watch conditional sections.
+        Enumerating all sixteen subsets of four of those makes two things visible that the list
+        itself hides.</p>
+      <p>First, the per-request ones are <em>absorbing</em>. Any one of them alive takes the hit rate
+        to zero, so fixing three of the three-and-a-bit is worth exactly nothing. The marginal value
+        of the second fix is 0.00, the third is 0.00, and the last one is worth all of it. That is a
+        genuinely awkward property for a checklist to have, because a checklist implies partial
+        credit and there is none.</p>
+      <p>Second, one of the four is not in that category at all. A conditional system section does
+        not make the prefix unique per call — it makes it one of 2<sup>F</sup> prefixes, each of
+        which caches perfectly well once written. So the damage is not a rate, it is a division, and
+        the size of the section is irrelevant: a 95-token <code class="tok">if</code> block and a
+        2,600-token one halve your cache identically. It only becomes catastrophic when
+        2<sup>F</sup> approaches the number of calls you make inside one TTL, at which point every
+        call writes a fresh entry and you are back to the standing surcharge.</p>
+      <p>And the per-user defects are worse than either, in a way that is specifically undetectable:
+        putting the user's name in the system prompt costs one extra write <em>per user</em>. On a
+        benchmark with one user, that is one write — invisible. On a trace with forty users and a
+        few calls each, it is the whole bill. The tenant sweep holds everything else fixed and moves
+        only calls-per-user, and the same defect goes from unmeasurable to dominant without changing
+        a line of the prompt.</p>
+
+      <h3 class="lg b">The cliff that has nothing to do with your prompt</h3>
+      <p>A breakpoint does not search the whole history for something to extend; it searches a
+        bounded number of blocks backwards. In a chat that is irrelevant, because a turn is a block
+        or two. In an agent it is not, because one turn can be twenty tool calls and twenty tool
+        results, and the moment a turn appends more blocks than the window is wide, the breakpoint
+        looks back, finds nothing it recognises, and the entire accumulated context is re-read at
+        full price. The loop still works. The answers are still right. The bill steps.</p>
+      <p>The fix costs nothing at all: put a second breakpoint on the <em>first</em> block of the new
+        turn. It is one block away from the entry you want, so it always lands inside the window, and
+        the read it recovers extends all the way back through the history. No extra tokens, no extra
+        instruction, one more entry in an array — and the cliff is gone for any turn size, because
+        the read comes from the low breakpoint and the write goes to the high one.</p>
+
+      <h3 class="lg b">Ordering beats placement, and it is free</h3>
+      <p>Given a prompt in the wrong order, no breakpoint scheme rescues it. Given a prompt in the
+        right order, the cheapest scheme captures nearly all of the available saving and the
+        expensive ones add very little. That ranking is stable across both workloads and both TTLs,
+        and it is the practical summary of the whole page: the first-order lever is which segment
+        goes where, which is a text edit and costs zero tokens; the second-order lever is where the
+        breakpoints go, which is also free but only pays once the ordering is right; and the
+        third-order lever — how many breakpoints, which TTL — is where all the documentation is.</p>
+
+      <h3 class="lg b">What this is not</h3>
+      <p>This is not <a>Day 52</a>'s context management, which decides what to <em>keep</em> in the
+        window; caching decides what you pay for what you already decided to keep, and the two can
+        disagree — trimming an old tool result shortens your prompt and invalidates your prefix, so
+        it can raise the bill. It is not <a>Day 68</a>'s batch prompting, which pays a shared preamble
+        once by putting <em>k</em> items in one call; caching pays it once across calls over time,
+        and the two compose. It is not <a>Day 41</a>'s streaming, which is about when tokens arrive
+        — though the visibility rule in the fan-out panel is the one place the two touch. And there
+        is no model in it: nothing here simulates language ability, generates text, or guesses what
+        an assistant would say. It is a prefix matcher, a clock, and a price list.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">🔨 How it is built</h2>
+
+      <h3 class="lg b">1. A prompt is an ordered list of blocks, and that is all it is</h3>
+      <p>Every part of the prompt — the tool definitions, the system prompt, a retrieved document,
+        one turn of history, this call's question — becomes a run of content blocks carrying a token
+        count and a <em>signature</em>. The signature is the part's identity plus whatever makes it
+        vary: nothing at all for a frozen system prompt, the user id for a persona, the call index
+        for a date stamp. Two prompts share a cache prefix exactly when their signature lists agree
+        block for block from the start, which is the byte-prefix rule stated in the only terms the
+        mechanism actually needs.</p>
+
+      <h3 class="lg b">2. The key chain is incremental, and it is checked against the naive one</h3>
+      <p>Prefix keys are a two-lane FNV-1a chain so a 200-block prompt costs 200 hash steps rather
+        than 200 string concatenations. That is an optimisation, and optimisations are where
+        engines quietly become wrong, so the page also builds the obvious version — literally
+        joining every signature up to <em>i</em> — and asserts that the two agree on which prefixes
+        are equal, for every pair of blocks in several generated prompts. The fast chain is never
+        trusted on its own.</p>
+
+      <h3 class="lg b">3. Serving a call is four lines of arithmetic</h3>
+      <p>Sort the breakpoints, refuse more than four. For each, walk backwards up to the window
+        looking for a live entry; keep the longest hit found by any of them. Every breakpoint whose
+        cumulative prefix meets the minimum writes an entry, and the tokens written are the span from
+        the end of the read to the last such breakpoint. What remains is uncached. Then
+        <code class="tok">bill = read&times;0.10 + written&times;m + uncached&times;1.00</code>, which
+        is the published schedule and nothing else. There is no fitted parameter anywhere in that
+        expression.</p>
+
+      <h3 class="lg b">4. Two breakpoint placers, because the difference between them is a result</h3>
+      <p><code class="tok">fixed</code> attaches the breakpoint to a named block and leaves it there,
+        which is what a person does once and never revisits.
+        <code class="tok">adaptive</code> recomputes it every call as the last block that did not
+        change, which is three lines and which nobody writes. Both are run over the identical trace.
+        Probe&nbsp;1 exists to show that on the same prompt with the same defect, one of them takes a
+        25% standing surcharge and the other takes none.</p>
+
+      <h3 class="lg b">5. The producer is a trace, not a distribution</h3>
+      <p>There is no sampling in any outcome column. A trace is a deterministic sequence of calls
+        with a clock, the store is a real map with real expiry, and the numbers are what the matcher
+        did. The only randomness on the page is which user index a tenant-trace call belongs to, and
+        that is seeded. This is why a rate of <span class="ok">0.00%</span> can be printed without
+        hedging: it is not an estimate that came out low.</p>
+
+      <h3 class="lg b">6. Subsets are enumerated rather than argued</h3>
+      <p>Four defects is sixteen states, so all sixteen are run. That is the difference between
+        "removing a timestamp is important" and the actual finding, which is that fourteen of the
+        sixteen rows are bit-identical and the checklist has no partial credit in it. The same
+        approach drives the flag sweep (2<sup>F</sup> prefixes for F&nbsp;=&nbsp;0…6), the floor
+        (11 prefix sizes &times; 4 published minimums), and the cliff (every turn size from 1 to 40).</p>
+
+      <h3 class="lg b">7. The invalidation hierarchy is derived, not typed in</h3>
+      <p>The published table says a tool change invalidates everything, a system change spares the
+        tools, a message change spares both. That table is never entered into this page. Each
+        mutation is applied to one call in a trace and the read tokens on the next call are measured,
+        and the hierarchy comes out because a prefix is a prefix. If the mechanism were wrong, the
+        derived table would disagree with the published one, which is a check rather than a
+        restatement.</p>
+
+      <h3 class="lg b">8. What is declared, and where it is on the page</h3>
+      <p>Three constants: the read multiplier, the two write multipliers, and the lookback window
+        size. The first three are the published price schedule and the fourth is a documented bound
+        whose exact off-by-one is a reading of the wording — so the window is a dropdown, and the
+        conclusion that survives moving it is that the cliff exists and sits at the window size,
+        not that it sits at any particular integer. Everything else on the page is arithmetic.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Prompt caching and prefix reuse. Nothing here simulates language ability: there is no model, no
+// generated text and no guess about what an assistant would say. The mechanism is a byte-prefix
+// matcher over an ordered block list, a TTL clock, and the published price schedule - a cache read
+// costs 0.10x a fresh input token, a 5-minute write costs 1.25x and a 1-hour write 2.00x, a prefix
+// shorter than the model's minimum is silently not cached, a breakpoint searches backwards a
+// bounded number of blocks, and an entry is not readable until the response that wrote it has
+// begun. Every rate below is exact arithmetic over a deterministic trace, not a sample.
+
+function mulberry32(seed){
+  let s = seed >>> 0;
+  return function(){
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1) >>> 0;
+    t = (t ^ (t + Math.imul(t ^ (t >>> 7), t | 61))) >>> 0;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// ---------------------------------------------------------------- the published schedule
+var PRICE   = { read: 0.10, base: 1.00, write: { "5m": 1.25, "1h": 2.00 } };
+var TTL_SEC = { "5m": 300, "1h": 3600 };
+var MAX_BP  = 4;
+var MIN_TIERS = [512, 1024, 2048, 4096];
+
+var DEFAULTS = {
+  ttl: "5m", minPrefix: 1024, lookback: 20, firstTokenSec: 0.9,
+  toolTok: 1400, toolBlocks: 6, sysTok: 2600, policyTok: 640, schemaTok: 430,
+  personaTok: 220, docTok: 900, askTok: 120,
+  turnTok: 260, blocksPerTurn: 2, turns: 15,
+  calls: 30, gapSec: 45, users: 40, perUser: 6, flagBits: 1,
+  usdIn: 5.00
+};
+function withDefaults(o){
+  var c = {}, k;
+  for (k in DEFAULTS) c[k] = DEFAULTS[k];
+  for (k in (o || {})) if (o[k] !== undefined && o[k] !== null) c[k] = o[k];
+  return c;
+}
+
+// ---------------------------------------------------------------- prefix keys
+// A two-lane FNV-1a chain: key[i] identifies the exact block sequence 0..i. The naive version -
+// literally joining every signature - is built alongside it in the assertions and the two are
+// required to agree on which prefixes are equal.
+function fnv1a(str, h){
+  h = h >>> 0;
+  for (var i = 0; i < str.length; i++){ h ^= str.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0; }
+  return h >>> 0;
+}
+function prefixKeys(blocks){
+  var a = 2166136261 >>> 0, b = 2166136261 >>> 0, out = new Array(blocks.length);
+  for (var i = 0; i < blocks.length; i++){
+    a = fnv1a(blocks[i].sig, a);
+    b = fnv1a(i + "" + blocks[i].sig, (b ^ 0x9E3779B9) >>> 0);
+    out[i] = a.toString(36) + ":" + b.toString(36);
+  }
+  return out;
+}
+function naiveKeys(blocks){
+  var out = new Array(blocks.length), acc = "";
+  for (var i = 0; i < blocks.length; i++){ acc += "" + blocks[i].sig; out[i] = acc; }
+  return out;
+}
+
+// ---------------------------------------------------------------- parts -> blocks
+// A part is one logical piece of the prompt: {key, tok, nb, stable, name}. `key` carries whatever
+// makes the part vary, so two calls share a prefix exactly when their signature lists agree.
+function flatten(parts){
+  var B = [];
+  for (var i = 0; i < parts.length; i++){
+    var p = parts[i], nb = (p.nb == null ? 1 : p.nb);
+    if (nb <= 0 || p.tok <= 0) continue;
+    var per = Math.floor(p.tok / nb);
+    for (var j = 0; j < nb; j++){
+      B.push({ sig: p.key + "#" + j, tokens: (j === nb - 1 ? p.tok - per * (nb - 1) : per),
+               part: p.key, name: p.name, stable: !!p.stable });
+    }
+  }
+  return B;
+}
+function totalTokens(blocks){ var t = 0; for (var i = 0; i < blocks.length; i++) t += blocks[i].tokens; return t; }
+function cumTokens(blocks){ var out = [], t = 0; for (var i = 0; i < blocks.length; i++){ t += blocks[i].tokens; out.push(t); } return out; }
+
+// ---------------------------------------------------------------- the store and one served call
+function newStore(){ return { map: new Map(), writes: 0, reads: 0 }; }
+
+function serve(store, blocks, bps, opt, now){
+  var ttl = TTL_SEC[opt.ttl], wm = PRICE.write[opt.ttl];
+  var keys = prefixKeys(blocks), cum = cumTokens(blocks), total = cum.length ? cum[cum.length - 1] : 0;
+  var list = [], i, j, q;
+  for (i = 0; i < bps.length; i++){
+    var v = bps[i];
+    if (v >= 0 && v < blocks.length && list.indexOf(v) < 0) list.push(v);
+  }
+  list.sort(function(a, b){ return a - b; });
+  if (list.length > MAX_BP) return { err: "too_many_breakpoints", total: total, read: 0, write: 0, uncached: total, bill: total, hit: 0, readUpto: -1 };
+
+  // read: the longest live entry any breakpoint can reach inside its backwards window
+  var readUpto = -1;
+  for (q = 0; q < list.length; q++){
+    var b = list[q], lo = Math.max(0, b - opt.lookback);
+    for (j = b; j >= lo; j--){
+      var e = store.map.get(keys[j]);
+      if (e && e.expires > now && e.visibleAt <= now){ if (j > readUpto) readUpto = j; break; }
+    }
+  }
+  var readTok = readUpto >= 0 ? cum[readUpto] : 0;
+  if (readUpto >= 0){ store.map.get(keys[readUpto]).expires = now + ttl; store.reads++; }
+
+  // write: every breakpoint whose cumulative prefix clears the minimum
+  var lastEl = -1;
+  for (q = 0; q < list.length; q++) if (cum[list[q]] >= opt.minPrefix && list[q] > lastEl) lastEl = list[q];
+  var writeTok = 0;
+  if (lastEl > readUpto){
+    writeTok = cum[lastEl] - readTok;
+    for (q = 0; q < list.length; q++){
+      var bb = list[q];
+      if (cum[bb] < opt.minPrefix) continue;
+      var ex = store.map.get(keys[bb]);
+      if (ex) ex.expires = now + ttl;
+      else { store.map.set(keys[bb], { tokens: cum[bb], expires: now + ttl, visibleAt: now + opt.firstTokenSec }); store.writes++; }
+    }
+  } else {
+    for (q = 0; q < list.length; q++){ var ex2 = store.map.get(keys[list[q]]); if (ex2) ex2.expires = now + ttl; }
+  }
+  var uncached = total - readTok - writeTok;
+  var bill = readTok * PRICE.read + writeTok * wm + uncached * PRICE.base;
+  return { total: total, read: readTok, write: writeTok, uncached: uncached, bill: bill,
+           hit: total ? readTok / total : 0, readUpto: readUpto, err: null, keys: keys, cum: cum };
+}
+
+// ---------------------------------------------------------------- prompt shapes
+function staticSlots(c, ctx, o){
+  o = o || {};
+  return [
+    { key: (o.perUserTools ? "tools|u" + ctx.user : "tools"), tok: c.toolTok, nb: c.toolBlocks, stable: true, name: "tool definitions" },
+    { key: "sysCore", tok: c.sysTok, nb: 1, stable: true, name: "system prompt (core)" },
+    { key: "policy", tok: c.policyTok, nb: 1, stable: true, name: "style + policy section" },
+    { key: "schema", tok: c.schemaTok, nb: 1, stable: true, name: "output schema" },
+    { key: (o.perUserPersona ? "persona|u" + ctx.user : "persona"), tok: c.personaTok, nb: 1, stable: true, name: "persona" },
+    { key: "doc|d" + (ctx.doc || 0), tok: c.docTok, nb: 1, stable: true, name: "retrieved reference" }
+  ];
+}
+var SLOT_LABELS = [
+  "before the tool definitions", "after the tool definitions", "after the system prompt",
+  "after the style section", "after the output schema", "after the persona",
+  "after the retrieved reference", "after the question (last)"
+];
+function baseSlots(c, ctx, o){
+  return staticSlots(c, ctx, o).concat([
+    { key: "ask|q" + ctx.call, tok: c.askTok, nb: 1, stable: false, name: "this call’s question" }
+  ]);
+}
+var DEFECT_DEFS = [
+  { id: "stamp", tok: 14,  name: "“Current date: …” line",  label: "a current-date line in the system prompt",
+    key: function(ctx){ return "stamp|c" + ctx.call; } },
+  { id: "reqid", tok: 12,  name: "per-request id",                          label: "a per-request UUID in the system prompt",
+    key: function(ctx){ return "reqid|c" + ctx.call; } },
+  { id: "cfg",   tok: 180, name: "unsorted config JSON",                    label: "json.dumps(config) with no sort_keys",
+    key: function(ctx){ return "cfg|k" + ctx.call; } },
+  { id: "flag",  tok: 95,  name: "conditional section",                     label: "an if-flag system section",
+    key: function(ctx){ return "flag|v" + ctx.flag; } }
+];
+function bagParts(def, ctx){
+  var out = [];
+  for (var i = 0; i < DEFECT_DEFS.length; i++){
+    var d = DEFECT_DEFS[i];
+    if (def && def[d.id]) out.push({ key: d.key(ctx), tok: d.tok, nb: 1, stable: false, name: d.name });
+  }
+  return out;
+}
+function assemble(c, ctx, def, insertAt, o){
+  var slots = baseSlots(c, ctx, o), bag = bagParts(def, ctx);
+  var at = Math.max(0, Math.min(slots.length, insertAt == null ? slots.length : insertAt));
+  return flatten(slots.slice(0, at).concat(bag, slots.slice(at)));
+}
+function convoBlocks(c, ctx, o){
+  o = o || {};
+  var parts = staticSlots(c, ctx, o);
+  for (var h = 0; h < ctx.turn; h++)
+    parts.push({ key: "turn|" + h, tok: c.turnTok, nb: o.blocksPerTurn || c.blocksPerTurn, stable: true, name: "turn " + (h + 1) });
+  parts.push({ key: "turn|" + ctx.turn, tok: c.turnTok, nb: o.blocksPerTurn || c.blocksPerTurn, stable: false, name: "this turn" });
+  return flatten(parts);
+}
+
+// ---------------------------------------------------------------- breakpoint placers
+function lastStableIndex(blocks){
+  var last = -1;
+  for (var i = 0; i < blocks.length; i++){ if (!blocks[i].stable) break; last = i; }
+  return last;
+}
+function bpAtPart(blocks, prefix){
+  var last = -1;
+  for (var i = 0; i < blocks.length; i++) if (blocks[i].part.indexOf(prefix) === 0) last = i;
+  return last;
+}
+function firstUnstableIndex(blocks){
+  for (var i = 0; i < blocks.length; i++) if (!blocks[i].stable) return i;
+  return blocks.length - 1;
+}
+var SCHEMES = [
+  { id: "none",     label: "no caching at all",                       cost: "free" },
+  { id: "auto",     label: "top-level auto (last cacheable block)",   cost: "free" },
+  { id: "fixed",    label: "one hand-placed breakpoint (never moved)", cost: "free" },
+  { id: "adaptive", label: "one breakpoint, last unchanged block",    cost: "free" },
+  { id: "two",      label: "two: unchanged prefix + tail",            cost: "free" },
+  { id: "four",     label: "four, spread through the prompt",         cost: "free" }
+];
+function schemeBps(name, blocks){
+  var n = blocks.length, out = [], q, idx;
+  if (name === "none") return [];
+  if (name === "auto") return [n - 1];
+  if (name === "fixed"){ var f = bpAtPart(blocks, "doc"); return f >= 0 ? [f] : []; }
+  if (name === "adaptive"){ var p = lastStableIndex(blocks); return p >= 0 ? [p] : []; }
+  if (name === "bridge"){ var p2 = lastStableIndex(blocks); var u = firstUnstableIndex(blocks); return p2 >= 0 ? [u, n - 1] : [n - 1]; }
+  if (name === "two"){ var p3 = lastStableIndex(blocks); return p3 >= 0 && p3 < n - 1 ? [p3, n - 1] : [n - 1]; }
+  if (name === "four"){
+    for (q = 1; q <= 3; q++){ idx = Math.floor(n * q / 4) - 1; if (idx >= 0 && out.indexOf(idx) < 0) out.push(idx); }
+    if (out.indexOf(n - 1) < 0) out.push(n - 1);
+    return out.slice(0, MAX_BP);
+  }
+  return [];
+}
+
+// ---------------------------------------------------------------- trace runners
+function optOf(c, o){
+  o = o || {};
+  return { ttl: o.ttl || c.ttl, minPrefix: o.minPrefix || c.minPrefix,
+           lookback: (o.lookback == null ? c.lookback : o.lookback),
+           firstTokenSec: (o.firstTokenSec == null ? c.firstTokenSec : o.firstTokenSec) };
+}
+function blankTot(){ return { bill: 0, read: 0, write: 0, unc: 0, total: 0, hitCalls: 0, calls: 0 }; }
+function finishTot(t){
+  t.hit = t.total ? t.read / t.total : 0;
+  t.hitRate = t.calls ? t.hitCalls / t.calls : 0;
+  t.ratio = t.total ? t.bill / t.total : 1;
+  t.perCall = t.calls ? t.bill / t.calls : 0;
+  t.usd1k = t.perCall * 1000 / 1e6;
+  return t;
+}
+function runRepeat(c, o){
+  o = o || {};
+  var store = newStore(), tot = blankTot(), now = 0, opt = optOf(c, o);
+  var nUsers = o.users || 1, mod = Math.pow(2, (o.flagBits == null ? c.flagBits : o.flagBits));
+  var calls = o.calls == null ? c.calls : o.calls;
+  for (var i = 0; i < calls; i++){
+    var ctx = { call: i, user: i % nUsers, doc: 0, turn: i, flag: i % mod };
+    var blocks = assemble(c, ctx, o.defects || {}, o.insertAt, o);
+    var r = serve(store, blocks, schemeBps(o.scheme, blocks), opt, now);
+    tot.bill += r.bill; tot.read += r.read; tot.write += r.write; tot.unc += r.uncached;
+    tot.total += r.total; if (r.read > 0) tot.hitCalls++; tot.calls++;
+    now += (o.gapSec == null ? c.gapSec : o.gapSec);
+  }
+  tot.writes = store.writes;
+  return finishTot(tot);
+}
+function runConvo(c, o){
+  o = o || {};
+  var store = newStore(), tot = blankTot(), now = 0, opt = optOf(c, o);
+  var turns = o.turns == null ? c.turns : o.turns;
+  for (var t = 0; t < turns; t++){
+    var ctx = { call: t, user: 0, doc: 0, turn: t, flag: 0 };
+    var blocks = convoBlocks(c, ctx, o);
+    if (o.defects && o.defects.stamp){
+      // a per-request line pushed into the static prefix, for the bad-ordering column
+      var pre = blocks.slice(0, o.insertAt == null ? 1 : o.insertAt);
+      var post = blocks.slice(o.insertAt == null ? 1 : o.insertAt);
+      blocks = pre.concat(flatten([{ key: "stamp|c" + t, tok: 14, nb: 1, stable: false, name: "date line" }]), post);
+    }
+    var r = serve(store, blocks, schemeBps(o.scheme, blocks), opt, now);
+    tot.bill += r.bill; tot.read += r.read; tot.write += r.write; tot.unc += r.uncached;
+    tot.total += r.total; if (r.read > 0) tot.hitCalls++; tot.calls++;
+    now += (o.gapSec == null ? c.gapSec : o.gapSec);
+  }
+  tot.writes = store.writes;
+  return finishTot(tot);
+}
+
+// ---------------------------------------------------------------- PROBE 1: one line, eight slots
+function probePosition(c){
+  var rows = [];
+  for (var at = 0; at <= 7; at++){
+    var fx = runRepeat(c, { scheme: "fixed", insertAt: at, defects: { stamp: true } });
+    var ad = runRepeat(c, { scheme: "adaptive", insertAt: at, defects: { stamp: true } });
+    rows.push({ at: at, label: SLOT_LABELS[at], fixed: fx, adaptive: ad });
+  }
+  var clean = runRepeat(c, { scheme: "fixed", insertAt: 8, defects: {} });
+  return { rows: rows, clean: clean };
+}
+
+// ---------------------------------------------------------------- PROBE 2: all 16 subsets
+function subsetRuns(c){
+  var out = [];
+  for (var m = 0; m < 16; m++){
+    var def = {}, names = [];
+    for (var i = 0; i < 4; i++) if (m & (1 << i)){ def[DEFECT_DEFS[i].id] = true; names.push(DEFECT_DEFS[i].name); }
+    var r = runRepeat(c, { scheme: "fixed", insertAt: 2, defects: def });
+    out.push({ mask: m, n: names.length, names: names, def: def, res: r });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the flag sweep
+function flagSweep(c){
+  var rows = [];
+  for (var f = 0; f <= 6; f++){
+    var r = runRepeat(c, { scheme: "fixed", insertAt: 2, defects: { flag: true }, flagBits: f });
+    rows.push({ f: f, variants: Math.pow(2, f), res: r });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the floor
+var FLOOR_SIZES = [256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096, 6144, 8192];
+function floorSweep(c){
+  var rows = [];
+  for (var i = 0; i < FLOOR_SIZES.length; i++){
+    var S = FLOOR_SIZES[i], cells = [];
+    for (var t = 0; t < MIN_TIERS.length; t++){
+      var cc = withDefaults({ toolTok: 0, toolBlocks: 0, sysTok: S, policyTok: 0, schemaTok: 0,
+                              personaTok: 0, docTok: 0, askTok: c.askTok, ttl: c.ttl,
+                              minPrefix: MIN_TIERS[t], lookback: c.lookback, gapSec: c.gapSec, calls: c.calls });
+      // the breakpoint sits on the system block, which is the whole shared prefix here
+      var st = newStore(), now = 0, bill = 0, read = 0, total = 0, wrote = 0;
+      for (var k = 0; k < cc.calls; k++){
+        var blocks = flatten([
+          { key: "sysCore", tok: S, nb: 1, stable: true, name: "system prompt" },
+          { key: "ask|q" + k, tok: cc.askTok, nb: 1, stable: false, name: "question" }
+        ]);
+        var r = serve(st, blocks, [0], optOf(cc, {}), now);
+        bill += r.bill; read += r.read; total += r.total; wrote += r.write; now += cc.gapSec;
+      }
+      cells.push({ hit: total ? read / total : 0, ratio: total ? bill / total : 1, wrote: wrote });
+    }
+    rows.push({ size: S, cells: cells });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- break-even and the TTL wall
+function breakEven(c){
+  var rows = [], ttls = ["5m", "1h"];
+  for (var n = 1; n <= 10; n++){
+    var cells = [];
+    for (var t = 0; t < 2; t++){
+      var wm = PRICE.write[ttls[t]];
+      var pure = (wm + PRICE.read * (n - 1)) / n;                                   // prefix only
+      var r = runRepeat(c, { scheme: "fixed", calls: n, gapSec: 1, ttl: ttls[t], defects: {} });
+      cells.push({ pure: pure, ratio: r.ratio, hit: r.hit });
+    }
+    rows.push({ n: n, cells: cells });
+  }
+  var xover = [];
+  for (var t2 = 0; t2 < 2; t2++){
+    var wm2 = PRICE.write[ttls[t2]];
+    xover.push({ ttl: ttls[t2], exact: (wm2 - PRICE.read) / (1 - PRICE.read), mult: wm2 });
+  }
+  return { rows: rows, xover: xover };
+}
+var GAPS = [5, 30, 60, 150, 290, 299, 300, 301, 600, 1800, 3600, 3601, 7200];
+function gapSweep(c){
+  var rows = [], ttls = ["5m", "1h"];
+  for (var i = 0; i < GAPS.length; i++){
+    var g = GAPS[i], cells = [];
+    for (var t = 0; t < 2; t++){
+      var r = runRepeat(c, { scheme: "fixed", gapSec: g, ttl: ttls[t], defects: {}, calls: 24 });
+      cells.push(r);
+    }
+    rows.push({ gap: g, cells: cells });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the lookback cliff
+function lookbackSweep(c){
+  var rows = [], sizes = [1, 2, 4, 8, 12, 16, 18, 19, 20, 21, 22, 24, 30, 40];
+  for (var i = 0; i < sizes.length; i++){
+    var B = sizes[i];
+    var one = runConvo(c, { scheme: "auto", blocksPerTurn: B, turns: c.turns, gapSec: 20 });
+    var two = runConvo(c, { scheme: "bridge", blocksPerTurn: B, turns: c.turns, gapSec: 20 });
+    rows.push({ B: B, one: one, two: two });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- fan-out
+function fanout(c){
+  var rows = [], Ns = [1, 2, 4, 8, 16, 32];
+  for (var i = 0; i < Ns.length; i++){
+    var N = Ns[i], k;
+    var sA = newStore(), billA = 0, readA = 0, totA = 0;
+    for (k = 0; k < N; k++){
+      var bA = assemble(c, { call: k, user: 0, doc: 0, flag: 0 }, {}, 8, {});
+      var rA = serve(sA, bA, schemeBps("fixed", bA), optOf(c, {}), 0);
+      billA += rA.bill; readA += rA.read; totA += rA.total;
+    }
+    var sB = newStore(), billB = 0, readB = 0, totB = 0;
+    for (k = 0; k < N; k++){
+      var bB = assemble(c, { call: k, user: 0, doc: 0, flag: 0 }, {}, 8, {});
+      var rB = serve(sB, bB, schemeBps("fixed", bB), optOf(c, {}), k === 0 ? 0 : c.firstTokenSec);
+      billB += rB.bill; readB += rB.read; totB += rB.total;
+    }
+    rows.push({ N: N, burst: { bill: billA, hit: totA ? readA / totA : 0, ratio: billA / totA },
+                stag:  { bill: billB, hit: totB ? readB / totB : 0, ratio: billB / totB },
+                over: billA / billB });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the invalidation hierarchy
+var MUTATIONS = [
+  { id: "none",    label: "nothing changed" },
+  { id: "tools",   label: "one tool definition edited" },
+  { id: "system",  label: "one word of the system prompt" },
+  { id: "persona", label: "the persona block" },
+  { id: "doc",     label: "the retrieved reference" },
+  { id: "ask",     label: "the question (last block)" }
+];
+function hierarchy(c){
+  var out = [];
+  for (var i = 0; i < MUTATIONS.length; i++){
+    var mu = MUTATIONS[i].id;
+    var st = newStore(), now = 0, opt = optOf(c, {}), rows = [];
+    for (var k = 0; k < 3; k++){
+      var mutate = (k >= 2 ? mu : "none");
+      var parts = [
+        { key: "tools" + (mutate === "tools" ? "!" : ""), tok: c.toolTok, nb: c.toolBlocks, stable: true, name: "tools" },
+        { key: "sysCore" + (mutate === "system" ? "!" : ""), tok: c.sysTok, nb: 1, stable: true, name: "system" },
+        { key: "persona" + (mutate === "persona" ? "!" : ""), tok: c.personaTok, nb: 1, stable: true, name: "persona" },
+        { key: "doc" + (mutate === "doc" ? "!" : ""), tok: c.docTok, nb: 1, stable: true, name: "doc" },
+        { key: "ask|q" + (mutate === "ask" ? "X" : k), tok: c.askTok, nb: 1, stable: false, name: "question" }
+      ];
+      var blocks = flatten(parts);
+      var bps = [bpAtPart(blocks, "tools"), bpAtPart(blocks, "sysCore"), bpAtPart(blocks, "doc"), blocks.length - 1];
+      var r = serve(st, blocks, bps, opt, now);
+      rows.push(r); now += 10;
+    }
+    var last = rows[2], tot = last.total;
+    out.push({ id: mu, label: MUTATIONS[i].label, read: last.read, total: tot,
+               share: tot ? last.read / tot : 0, bill: last.bill, ratio: last.bill / tot,
+               tools: last.read >= c.toolTok, sys: last.read >= c.toolTok + c.sysTok,
+               msgs: last.read >= c.toolTok + c.sysTok + c.personaTok + c.docTok });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the tenant sweep
+function tenantSweep(c){
+  var rows = [], pers = [1, 2, 3, 5, 8, 12, 20, 40];
+  for (var i = 0; i < pers.length; i++){
+    var per = pers[i], calls = c.users * per;
+    var clean = runRepeat(c, { scheme: "fixed", defects: {}, users: c.users, calls: calls, gapSec: 2 });
+    var dirty = runRepeat(c, { scheme: "fixed", defects: {}, users: c.users, calls: calls, gapSec: 2, perUserPersona: true });
+    var solo  = runRepeat(c, { scheme: "fixed", defects: {}, users: 1, calls: calls, gapSec: 2, perUserPersona: true });
+    rows.push({ per: per, calls: calls, clean: clean, dirty: dirty, solo: solo,
+                delta: dirty.ratio - clean.ratio, soloDelta: solo.ratio - clean.ratio });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the mid-conversation instruction
+function escapeHatch(c){
+  var opt = optOf(c, {}), instr = 60, at = 8, turns = c.turns;
+  function run(mode){
+    var st = newStore(), now = 0, bill = 0, total = 0, read = 0;
+    for (var t = 0; t < turns; t++){
+      var parts = staticSlots(c, { user: 0, doc: 0 }, {});
+      if (mode === "system" && t >= at) parts[1] = { key: "sysCore+", tok: c.sysTok + instr, nb: 1, stable: true, name: "system prompt (edited)" };
+      for (var h = 0; h < t; h++){
+        parts.push({ key: "turn|" + h, tok: c.turnTok, nb: c.blocksPerTurn, stable: true, name: "turn " + (h + 1) });
+        // the message is appended once, at the turn it was sent, and stays at that fixed position
+        if (mode === "message" && t >= at && h === at - 1)
+          parts.push({ key: "sysmsg", tok: instr, nb: 1, stable: true, name: "operator message" });
+      }
+      parts.push({ key: "turn|" + t, tok: c.turnTok, nb: c.blocksPerTurn, stable: false, name: "this turn" });
+      var blocks = flatten(parts);
+      var r = serve(st, blocks, schemeBps("two", blocks), opt, now);
+      bill += r.bill; total += r.total; read += r.read; now += 30;
+    }
+    return { bill: bill, total: total, read: read, ratio: bill / total };
+  }
+  var none = run("none"), sys = run("system"), msg = run("message");
+  return { none: none, sys: sys, msg: msg,
+           sysDelta: sys.bill - none.bill, msgDelta: msg.bill - none.bill,
+           factor: (msg.bill - none.bill) ? (sys.bill - none.bill) / (msg.bill - none.bill) : Infinity,
+           instr: instr };
+}
+
+// ---------------------------------------------------------------- the scheme scoreboard
+function schemeTable(c, workload){
+  var rows = [];
+  for (var i = 0; i < SCHEMES.length; i++){
+    var s = SCHEMES[i].id, good, bad;
+    if (workload === "convo"){
+      good = runConvo(c, { scheme: s, turns: c.turns, gapSec: 30 });
+      bad  = runConvo(c, { scheme: s, turns: c.turns, gapSec: 30, defects: { stamp: true }, insertAt: 1 });
+    } else {
+      good = runRepeat(c, { scheme: s, insertAt: 8, defects: {} });
+      bad  = runRepeat(c, { scheme: s, insertAt: 1, defects: { stamp: true } });
+    }
+    rows.push({ id: s, label: SCHEMES[i].label, good: good, bad: bad });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- a naive re-derivation, for checking
+// Replays the whole trace with no incremental store at all: for every call it compares this call's
+// block signature list against every earlier call's, longest common prefix first. Slow, obviously
+// correct, and used only to check the store.
+function naiveReplay(c, o){
+  o = o || {};
+  var seen = [], now = 0, opt = optOf(c, o), tot = blankTot();
+  var calls = o.calls == null ? c.calls : o.calls;
+  for (var i = 0; i < calls; i++){
+    var ctx = { call: i, user: i % (o.users || 1), doc: 0, turn: i, flag: i % Math.pow(2, (o.flagBits == null ? c.flagBits : o.flagBits)) };
+    var blocks = assemble(c, ctx, o.defects || {}, o.insertAt, o);
+    var sigs = blocks.map(function(b){ return b.sig; }), cum = cumTokens(blocks);
+    var bps = schemeBps(o.scheme, blocks);
+    var readUpto = -1;
+    for (var q = 0; q < bps.length; q++){
+      var b = bps[q], lo = Math.max(0, b - opt.lookback);
+      for (var j = b; j >= lo; j--){
+        var hit = false;
+        for (var s = 0; s < seen.length; s++){
+          var e = seen[s];
+          if (e.idx !== j || e.expires <= now || e.visibleAt > now) continue;
+          var same = true;
+          for (var z = 0; z <= j; z++) if (e.sigs[z] !== sigs[z]){ same = false; break; }
+          if (same){ hit = true; e.expires = now + TTL_SEC[opt.ttl]; break; }
+        }
+        if (hit){ if (j > readUpto) readUpto = j; break; }
+      }
+    }
+    var readTok = readUpto >= 0 ? cum[readUpto] : 0, lastEl = -1;
+    for (var q2 = 0; q2 < bps.length; q2++) if (cum[bps[q2]] >= opt.minPrefix && bps[q2] > lastEl) lastEl = bps[q2];
+    var writeTok = 0;
+    if (lastEl > readUpto){
+      writeTok = cum[lastEl] - readTok;
+      for (var q3 = 0; q3 < bps.length; q3++){
+        if (cum[bps[q3]] < opt.minPrefix) continue;
+        seen.push({ idx: bps[q3], sigs: sigs.slice(0, bps[q3] + 1), expires: now + TTL_SEC[opt.ttl], visibleAt: now + opt.firstTokenSec });
+      }
+    }
+    var unc = cum[cum.length - 1] - readTok - writeTok;
+    tot.bill += readTok * PRICE.read + writeTok * PRICE.write[opt.ttl] + unc * PRICE.base;
+    tot.read += readTok; tot.write += writeTok; tot.unc += unc; tot.total += cum[cum.length - 1];
+    if (readTok > 0) tot.hitCalls++; tot.calls++;
+    now += (o.gapSec == null ? c.gapSec : o.gapSec);
+  }
+  return finishTot(tot);
+}
+// ===== ENGINE:END =====
+
+const $ = function(id){ return document.getElementById(id); };
+const pc = function(x){ return (100 * x).toFixed(2) + "%"; };
+const n0 = function(x){ return Math.round(x).toLocaleString("en-US"); };
+const n2 = function(x){ return x.toFixed(2); };
+const r3 = function(x){ return x.toFixed(3); };
+const SEED = 2026;
+
+function cls(r){ return r >= 1 ? "bad" : (r <= 0.30 ? "ok" : "warn"); }
+
+function readCfg(){
+  return withDefaults({
+    calls: +$("sCalls").value, gapSec: +$("sGap").value, docTok: +$("sDoc").value,
+    blocksPerTurn: +$("sBpt").value, flagBits: +$("sFlag").value, perUser: +$("sPer").value,
+    ttl: $("selTTL").value, minPrefix: +$("selMin").value, lookback: +$("selLook").value
+  });
+}
+
+function renderPos(c){
+  var P = probePosition(c), h = "<thead><tr><th>the 14-token line sits</th>" +
+    "<th>fixed: read</th><th>fixed: written</th><th>fixed: hit</th><th>fixed: bill vs none</th>" +
+    "<th>adaptive: hit</th><th>adaptive: bill vs none</th></tr></thead><tbody>";
+  for (var i = 0; i < P.rows.length; i++){
+    var r = P.rows[i], f = r.fixed, a = r.adaptive;
+    h += "<tr class='" + (f.hit > 0 ? "hi" : "mis") + "'><td>" + r.label + "</td>" +
+      "<td>" + n0(f.read / f.calls) + "</td><td>" + n0(f.write / f.calls) + "</td>" +
+      "<td class='" + (f.hit > 0 ? "ok" : "bad") + "'>" + pc(f.hit) + "</td>" +
+      "<td class='" + cls(f.ratio) + "'>" + r3(f.ratio) + "&times;</td>" +
+      "<td class='" + (a.hit > 0 ? "ok" : "bad") + "'>" + pc(a.hit) + "</td>" +
+      "<td class='" + cls(a.ratio) + "'>" + r3(a.ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("posTbl").innerHTML = h;
+  var bad = P.rows[0].fixed, good = P.rows[7].fixed, span = 0, same = true;
+  for (var k = 1; k <= 5; k++) if (Math.abs(P.rows[k].fixed.ratio - bad.ratio) > 1e-12) same = false;
+  var same2 = Math.abs(P.rows[6].fixed.ratio - good.ratio) < 1e-12;
+  var pctOfPrompt = 14 / (bad.total / bad.calls);
+  $("posNote").innerHTML =
+    "The line is <strong>" + pc(pctOfPrompt) + "</strong> of the prompt. Under the hand-placed " +
+    "breakpoint the first six slots are " + (same ? "<strong>identical to twelve decimal places</strong>" : "not identical") +
+    " at <strong>" + r3(bad.ratio) + "&times;</strong> and a <span class='bad'>" + pc(bad.hit) + "</span> hit rate, " +
+    "and the last two are " + (same2 ? "identical" : "not identical") + " at <strong>" + r3(good.ratio) +
+    "&times;</strong>. Moving it costs nothing and is worth <strong>" + r3(bad.ratio - good.ratio) +
+    "&times;</strong> the whole bill &mdash; and note the direction of the bad case: " +
+    "<span class='bad'>above 1.000</span>, so caching a badly-ordered prompt is more expensive than " +
+    "not caching it. The adaptive placer never goes above <strong>" +
+    r3(Math.max.apply(null, P.rows.map(function(x){ return x.adaptive.ratio; }))) +
+    "&times;</strong>, because at slot 0 it correctly declines to place a breakpoint at all.";
+}
+
+function renderSubsets(c){
+  var S = subsetRuns(c), h = "<thead><tr><th>defects still present</th><th>count</th>" +
+    "<th>hit</th><th>bill vs none</th><th>value of removing one more</th></tr></thead><tbody>";
+  var byMask = {};
+  for (var i = 0; i < S.length; i++) byMask[S[i].mask] = S[i];
+  var order = S.slice().sort(function(a, b){ return b.n - a.n || b.mask - a.mask; });
+  var zeroRows = 0;
+  for (i = 0; i < order.length; i++){
+    var s = order[i], best = null;
+    for (var bit = 0; bit < 4; bit++) if (s.mask & (1 << bit)){
+      var cand = byMask[s.mask & ~(1 << bit)];
+      if (!best || cand.res.ratio < best.res.ratio) best = cand;
+    }
+    var gain = best ? (s.res.ratio - best.res.ratio) : null;
+    if (s.res.hit === 0) zeroRows++;
+    h += "<tr class='" + (s.res.hit > 0 ? "hi" : "mis") + "'><td>" +
+      (s.names.length ? s.names.join(" + ") : "<em>none &mdash; the clean prompt</em>") + "</td>" +
+      "<td>" + s.n + "</td><td class='" + (s.res.hit > 0 ? "ok" : "bad") + "'>" + pc(s.res.hit) + "</td>" +
+      "<td class='" + cls(s.res.ratio) + "'>" + r3(s.res.ratio) + "&times;</td><td>" +
+      (gain === null ? "<span class='dim'>&mdash;</span>" :
+        (Math.abs(gain) < 5e-4 ? "<span class='bad'>" + r3(Math.abs(gain)) + "&times;</span>" :
+          "<span class='ok'>" + r3(gain) + "&times;</span>")) +
+      "</td></tr>";
+  }
+  h += "</tbody>";
+  $("subTbl").innerHTML = h;
+  var clean = byMask[0].res, full = byMask[15].res;
+  $("subNote").innerHTML =
+    "<strong>" + zeroRows + " of the 16</strong> subsets sit at exactly <span class='bad'>0.00%</span> " +
+    "and bill <strong>" + r3(full.ratio) + "&times;</strong> to three decimals &mdash; they are not " +
+    "bit-identical, because the four defects are different sizes and so the prompts differ in " +
+    "length, but the differences are in the fifth decimal place. Every one of them is a set containing " +
+    "at least one of the three per-request defects, which are <em>absorbing</em>: one alive is the " +
+    "same as three alive. So the marginal value of removing a defect is <span class='bad'>0.000&times;</span> " +
+    "in " + (zeroRows - 1) + " of the rows that have one to remove, and the entire saving &mdash; " +
+    r3(full.ratio - clean.ratio) + "&times; of the bill &mdash; arrives on the last removal. " +
+    "A checklist implies partial credit; this one has none.";
+}
+
+function renderFlags(c){
+  var F = flagSweep(c), h = "<thead><tr><th>flags</th><th>prefixes</th><th>hit</th>" +
+    "<th>bill vs none</th><th>writes</th></tr></thead><tbody>";
+  for (var i = 0; i < F.length; i++){
+    var r = F[i];
+    h += "<tr class='" + (r.res.hit > 0.5 ? "hi" : (r.res.hit > 0 ? "amb" : "mis")) + "'><td>F = " + r.f + "</td>" +
+      "<td>" + r.variants + "</td><td class='" + (r.res.hit > 0 ? "ok" : "bad") + "'>" + pc(r.res.hit) + "</td>" +
+      "<td class='" + cls(r.res.ratio) + "'>" + r3(r.res.ratio) + "&times;</td><td>" + r.res.writes + "</td></tr>";
+  }
+  h += "</tbody>";
+  $("flagTbl").innerHTML = h;
+  var reuse = TTL_SEC[c.ttl] / c.gapSec, cliffF = null;
+  for (i = 0; i < F.length; i++) if (cliffF === null && F[i].res.hit === 0) cliffF = F[i].f;
+  $("flagNote").innerHTML =
+    "The section is 95 tokens and its size never appears in this table &mdash; only 2<sup>F</sup> " +
+    "does. At F&nbsp;=&nbsp;1 the cache is halved and still worth " + r3(1 - F[1].res.ratio) +
+    "&times;. The collapse is a law rather than a slope: one variant is reused every 2<sup>F</sup> " +
+    "calls, so it survives only while 2<sup>F</sup>&nbsp;&times;&nbsp;gap&nbsp;&lt;&nbsp;TTL. Here " +
+    "that is 2<sup>F</sup>&nbsp;&lt;&nbsp;" + reuse.toFixed(2) + ", so F&nbsp;=&nbsp;" + cliffF +
+    " is the first value at which every entry has expired before its next use, and the hit rate is " +
+    "<span class='bad'>0.00%</span> from there on. This defect divides; the other three zero.";
+}
+
+function renderFloor(c){
+  var F = floorSweep(c), h = "<thead><tr><th>shared prefix</th>";
+  for (var t = 0; t < MIN_TIERS.length; t++) h += "<th>min " + MIN_TIERS[t] + "</th>";
+  h += "</tr></thead><tbody>";
+  var split = null;
+  for (var i = 0; i < F.length; i++){
+    var r = F[i];
+    h += "<tr><td>" + n0(r.size) + " tok</td>";
+    var on = 0;
+    for (t = 0; t < r.cells.length; t++){
+      var cc = r.cells[t];
+      if (cc.hit > 0) on++;
+      h += "<td class='" + (cc.hit > 0 ? "ok" : "bad") + "'>" + pc(cc.hit) + "<br>" +
+        "<span class='" + cls(cc.ratio) + "' style='font-size:10.5px'>" + r3(cc.ratio) + "&times;</span></td>";
+    }
+    h += "</tr>";
+    if (on > 0 && on < 4 && split === null) split = r;
+  }
+  h += "</tbody>";
+  $("floorTbl").innerHTML = h;
+  var below = F[0].cells[3];
+  $("floorNote").innerHTML =
+    "At " + n0(split ? split.size : 0) + " tokens the identical prompt caches on some tiers and not " +
+    "others, with no error either way. Note the bill below the floor: <strong>" + r3(below.ratio) +
+    "&times;</strong> &mdash; exactly the uncached price, because nothing is written either. " +
+    "That is the opposite of the TTL failure next door, which reports the same 0.00% hit rate and " +
+    "bills the write multiplier on every call.";
+}
+
+function renderScheme(c){
+  var wl = $("selWl").value, R = schemeTable(c, wl);
+  var h = "<thead><tr><th>breakpoint scheme</th><th>good order: hit</th><th>read/call</th>" +
+    "<th>written/call</th><th>bill vs none</th><th>bad order: hit</th><th>bad order: bill</th></tr></thead><tbody>";
+  for (var i = 0; i < R.length; i++){
+    var r = R[i], g = r.good, b = r.bad;
+    h += "<tr class='" + (g.ratio < 0.6 ? "hi" : (g.ratio > 1 ? "mis" : "")) + "'><td>" + r.label + "</td>" +
+      "<td class='" + (g.hit > 0 ? "ok" : "bad") + "'>" + pc(g.hit) + "</td>" +
+      "<td>" + n0(g.read / g.calls) + "</td><td>" + n0(g.write / g.calls) + "</td>" +
+      "<td class='" + cls(g.ratio) + "'>" + r3(g.ratio) + "&times;</td>" +
+      "<td class='" + (b.hit > 0 ? "ok" : "bad") + "'>" + pc(b.hit) + "</td>" +
+      "<td class='" + cls(b.ratio) + "'>" + r3(b.ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("schemeTbl").innerHTML = h;
+  var by = {}; for (i = 0; i < R.length; i++) by[R[i].id] = R[i];
+  var overOne = 0;
+  ["auto", "fixed", "two", "four"].forEach(function(k){ if (by[k].bad.ratio >= 1 - 1e-9) overOne++; });
+  var extra = by.four.good.ratio - by.two.good.ratio;
+  $("schemeNote").innerHTML = wl === "repeat" ?
+    ("The one-line version of the feature &mdash; top-level auto-caching &mdash; bills <strong>" +
+     r3(by.auto.good.ratio) + "&times;</strong> here at a <span class='bad'>" + pc(by.auto.good.hit) +
+     "</span> hit rate, which is <em>more expensive than not caching at all</em>, because the " +
+     "breakpoint lands after the question and the question is new every call. The same one line is " +
+     "the best scheme on the other workload. Nothing in the call tells you which one you are in. " +
+     "Meanwhile one hand-placed breakpoint bills <strong>" + r3(by.fixed.good.ratio) + "&times;</strong> " +
+     "for the same zero tokens. 🔴 And four breakpoints spread &quot;to be safe&quot; do not tie two " +
+     "well-placed ones, they <em>lose</em> to one: <strong>" + r3(by.four.good.ratio) +
+     "&times;</strong> against <strong>" + r3(by.two.good.ratio) + "&times;</strong>, +" +
+     r3(extra) + "&times; of the bill, because a breakpoint short of the end of the shared prefix " +
+     "caches less of it (" + pc(by.four.good.hit) + " against " + pc(by.two.good.hit) +
+     ") and then rewrites the remainder at the write multiplier on every call. More breakpoints is " +
+     "not more caching. In the bad-order column <strong>" + overOne + " of the 4</strong> paying " +
+     "schemes bill at or above 1.000&times;, and the only one that escapes is the adaptive placer at " +
+     r3(by.adaptive.bad.ratio) + "&times; &mdash; which is not a breakpoint count, it is a placement " +
+     "rule. Placement cannot rescue ordering; only re-ordering, or a placer that notices, can.") :
+    ("In a growing conversation auto-caching is correct and cheapest at <strong>" +
+     r3(by.auto.good.ratio) + "&times;</strong>, because this turn's tail is next turn's history. " +
+     "The hand-placed breakpoint is a turn behind at <strong>" + r3(by.fixed.good.ratio) + "&times;</strong>. " +
+     "🔴 And here is the null result the other workload does not have: one breakpoint, two and four " +
+     "all bill <strong>" + r3(by.auto.good.ratio) + "&times;</strong> &mdash; a difference of <strong>" +
+     (Math.abs(extra) < 1e-12 ? "<span class='bad'>exactly 0.000&times;</span>" : r3(Math.abs(extra)) + "&times;") +
+     "</strong>. The third and fourth breakpoints buy nothing at all here and cost " +
+     r3(schemeTable(c, "repeat").filter(function(x){ return x.id === "four"; })[0].good.ratio -
+        schemeTable(c, "repeat").filter(function(x){ return x.id === "two"; })[0].good.ratio) +
+     "&times; on the other workload, so the honest advice is not &quot;use more&quot; and not " +
+     "&quot;use fewer&quot;, it is that only one placement is ever load-bearing. Bad ordering costs " +
+     r3(by.auto.bad.ratio - by.auto.good.ratio) + "&times; of the bill.");
+}
+
+function renderReuse(c){
+  var B = breakEven(c), h = "<thead><tr><th>calls sharing the prefix</th>" +
+    "<th>5m: prefix only</th><th>5m: whole prompt</th><th>1h: prefix only</th><th>1h: whole prompt</th></tr></thead><tbody>";
+  for (var i = 0; i < B.rows.length; i++){
+    var r = B.rows[i];
+    h += "<tr class='" + (r.cells[0].pure < 1 ? "hi" : "mis") + "'><td>n = " + r.n + "</td>" +
+      "<td class='" + cls(r.cells[0].pure) + "'>" + r3(r.cells[0].pure) + "&times;</td>" +
+      "<td class='" + cls(r.cells[0].ratio) + "'>" + r3(r.cells[0].ratio) + "&times;</td>" +
+      "<td class='" + cls(r.cells[1].pure) + "'>" + r3(r.cells[1].pure) + "&times;</td>" +
+      "<td class='" + cls(r.cells[1].ratio) + "'>" + r3(r.cells[1].ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("reuseTbl").innerHTML = h;
+  $("reuseNote").innerHTML =
+    "The exact crossings are <strong>n = " + B.xover[0].exact.toFixed(4) + "</strong> for the 5-minute " +
+    "cache and <strong>n = " + B.xover[1].exact.toFixed(4) + "</strong> for the 1-hour one, so in whole " +
+    "calls it is <strong>2</strong> and <strong>3</strong>. A single-shot request that will never be " +
+    "repeated costs <strong>" + r3(B.rows[0].cells[0].pure) + "&times;</strong> and <strong>" +
+    r3(B.rows[0].cells[1].pure) + "&times;</strong> respectively. The 1-hour TTL is not a free upgrade: " +
+    "it doubles the write, so it needs half again as many reads before it is even level.";
+}
+
+function renderGap(c){
+  var G = gapSweep(c), h = "<thead><tr><th>gap between calls</th><th>5m: hit</th><th>5m: bill</th>" +
+    "<th>1h: hit</th><th>1h: bill</th></tr></thead><tbody>";
+  for (var i = 0; i < G.length; i++){
+    var r = G[i];
+    h += "<tr class='" + (r.cells[0].hit > 0 ? "hi" : "mis") + "'><td>" + r.gap + " s</td>" +
+      "<td class='" + (r.cells[0].hit > 0 ? "ok" : "bad") + "'>" + pc(r.cells[0].hit) + "</td>" +
+      "<td class='" + cls(r.cells[0].ratio) + "'>" + r3(r.cells[0].ratio) + "&times;</td>" +
+      "<td class='" + (r.cells[1].hit > 0 ? "ok" : "bad") + "'>" + pc(r.cells[1].hit) + "</td>" +
+      "<td class='" + cls(r.cells[1].ratio) + "'>" + r3(r.cells[1].ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("gapTbl").innerHTML = h;
+  var wall = G[G.length - 1].cells[0];
+  $("gapNote").innerHTML =
+    "Past the TTL the bill is <strong>" + r3(wall.ratio) + "&times;</strong> forever, at a " +
+    "<span class='bad'>" + pc(wall.hit) + "</span> hit rate &mdash; the write multiplier applied to " +
+    "the prefix and nothing else, which tends to <strong>1.250&times;</strong> as the prefix grows " +
+    "relative to the suffix. A cron job that fires every ten minutes is paying a standing surcharge " +
+    "for a feature that has never once been used, and both of the numbers it would look at to " +
+    "notice &mdash; a successful response and a zero cache-read count &mdash; look like the " +
+    "under-the-floor case, which costs nothing.";
+}
+
+function renderLook(c){
+  var L = lookbackSweep(c), h = "<thead><tr><th>blocks appended per turn</th><th>one breakpoint: hit</th>" +
+    "<th>one: bill</th><th>+ bridge breakpoint: hit</th><th>+ bridge: bill</th><th>free saving</th></tr></thead><tbody>";
+  var cliff = null;
+  for (var i = 0; i < L.length; i++){
+    var r = L[i];
+    if (cliff === null && i > 0 && L[i - 1].one.hit > 0 && r.one.hit === 0) cliff = r.B;
+    h += "<tr class='" + (r.one.hit > 0 ? "hi" : "mis") + "'><td>" + r.B + "</td>" +
+      "<td class='" + (r.one.hit > 0 ? "ok" : "bad") + "'>" + pc(r.one.hit) + "</td>" +
+      "<td class='" + cls(r.one.ratio) + "'>" + r3(r.one.ratio) + "&times;</td>" +
+      "<td class='ok'>" + pc(r.two.hit) + "</td>" +
+      "<td class='" + cls(r.two.ratio) + "'>" + r3(r.two.ratio) + "&times;</td>" +
+      "<td class='" + (r.one.ratio - r.two.ratio > 1e-9 ? "ok" : "dim") + "'>" +
+      r3(r.one.ratio - r.two.ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("lookTbl").innerHTML = h;
+  var last = L[L.length - 1];
+  $("lookNote").innerHTML =
+    "The cliff falls at <strong>" + (cliff || "&mdash;") + " blocks per turn</strong>, which is the " +
+    "window setting and not a property of the prompt: change the dropdown and the cliff moves with it. " +
+    "Below it a single breakpoint is fine; above it the whole conversation is re-read at full price on " +
+    "every turn and the request still succeeds. The bridge breakpoint is <span class='pill p-free'>FREE</span> " +
+    "&mdash; zero tokens, one more integer in an array &mdash; and it holds at <strong>" +
+    pc(last.two.hit) + "</strong> at " + last.B + " blocks per turn where the single breakpoint has " +
+    "collapsed to <span class='bad'>" + pc(last.one.hit) + "</span>, worth <strong>" +
+    r3(last.one.ratio - last.two.ratio) + "&times;</strong> of the bill. It works at any turn size " +
+    "because the read comes from the low breakpoint and the write goes to the high one.";
+}
+
+function renderFan(c){
+  var F = fanout(c), h = "<thead><tr><th>requests fired</th><th>all at once: hit</th><th>bill</th>" +
+    "<th>one first, then the rest: hit</th><th>bill</th><th>overpayment</th></tr></thead><tbody>";
+  for (var i = 0; i < F.length; i++){
+    var r = F[i];
+    h += "<tr class='" + (r.over > 1.01 ? "mis" : "") + "'><td>N = " + r.N + "</td>" +
+      "<td class='bad'>" + pc(r.burst.hit) + "</td><td>" + n0(r.burst.bill) + "</td>" +
+      "<td class='ok'>" + pc(r.stag.hit) + "</td><td>" + n0(r.stag.bill) + "</td>" +
+      "<td class='" + (r.over > 1.01 ? "bad" : "dim") + "'>" + r3(r.over) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("fanTbl").innerHTML = h;
+  var big = F[F.length - 1];
+  $("fanNote").innerHTML =
+    "At N = " + big.N + " the burst pays <strong>" + r3(big.over) + "&times;</strong> what the staggered " +
+    "version pays, for byte-identical prompts. The fix is one <code class='tok'>await</code> on the " +
+    "first token of the first response &mdash; not the first response, the first <em>token</em> &mdash; " +
+    "and it costs " + c.firstTokenSec + "s of wall clock once.";
+}
+
+function renderHier(c){
+  var H = hierarchy(c), h = "<thead><tr><th>changed between calls</th><th>tools survive</th>" +
+    "<th>system survives</th><th>messages survive</th><th>read</th><th>bill</th></tr></thead><tbody>";
+  for (var i = 0; i < H.length; i++){
+    var r = H[i];
+    h += "<tr><td>" + r.label + "</td>" +
+      "<td class='" + (r.tools ? "ok" : "bad") + "'>" + (r.tools ? "yes" : "no") + "</td>" +
+      "<td class='" + (r.sys ? "ok" : "bad") + "'>" + (r.sys ? "yes" : "no") + "</td>" +
+      "<td class='" + (r.msgs ? "ok" : "bad") + "'>" + (r.msgs ? "yes" : "no") + "</td>" +
+      "<td>" + n0(r.read) + " / " + n0(r.total) + "</td>" +
+      "<td class='" + cls(r.ratio) + "'>" + r3(r.ratio) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("hierTbl").innerHTML = h;
+  var by2 = {}; for (i = 0; i < H.length; i++) by2[H[i].id] = H[i];
+  $("hierNote").innerHTML =
+    "Nothing in this table was typed in: each row applies one mutation and reads back what the matcher " +
+    "could still find. The published tier ordering &mdash; tools invalidate everything, system spares " +
+    "the tools, a later message spares both &mdash; falls out of the fact that a prefix is a prefix. " +
+    "But the derivation says something the tier table does not: the persona and the reference document " +
+    "land on <em>the same row</em> (" + n0(by2.persona.read) + " tokens each) because there is no " +
+    "breakpoint between them. The granularity is not three tiers of the API. It is wherever you put " +
+    "your four breakpoints, and everything between two of them is one tier.";
+}
+
+function renderTenant(c){
+  var T = tenantSweep(c), h = "<thead><tr><th>calls per user</th><th>calls</th><th>clean: bill</th>" +
+    "<th>per-user persona: bill</th><th>cost of the defect</th><th>same defect, 1 user</th></tr></thead><tbody>";
+  for (var i = 0; i < T.length; i++){
+    var r = T[i];
+    h += "<tr class='" + (r.delta > 0.05 ? "mis" : "") + "'><td>" + r.per + "</td><td>" + r.calls + "</td>" +
+      "<td class='" + cls(r.clean.ratio) + "'>" + r3(r.clean.ratio) + "&times;</td>" +
+      "<td class='" + cls(r.dirty.ratio) + "'>" + r3(r.dirty.ratio) + "&times;</td>" +
+      "<td class='" + (r.delta > 0.01 ? "bad" : "dim") + "'>+" + r3(r.delta) + "&times;</td>" +
+      "<td class='dim'>+" + r3(r.soloDelta) + "&times;</td></tr>";
+  }
+  h += "</tbody>";
+  $("tenantTbl").innerHTML = h;
+  var lo = T[0], hi = T[T.length - 1];
+  $("tenantNote").innerHTML =
+    "The defect is a constant &mdash; one extra write per user &mdash; so its <em>share</em> of the " +
+    "bill is entirely decided by how many calls that user makes. At " + lo.per + " call per user it " +
+    "costs <strong>+" + r3(lo.delta) + "&times;</strong>; at " + hi.per + " it costs <strong>+" +
+    r3(hi.delta) + "&times;</strong>. And the last column is the point: run the identical defect on a " +
+    "single-user trace and it costs <strong>+" + r3(hi.soloDelta) + "&times;</strong> at every row. " +
+    "A benchmark with one user in it cannot see this defect at all, and it is on the same checklist, " +
+    "in the same tone of voice, as the timestamp.";
+}
+
+function renderHatch(c){
+  var E = escapeHatch(c);
+  var h = "<thead><tr><th>how the 60-token instruction arrives on turn 8</th><th>total bill</th>" +
+    "<th>vs no instruction</th><th>read across 15 turns</th></tr></thead><tbody>" +
+    "<tr><td>not sent at all (the baseline)</td><td>" + n0(E.none.bill) + "</td><td class='dim'>&mdash;</td><td>" + n0(E.none.read) + "</td></tr>" +
+    "<tr class='mis'><td>appended to the top-level system prompt</td><td>" + n0(E.sys.bill) + "</td>" +
+    "<td class='bad'>+" + n0(E.sysDelta) + "</td><td>" + n0(E.sys.read) + "</td></tr>" +
+    "<tr class='hi'><td>sent as a message after the history</td><td>" + n0(E.msg.bill) + "</td>" +
+    "<td class='ok'>+" + n0(E.msgDelta) + "</td><td>" + n0(E.msg.read) + "</td></tr></tbody>";
+  $("hatchTbl").innerHTML = h;
+  $("hatchNote").innerHTML =
+    "Same sixty tokens, <strong>" + n2(E.factor) + "&times;</strong> the cost, decided entirely by " +
+    "which side of the history they landed on. One correction to the usual telling, which the " +
+    "measurement forced: editing the system prompt does <em>not</em> impose a permanent penalty. " +
+    "It costs <em>one</em> re-write of everything behind it, after which the new prompt is the new " +
+    "stable prefix and caches normally &mdash; the surcharge is a step, not a slope. It is still " +
+    "+" + n0(E.sysDelta) + " against +" + n0(E.msgDelta) + ", because that one step is the whole " +
+    "conversation at the write multiplier.";
+}
+
+let slowTimer = null;
+function render(){
+  var c = readCfg();
+  $("vCalls").textContent = c.calls; $("vGap").textContent = c.gapSec;
+  $("vDoc").textContent = c.docTok; $("vBpt").textContent = c.blocksPerTurn;
+  $("vFlag").textContent = c.flagBits; $("vPer").textContent = c.perUser;
+  renderPos(c); renderSubsets(c); renderFlags(c); renderScheme(c);
+  clearTimeout(slowTimer);
+  slowTimer = setTimeout(function(){
+    renderFloor(c); renderReuse(c); renderGap(c); renderLook(c);
+    renderFan(c); renderHier(c); renderTenant(c); renderHatch(c);
+  }, 0);
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selfTest(){
+  var lines = [], pass = 0, fail = 0;
+  var ok = function(cond, label){ if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } };
+  var c = withDefaults({});
+
+  // 1. the rng
+  {
+    var a = mulberry32(7), b = mulberry32(7), d = mulberry32(8), same = true, diff = false;
+    for (var i = 0; i < 300; i++){
+      var x = a(), y = b(), z = d();
+      if (x !== y) same = false;
+      if (x !== z) diff = true;
+      ok(x >= 0 && x < 1, "mulberry32 left the unit interval");
+    }
+    ok(same, "mulberry32 is not deterministic for a fixed seed");
+    ok(diff, "two seeds produced the same stream");
+  }
+
+  // 2. the fast key chain against the naive one
+  {
+    for (var s = 0; s < 6; s++){
+      var blocks = assemble(c, { call: s, user: s % 3, doc: 0, flag: s % 2 },
+                            { stamp: s % 2 === 0, cfg: s % 3 === 0 }, s % 8, {});
+      var kf = prefixKeys(blocks), kn = naiveKeys(blocks);
+      ok(kf.length === kn.length, "the key chains differ in length");
+      for (var i2 = 0; i2 < blocks.length; i2++)
+        for (var j2 = 0; j2 < blocks.length; j2++)
+          ok((kf[i2] === kf[j2]) === (kn[i2] === kn[j2]), "the fast chain disagrees with the naive one");
+    }
+  }
+
+  // 3. conservation: read + written + uncached is always the whole prompt
+  {
+    var st = newStore(), now = 0;
+    for (var k = 0; k < 40; k++){
+      var bl = assemble(c, { call: k, user: 0, doc: 0, flag: 0 }, {}, 8, {});
+      var r = serve(st, bl, schemeBps("two", bl), optOf(c, {}), now);
+      ok(Math.abs((r.read + r.write + r.uncached) - r.total) < 1e-9, "tokens went missing on call " + k);
+      ok(r.read >= 0 && r.write >= 0 && r.uncached >= 0, "a negative token count on call " + k);
+      ok(r.bill <= r.total * 2 + 1e-9, "the bill exceeded twice the uncached price");
+      ok(r.total === totalTokens(bl), "the prompt total does not match the blocks");
+      now += 20;
+    }
+  }
+
+  // 4. the store against the naive replay
+  {
+    var cases = [
+      { scheme: "fixed", insertAt: 8, defects: {}, calls: 14 },
+      { scheme: "fixed", insertAt: 1, defects: { stamp: true }, calls: 14 },
+      { scheme: "adaptive", insertAt: 3, defects: { cfg: true }, calls: 14 },
+      { scheme: "two", insertAt: 8, defects: { flag: true }, calls: 14, flagBits: 2 },
+      { scheme: "four", insertAt: 8, defects: {}, calls: 12, gapSec: 400 }
+    ];
+    for (var q = 0; q < cases.length; q++){
+      var A = runRepeat(c, cases[q]), Bn = naiveReplay(c, cases[q]);
+      ok(Math.abs(A.bill - Bn.bill) < 1e-6, "the incremental store disagrees with the replay on case " + q);
+      ok(A.read === Bn.read, "read tokens disagree on case " + q);
+      ok(A.write === Bn.write, "written tokens disagree on case " + q);
+    }
+  }
+
+  // 5. the price schedule is applied and nothing else is
+  {
+    var st2 = newStore(), bl2 = assemble(c, { call: 0, user: 0, doc: 0, flag: 0 }, {}, 8, {});
+    var bps2 = schemeBps("fixed", bl2);
+    var r1 = serve(st2, bl2, bps2, optOf(c, {}), 0);
+    ok(r1.read === 0, "the first call read something");
+    ok(Math.abs(r1.bill - (r1.write * 1.25 + r1.uncached)) < 1e-9, "the first bill is not write + uncached");
+    var bl3 = assemble(c, { call: 1, user: 0, doc: 0, flag: 0 }, {}, 8, {});
+    var r2 = serve(st2, bl3, schemeBps("fixed", bl3), optOf(c, {}), 30);
+    ok(r2.read === r1.write, "the second call did not read exactly what the first wrote");
+    ok(Math.abs(r2.bill - (r2.read * 0.1 + r2.uncached)) < 1e-9, "the second bill is not read + uncached");
+  }
+
+  // 6. PROBE 1: the step, to twelve decimals
+  {
+    var P = probePosition(c), base = P.rows[0].fixed.ratio;
+    for (var p = 1; p <= 5; p++)
+      ok(Math.abs(P.rows[p].fixed.ratio - base) < 1e-12, "slot " + p + " is not identical to slot 0");
+    for (var p2 = 0; p2 <= 5; p2++) ok(P.rows[p2].fixed.hit === 0, "slot " + p2 + " scored a hit");
+    ok(Math.abs(P.rows[6].fixed.ratio - P.rows[7].fixed.ratio) < 1e-12, "the last two slots differ");
+    ok(P.rows[6].fixed.hit > 0.9, "moving the line past the breakpoint did not recover the cache");
+    ok(base > 1, "a badly-ordered cached prompt was not more expensive than no cache");
+    ok(Math.abs(P.rows[0].adaptive.ratio - 1) < 1e-12, "the adaptive placer did not decline at slot 0");
+  }
+
+  // 7. PROBE 2: absorbing defects
+  {
+    var S = subsetRuns(c), byMask = {};
+    for (var m = 0; m < S.length; m++) byMask[S[m].mask] = S[m];
+    var absorbing = 0;
+    for (m = 0; m < 16; m++){
+      var hasReq = (m & 1) || (m & 2) || (m & 4);
+      if (hasReq){ absorbing++; ok(byMask[m].res.hit === 0, "subset " + m + " kept a hit with a per-request defect"); }
+    }
+    ok(absorbing === 14, "the number of absorbing subsets is " + absorbing);
+    // the fourteen do not bill IDENTICALLY - the defects have different token sizes, so the prompts
+    // differ in length - but they agree to three decimal places, which is the claim on the page.
+    var ref = byMask[7].res.ratio;
+    for (m = 0; m < 16; m++) if ((m & 1) || (m & 2) || (m & 4))
+      ok(Math.abs(byMask[m].res.ratio - ref) < 2e-3, "subset " + m + " billed differently");
+    ok(byMask[0].res.hit > 0.9, "the clean prompt did not cache");
+    ok(byMask[8].res.hit > 0, "the flag-only subset zeroed the cache");
+    // and the flag law: 2^F gaps between reuses of one variant, against the TTL
+    var Fs = flagSweep(c), reuse = TTL_SEC[c.ttl] / c.gapSec;
+    for (var f2 = 0; f2 < Fs.length; f2++){
+      var fits = Fs[f2].variants < reuse;
+      if (fits) ok(Fs[f2].res.hit > 0, "F = " + f2 + " fits inside the TTL and still missed");
+      else ok(Fs[f2].res.hit === 0, "F = " + f2 + " does not fit inside the TTL and still hit");
+    }
+  }
+
+  // 8. break-even is the published arithmetic
+  {
+    var B = breakEven(c);
+    ok(Math.abs(B.xover[0].exact - (1.25 - 0.1) / 0.9) < 1e-12, "the 5m crossing is wrong");
+    ok(Math.abs(B.xover[1].exact - (2.00 - 0.1) / 0.9) < 1e-12, "the 1h crossing is wrong");
+    ok(B.rows[0].cells[0].pure === 1.25, "one call on a 5m cache is not 1.25x");
+    ok(B.rows[0].cells[1].pure === 2.00, "one call on a 1h cache is not 2.00x");
+    ok(B.rows[1].cells[0].pure < 1, "two calls did not pay for the 5m write");
+    ok(B.rows[1].cells[1].pure > 1, "two calls paid for the 1h write");
+    ok(B.rows[2].cells[1].pure < 1, "three calls did not pay for the 1h write");
+  }
+
+  // 9. the TTL wall and the floor are different failures
+  {
+    var far = runRepeat(c, { scheme: "fixed", gapSec: 4000, ttl: "5m", defects: {}, calls: 12 });
+    ok(far.hit === 0, "an expired cache still read something");
+    ok(far.ratio > 1, "the TTL wall did not cost anything");
+    var tiny = withDefaults({ toolTok: 0, toolBlocks: 0, sysTok: 300, policyTok: 0, schemaTok: 0,
+                              personaTok: 0, docTok: 0, minPrefix: 4096 });
+    var st3 = newStore(), bill = 0, tot = 0;
+    for (var k3 = 0; k3 < 10; k3++){
+      var b3 = flatten([{ key: "sysCore", tok: 300, nb: 1, stable: true },
+                        { key: "ask|q" + k3, tok: 120, nb: 1, stable: false }]);
+      var r3v = serve(st3, b3, [0], optOf(tiny, {}), k3 * 10);
+      bill += r3v.bill; tot += r3v.total;
+    }
+    ok(Math.abs(bill / tot - 1) < 1e-12, "a below-floor prefix was not billed at exactly 1.000x");
+  }
+
+  // 10. the cliff sits at the window
+  {
+    var narrow = withDefaults({ lookback: 10, turns: 8 });
+    var L = lookbackSweep(narrow), cliff = null;
+    for (var i4 = 1; i4 < L.length; i4++) if (L[i4 - 1].one.hit > 0 && L[i4].one.hit === 0) cliff = L[i4].B;
+    ok(cliff !== null && cliff > 10 && cliff <= 12, "the cliff at window 10 landed at " + cliff);
+    var wide = lookbackSweep(withDefaults({ lookback: 40, turns: 8 }));
+    for (var i5 = 0; i5 < wide.length; i5++) ok(wide[i5].one.hit > 0, "window 40 lost the cache at " + wide[i5].B);
+    var L2 = lookbackSweep(c);
+    for (var i6 = 0; i6 < L2.length; i6++) ok(L2[i6].two.hit > 0, "the bridge breakpoint failed at " + L2[i6].B);
+  }
+
+  // 11. fan-out and the hierarchy
+  {
+    var F = fanout(c);
+    ok(F[0].over === 1, "N = 1 overpaid");
+    for (var i7 = 1; i7 < F.length; i7++){
+      ok(F[i7].burst.hit === 0, "a concurrent burst read something at N = " + F[i7].N);
+      ok(F[i7].over > 1, "the burst did not overpay at N = " + F[i7].N);
+      ok(F[i7].over > F[i7 - 1].over - 1e-9, "overpayment is not monotone at N = " + F[i7].N);
+    }
+    var H = hierarchy(c), by = {};
+    for (var i8 = 0; i8 < H.length; i8++) by[H[i8].id] = H[i8];
+    ok(by.none.msgs, "an unchanged prompt did not read everything");
+    ok(by.tools.read === 0, "a tool change left something cached");
+    ok(by.system.tools && !by.system.sys, "a system change did not spare exactly the tools");
+    ok(by.ask.msgs, "changing the last message invalidated the prefix");
+    ok(by.doc.sys && !by.doc.msgs, "a doc change did not spare exactly the tools and system");
+    ok(by.persona.read === by.doc.read, "persona and doc resolved to different tiers");
+    ok(by.tools.read < by.system.read && by.system.read < by.doc.read && by.doc.read < by.ask.read,
+       "the hierarchy is not monotone in how early the change is");
+  }
+
+  // 12. the scheme scoreboard's two claims
+  {
+    var R = schemeTable(c, "repeat"), by2 = {};
+    for (var i9 = 0; i9 < R.length; i9++) by2[R[i9].id] = R[i9];
+    ok(by2.auto.good.hit === 0, "auto-caching scored a hit on a varying-suffix workload");
+    ok(by2.auto.good.ratio > 1, "auto-caching did not cost more than no caching here");
+    ok(by2.fixed.good.ratio < 0.5, "the hand-placed breakpoint did not save most of the bill");
+    // I built the four-breakpoint scheme expecting it to TIE the two-breakpoint one and it LOSES:
+    // a breakpoint short of the shared prefix caches less of it and rewrites the rest every call.
+    ok(by2.four.good.ratio > by2.two.good.ratio + 0.1, "four spread breakpoints did not lose to two");
+    ok(by2.four.good.hit < by2.two.good.hit, "four spread breakpoints did not read less");
+    // in the bad-order column every scheme that writes anything is at or above the no-cache bill,
+    // and the ONLY escape is the adaptive placer, which is not a breakpoint count at all
+    ["auto", "fixed", "two", "four"].forEach(function(k){
+      ok(by2[k].bad.ratio >= 1 - 1e-9, k + " beat no-caching on a badly ordered prompt");
+    });
+    ok(by2.adaptive.bad.ratio < 1, "the adaptive placer did not salvage the bad ordering");
+    var Rc = schemeTable(c, "convo"), byc = {};
+    for (var iA = 0; iA < Rc.length; iA++) byc[Rc[iA].id] = Rc[iA];
+    ok(byc.auto.good.hit > 0, "auto-caching failed on a conversation");
+    ok(byc.auto.good.ratio < byc.none.good.ratio, "auto-caching did not beat no caching on a conversation");
+    // and here the null result IS a null result: the 3rd and 4th breakpoints buy exactly nothing
+    ok(Math.abs(byc.four.good.ratio - byc.two.good.ratio) < 1e-12, "the extra breakpoints moved the conversation bill");
+    ok(Math.abs(byc.auto.good.ratio - byc.two.good.ratio) < 1e-12, "one breakpoint and two differ on a conversation");
+  }
+
+  // 13. the tenant blind spot
+  {
+    var T = tenantSweep(c);
+    for (var iB = 0; iB < T.length; iB++) ok(T[iB].soloDelta < 1e-9, "the per-user defect showed up on one user");
+    ok(T[0].delta > T[T.length - 1].delta, "the per-user defect did not fade with calls per user");
+  }
+
+  // 14. the escape hatch
+  {
+    var E = escapeHatch(c);
+    ok(E.sysDelta > E.msgDelta, "editing the system prompt was not more expensive");
+    ok(E.msgDelta > 0, "the operator message was free");
+    ok(E.factor > 4, "the factor between them is only " + E.factor.toFixed(2));
+    ok(E.sysDelta < 15 * (c.toolTok + c.sysTok), "the system edit cost more than a re-write per turn");
+  }
+
+  var Pf = probePosition(c), Sf = subsetRuns(c), Rf = schemeTable(c, "repeat"), byF = {};
+  for (var iC = 0; iC < Rf.length; iC++) byF[Rf[iC].id] = Rf[iC];
+  var Lf = lookbackSweep(c), Ff = fanout(c), Gf = gapSweep(c), Ef = escapeHatch(c);
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + pass + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  probe 1 (parameter-free): 14 tokens, 8 slots, 2 distinct bills -- slots 0-5 all " +
+      r3(Pf.rows[0].fixed.ratio) + "x at 0.00% and slots 6-7 both " + r3(Pf.rows[7].fixed.ratio) + "x",
+    "  probe 2 (enumerated)    : 14 of 16 subsets identical at 0.00%; the marginal value of all but",
+    "                            the last removal is exactly 0.000x",
+    "  free    : move the date line past the breakpoint  ->  " + r3(Pf.rows[0].fixed.ratio) + "x to " +
+      r3(Pf.rows[7].fixed.ratio) + "x, +0 tokens",
+    "  free    : a bridge breakpoint on the first new block  ->  " + pc(Lf[Lf.length - 1].one.hit) +
+      " to " + pc(Lf[Lf.length - 1].two.hit) + " at " + Lf[Lf.length - 1].B + " blocks/turn, +0 tokens",
+    "  trap    : top-level auto-caching on a varying suffix  ->  " + pc(byF.auto.good.hit) +
+      " hit and " + r3(byF.auto.good.ratio) + "x, MORE than not caching",
+    "  null    : the 3rd and 4th breakpoints in a conversation  ->  exactly 0.000x",
+    "  refuted : I expected four spread breakpoints to TIE two. They lose to ONE: " +
+      r3(byF.four.good.ratio) + "x vs " + r3(byF.fixed.good.ratio) + "x",
+    "  cost    : past the TTL the bill is " + r3(Gf[Gf.length - 1].cells[0].ratio) +
+      "x forever at a 0.00% hit rate",
+    "  cost    : " + Ff[Ff.length - 1].N + " concurrent identical prefixes pay " +
+      r3(Ff[Ff.length - 1].over) + "x the staggered bill",
+    "  cost    : the same 60 tokens cost " + Ef.factor.toFixed(2) + "x more in the system prompt than",
+    "            in a message after the history"
+  ])).join("\n");
+}
+
+["sCalls", "sGap", "sDoc", "sBpt", "sFlag", "sPer"].forEach(function(id){
+  $(id).addEventListener("input", scheduleRender);
+});
+["selTTL", "selMin", "selLook", "selWl"].forEach(function(id){
+  $(id).addEventListener("change", scheduleRender);
+});
+let pending = null;
+function scheduleRender(){ clearTimeout(pending); pending = setTimeout(render, 140); }
+render();
+selfTest();
+</script>
+</body>
+</html>
