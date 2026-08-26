@@ -74,6 +74,7 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 69 — Instruction precedence](https://dev48.infy.uk/prompt/day69-instruction-precedence.html) — `day69-instruction-precedence.html`
 - [PromptFromZero · Day 70 — Delimiter design](https://dev48.infy.uk/prompt/day70-delimiter-design.html) — `day70-delimiter-design.html`
 - [PromptFromZero · Day 71 — Prompt caching](https://dev48.infy.uk/prompt/day71-prompt-caching.html) — `day71-prompt-caching.html`
+- [PromptFromZero · Day 72 — Few-shot budget](https://dev48.infy.uk/prompt/day72-few-shot-budget.html) — `day72-few-shot-budget.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk

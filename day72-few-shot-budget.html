@@ -1,0 +1,2119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 72 — Few-shot budget</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .teal { color:#0f766e; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#0d9488; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f0fdfa; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#e0e7ff; color:#3730a3; }
+  .cell-ok { background:#dcfce7; color:#166534; font-weight:800; }
+  .cell-sil { background:#fee2e2; color:#991b1b; font-weight:800; }
+  .cell-loud { background:#fef3c7; color:#92400e; font-weight:800; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw teal mb2">PROMPTFROMZERO · DAY 72</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      🎒 Few-shot budget — every guide tells you to add examples and none of them tells you which
+      ones, how many, or what the last one bought. So this page prices demonstrations instead of
+      recommending them: an 81-input task, an enumerated space of 256 candidate rules, and one
+      mechanical fact — a demonstration deletes every rule that disagrees with it. A query is
+      <strong>pinned</strong> when every surviving rule labels it the same way, which is a ceiling on
+      what any reader could get right, because when the survivors disagree the answer is not in the
+      prompt at all. The centrepiece needs no parameters: take one record, change one word, and
+      measure. <code class="tok">… -&gt; YES</code> deletes <strong>240</strong> of 256 rules;
+      <code class="tok">… -&gt; NO</code> deletes <strong>16</strong>. Same record, same position,
+      same token count on <strong>81 of 81</strong> records — and across all 81 the number takes
+      exactly <strong>two</strong> values, not 81, at a ratio of exactly <strong>15.00</strong>.
+      🔴 Then the recommendation that follows from it dies. "Lead with the positives" pins
+      <strong>54.43%</strong>, tying the folk rule it was supposed to beat, and on a curated pool it
+      is the second-worst strategy on the board — beaten by <em>taking the cheapest examples</em> —
+      because a YES-only prompt <em>plateaus</em>: six more demonstrations and 104 tokens hold pinned
+      at <strong>13.45%</strong> while held-out generalisation <em>falls</em> from 8.95% to 2.63%.
+      A NO-only prompt obeys an exact law instead — it pins <strong>k/81</strong>, the demonstrations
+      themselves, and <strong>0.00%</strong> of everything else, at every k from 1 to 12.
+      🔴 And the column everyone reports cannot see any of it: the <em>empty prompt</em> scores
+      <strong>92.59%</strong> accuracy, a 156-token NO-only prompt scores <strong>92.61%</strong>,
+      and the whole accuracy column spans four points while the pinned column spans sixty-six.
+      🔴 The exact 0/1 knapsack — verified against brute force over all 65,536 subsets — loses to a
+      nine-line greedy, <strong>61.20%</strong> against <strong>65.69%</strong>, and the classic
+      wrong reconstruction reproduces the DP's optimal value on <strong>59.17%</strong> of instances
+      while fitting the budget on <strong>0.00%</strong> of them. 🔴 The null result is located
+      rather than claimed: at the default budget the metric you optimise is worth exactly
+      <strong>0.000</strong> points on <strong>100.00%</strong> of prompts, at a budget of 800 all
+      ten strategies that put an example in the prompt are bit-identical at <strong>71.775%</strong>
+      — and at two slots the same two choices are worth <strong>+1.76</strong> and
+      <strong>&minus;2.38</strong>. 🔴 And the one assertion that failed was mine, not the
+      engine's: a prompt of nothing but NO demonstrations contains no dead example in
+      <strong>2,736</strong> prefixes across both rule spaces, but &ldquo;NO examples first&rdquo; is
+      a <em>strategy</em>, and once the pool runs out of NO examples it spills into YES ones &mdash;
+      and the pool sizes where it spills are the only ones where it scores at all,
+      <strong>38.69%</strong> against <strong>11.88%</strong>. The dead tokens are the receipt for
+      the one example that made the prompt worth sending. Pure vanilla
+      JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">🔬 MEASURE</button>
+      <button data-tab="understand">🧠 UNDERSTAND</button>
+      <button data-tab="build">🔨 BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">token budget for the examples
+            <span id="vBud" class="b" style="float:right">160</span>
+            <input id="sBud" type="range" min="30" max="600" step="10" value="160"></label>
+          <label class="sl">candidate examples on hand
+            <span id="vPool" class="b" style="float:right">20</span>
+            <input id="sPool" type="range" min="8" max="30" value="20"></label>
+          <label class="sl">prompts measured per row
+            <span id="vTrials" class="b" style="float:right">150</span>
+            <input id="sTrials" type="range" min="20" max="400" step="10" value="150"></label>
+        </div>
+        <div class="flex g4 wrapf mt3">
+          <label class="xs mut">where the candidates came from <select id="selPool">
+            <option value="natural" selected>sampled from traffic</option>
+            <option value="curated">curated, half of each label</option></select></label>
+          <label class="xs mut">how each example is written <select id="selFmt">
+            <option value="mixed" selected>mixed</option>
+            <option value="terse">terse</option>
+            <option value="kv">key=value</option>
+            <option value="prose">prose sentence</option></select></label>
+          <label class="xs mut">rules the reader entertains <select id="selSpace">
+            <option value="W" selected>whitelist only &mdash; 256</option>
+            <option value="WB">whitelist or blacklist &mdash; 512</option></select></label>
+        </div>
+        <p class="note mt3">
+          Two things on this page are <em>declared</em> rather than derived, and both are labelled
+          where they are used. The first is the space of rules the reader is entertaining, which is
+          the dropdown above — every result is reported for both settings, and the pair exists
+          precisely because a prompt cannot tell you which one it is being read in. The second is the
+          <code class="tok">accuracy</code> column, which resolves an unpinned query by majority vote
+          over the survivors under a uniform prior; it sits <em>beside</em> the pinned fraction
+          rather than instead of it, and the point of the panel it appears in is that it is the
+          weaker number. Everything else — every count, every rate, every ratio — is an exhaustive
+          intersection of bitsets over enumerated sets, so a <span class="ok">0.00%</span> here means
+          zero and not "none seen".
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; ONE RECORD, ONE WORD &mdash; exact and parameter-free</p>
+        <p class="sm mut2 mb3">No sliders reach this panel. Take a record, write it as a
+          demonstration twice — once ending <code class="tok">YES</code> and once ending
+          <code class="tok">NO</code> — and count the rules each version deletes from an untouched
+          space. Both spellings are the same length, so the two columns are the same bill. Every one
+          of the 81 records is done, and the interesting thing is how many <em>distinct</em> answers
+          come back.</p>
+        <div class="scroll"><table class="num" id="probeTbl"></table></div>
+        <p class="sm mt3" id="probeNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE SAME RATIO, DERIVED, FOR NINE SHAPES OF THE WORLD</p>
+          <p class="sm mut2 mb3">The 15.00 is not a property of this task. It is
+            ((V+1)/2)<sup>A</sup>&nbsp;&minus;&nbsp;1 for A attributes of V values each, and the
+            closed form is checked against a brute-force count over the whole rule space rather than
+            asserted.</p>
+          <div class="scroll"><table class="num" id="shapeTbl"></table></div>
+          <p class="note mt2" id="shapeNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THREE WAYS TO WRITE THE SAME DEMONSTRATION</p>
+          <p class="sm mut2 mb3">Identical records, identical labels, identical order — different
+            words around them. The evidence is byte-for-byte the same; only the bill moves.</p>
+          <div class="scroll"><table class="num" id="costTbl"></table></div>
+          <p class="note mt2" id="costNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 2 &middot; THE TWO PLATEAUS &mdash; one-sided prompts, k = 1…12</p>
+        <p class="sm mut2 mb3">A prompt made only of YES demonstrations, a prompt made only of NO
+          demonstrations, and a prompt that alternates. <span class="b">held</span> is the pinned
+          fraction over the inputs the prompt did <em>not</em> contain, which is the only column that
+          means "generalised". Two of these six rows are exact laws rather than averages, and one of
+          them goes the wrong way.</p>
+        <div class="scroll"><table class="num" id="plateauTbl"></table></div>
+        <p class="sm mt3" id="plateauNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE SCOREBOARD AT YOUR BUDGET &mdash; eleven ways to fill it</p>
+        <p class="sm mut2 mb3">Five rules that cost nothing to follow
+          (<span class="pill p-free">free</span>), five that need the version space computed
+          (<span class="pill p-paid">paid</span>), and the empty prompt as a control. The last two
+          columns are the ones that argue with each other: <span class="b">pinned</span> is what the
+          prompt actually determines, <span class="b">accuracy</span> is what a scoreboard would
+          print.</p>
+        <div class="scroll"><table class="num" id="mainTbl"></table></div>
+        <p class="sm mt3" id="mainNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">AGAINST THE EXHAUSTIVE OPTIMUM</p>
+          <p class="sm mut2 mb3">Twelve candidates is 4,096 subsets, so the best possible prompt
+            inside the budget can be found by enumeration rather than argued about.
+            <span class="b">gap</span> is points of pinned fraction left on the table;
+            <span class="b">hit</span> is how often the strategy <em>is</em> the optimum.</p>
+          <div class="scroll"><table class="num" id="oracleTbl"></table></div>
+          <p class="note mt2" id="oracleNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE KNAPSACK, AND ITS RECONSTRUCTION</p>
+          <p class="sm mut2 mb3">Fitting the most valuable set of variable-length examples into a
+            token budget is a 0/1 knapsack, and it is solved exactly here. Then the table it fills
+            in is asked a second question: does the <em>set</em> that comes back out match the value
+            that went in?</p>
+          <div class="scroll"><table class="num" id="knapTbl"></table></div>
+          <p class="note mt2" id="knapNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE BUDGET LADDER &mdash; and where every strategy stops mattering</p>
+        <p class="sm mut2 mb3">The same eleven rules against eight budgets. Read the bottom row
+          first: it is the whole selection literature's ceiling.</p>
+        <div class="scroll"><table class="num" id="curveTbl"></table></div>
+        <p class="sm mt3" id="curveNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">FORMAT AT A MATCHED BUDGET</p>
+          <p class="sm mut2 mb3">The same evidence in three renderings, scored against the same
+            token budget. The gap looks enormous.</p>
+          <div class="scroll"><table class="num" id="fmtTbl"></table></div>
+          <p class="note mt2" id="fmtNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">FORMAT AT A MATCHED SLOT COUNT</p>
+          <p class="sm mut2 mb3">Now rescale the budget so the same number of demonstrations fits,
+            and compare all eight strategy rows at once. If a rendering is only a change of units,
+            these have to come back identical — not close.</p>
+          <div class="scroll"><table class="num" id="unitTbl"></table></div>
+          <p class="note mt2" id="unitNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">DO THE TWO METRICS EVER DISAGREE, AND DOES IT MATTER</p>
+        <p class="sm mut2 mb3">Two questions that look like one. <span class="b">objective</span>
+          swaps the cheap proxy — rules deleted — for the thing the page actually scores, queries
+          pinned. <span class="b">per-token</span> divides the same score by the demonstration's
+          length. Both are reported as "did they choose differently" <em>and</em> "did the score
+          move", because those are not the same answer.</p>
+        <div class="scroll"><table class="num" id="pairTbl"></table></div>
+        <p class="sm mt3" id="pairNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE SAME PROMPT, TWO RULE SPACES</p>
+          <p class="sm mut2 mb3">Curated pool, so both labels are on hand. Identical
+            demonstrations, identical tokens, identical order. The only thing that changes is whether the reader would also consider a blacklist — which is
+            not written anywhere in the prompt and cannot be.</p>
+          <div class="scroll"><table class="num" id="spaceTbl"></table></div>
+          <p class="note mt2" id="spaceNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">DEAD TOKENS &mdash; examples that deleted nothing</p>
+          <p class="sm mut2 mb3">A demonstration that removes zero rules from the space its
+            predecessors already left behind is a demonstration you paid for and did not use. The
+            row with the fewest dead tokens is not the row you want.</p>
+          <div class="scroll"><table class="num" id="wasteTbl"></table></div>
+          <p class="note mt2" id="wasteNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE ONE EXCEPTION &mdash; and it is the interesting row on the page</p>
+        <p class="sm mut2 mb3">The panel above says a NO demonstration always deletes something, and
+          a census of every prefix of every one-sided prompt in both rule spaces finds no
+          counter-example. But <em>&ldquo;NO examples first&rdquo;</em> is a strategy, not a prompt:
+          when the pool runs out of NO examples it carries on with YES ones. That spill is where its
+          dead tokens come from &mdash; and, on exactly the same rows, where all of its score comes
+          from. A verifier assertion of mine said this column was always 0.00% and it was the
+          assertion that was wrong.</p>
+        <div class="scroll"><table class="num" id="spillTbl"></table></div>
+        <p class="sm mt3" id="spillNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">"Add a few examples" is a spending decision</h2>
+      <p>Few-shot prompting is the oldest advice in the subject and it is almost always given as a
+        direction rather than a quantity: add examples, add diverse examples, add examples that
+        cover your edge cases. Every one of those instructions costs tokens on every single call,
+        forever, and none of them comes with a number. This page is about the number.</p>
+      <p>To get one you need a definition of what a demonstration <em>does</em>, and it has to be a
+        mechanical definition or the whole exercise collapses into taste. Here it is the only one
+        available without a model in the room: a demonstration is a constraint. The reader is
+        entertaining some set of rules that could explain the task; a demonstration deletes every
+        rule in that set which disagrees with it. Nothing about language, nothing about attention,
+        nothing about what a model "understands" — just set intersection.</p>
+      <p>That gives a scoring rule with no free parameters. A query is <strong>pinned</strong> when
+        every rule still standing labels it the same way. If the survivors disagree, the prompt does
+        not contain the answer — not "the model might get it wrong", but <em>the information is not
+        there</em>, and no reader however capable can recover it. The pinned fraction is therefore a
+        ceiling, and a ceiling is the useful thing to measure, because every real system sits under
+        it and the distance is a property of the model rather than the prompt.</p>
+
+      <h3 class="lg b">The first measurement is free, exact, and misleading</h3>
+      <p>Take one record. Write it as a demonstration ending <code class="tok">YES</code>, and again
+        ending <code class="tok">NO</code>. Both spellings are one token, so the two demonstrations
+        are the same length to the character. Count what each deletes. The YES version deletes 240
+        of the 256 rules; the NO version deletes 16. Do it for all 81 records and the answer takes
+        exactly two values — not 81, not a distribution, two — because a rule fires on a given input
+        only if each of its four conditions is a wildcard or a match, which is 2<sup>4</sup> of
+        4<sup>4</sup>, and that is 15.00 to one, forever.</p>
+      <p>So a YES example is worth fifteen NO examples for the same money. That is a real number and
+        it is the number this page was built to publish, and it is worth almost nothing, which is
+        the actual finding. Rules deleted is not the objective. A prompt made entirely of YES
+        demonstrations narrows the space to the rules that agree about where the concept
+        <em>starts</em> and never eliminates the rule that says "everything is YES", so it can pin
+        the concept's own members and literally nothing else. On the ladder that shows up as a
+        plateau: demonstrations four through nine hold the pinned fraction at exactly the same
+        figure while the held-out fraction <em>falls</em>, because the numerator has stopped moving
+        and the denominator has not.</p>
+      <p>The other side is worse and much cleaner. A prompt made entirely of NO demonstrations pins
+        exactly the demonstrations it contains and 0.00% of everything else, at every length, on
+        every seed. It is provable in one line — for any unshown input, the rule that fires on that
+        input alone is consistent with every NO you have written, and so is the rule that fires on
+        nothing, and they disagree — and the page prints it as a measurement anyway, because a law
+        you can watch is worth more than a law you are told.</p>
+
+      <h3 class="lg b">The column that cannot see any of this</h3>
+      <p>Put the empty prompt on the board and it scores 92.59% accuracy. Not 50%, not zero —
+        92.59%, because the labels are skewed and a reader with no information at all says NO to
+        everything and is nearly always right. A 156-token prompt of NO demonstrations scores
+        92.61%. That is the entire return on the tokens: two hundredths of a point, while the same
+        prompt pins under one percent of the inputs it did not already contain.</p>
+      <p>This is not a quirk of the metric, it is what accuracy does on any skewed task, and it is
+        why the scoreboard column is the least informative one on the page: it spans four points
+        across eleven strategies that span sixty-six. If you are tuning a prompt against an accuracy
+        number on a task where one label dominates, the number will move when the prompt changes and
+        it will not tell you whether the prompt taught the reader anything.</p>
+
+      <h3 class="lg b">The optimiser that is exactly right and still loses</h3>
+      <p>Once demonstrations have different lengths, "which ones fit" is a knapsack, and a knapsack
+        has an exact answer. The page computes it — a dynamic program over integer token costs,
+        cross-checked against brute-force enumeration of all 65,536 subsets — and it loses to a
+        greedy that would fit on a napkin, by four and a half points, and reaches the exhaustive
+        optimum on three quarters of prompts against the greedy's all of them.</p>
+      <p>The reason is not that the knapsack is wrong. It is that a knapsack requires the value of a
+        set to be the sum of the values of its members, and the value of a set of demonstrations is
+        not: the second YES example deletes almost nothing the first one did not already delete.
+        The objective is submodular, the solver needs it modular, so the only way to use the solver
+        is to lie to it — and then it solves the lie exactly. That is the shape of a whole class of
+        engineering mistakes: an exact optimum of an approximate objective, presented with the
+        confidence of the exactness rather than the confidence of the approximation.</p>
+      <p>The dynamic program carries a second lesson that has nothing to do with prompts. The number
+        everyone checks is <code class="tok">dp[budget]</code>, and that number is finished before
+        the reconstruction runs, so it cannot detect a reconstruction bug of any kind. The page
+        implements the classic wrong walk — read the keep-table at full capacity every step instead
+        of decrementing it — and measures the result: it reproduces the optimal value on well over
+        half the instances, and the prompt it hands back fits the budget on none of them.</p>
+
+      <h3 class="lg b">Everything that is left is a change of units</h3>
+      <p>Terse, key=value and prose are three renderings of identical evidence, and at a matched
+        budget the gap between them is enormous — tens of points, because prose is three times the
+        tokens and three times fewer demonstrations fit. Rescale the budget so the same number of
+        demonstrations fits and the gap vanishes: eight strategy rows come back bit-identical, and
+        at a budget large enough for the whole pool all three renderings land on the same figure to
+        the last digit. A rendering is not a variable. It is a divisor on the budget, and once you
+        have divided, there is nothing else to say about it.</p>
+      <p>The same is true of the selection rules themselves, and this is where the null result
+        lives. At the default budget, swapping the cheap proxy metric for the objective the page
+        actually scores changes the answer on 0.00% of prompts by 0.000 points. At a budget of 800
+        every strategy on the board — pool order, cheapest, YES-first, NO-first, alternating, four
+        greedies, the knapsack — is bit-identical, because the budget stops binding and they all
+        take everything. All of the difference between a good rule and a bad one lives in the first
+        few slots, and at two slots the two choices that were worth nothing are worth +1.76 and
+        &minus;2.38 points respectively — one of them <em>negative</em>, so dividing by token cost,
+        which is the obviously correct thing to do, is the wrong thing to do when only two
+        demonstrations fit.</p>
+
+      <h3 class="lg b">The exception, which was found by a failing assertion</h3>
+      <p>A verifier assertion of mine said the NO-first row always shows 0.00% dead tokens, and it
+        failed on exactly two of twelve settings. The engine was right and the assertion was wrong,
+        and the reason is worth more than the clean version would have been. The census holds: a
+        prompt of <em>nothing but</em> NO demonstrations contains no dead example, in thousands of
+        prefixes in both rule spaces, because the rule that fires on one record and nothing else
+        survives every earlier NO and so there is always something left to delete. But
+        &ldquo;NO examples first&rdquo; is a strategy, not a prompt. When the pool holds fewer NO
+        examples than the budget can buy, the strategy carries on with YES ones — and the second of
+        those has nothing left to take.</p>
+      <p>So the dead tokens appear exactly where the row stops being useless. The pool sizes with a
+        spill pin roughly three times what the dry ones do, and the difference is entirely the
+        handful of YES examples that fell in by accident. A selection rule that never wastes a token
+        is a rule that never buys one either, which is the same finding as the perfectly efficient
+        NO-only prompt one panel earlier, arrived at from the opposite direction — and it only
+        exists on the page because a check disagreed with the code and the code turned out to be
+        the honest one.</p>
+
+      <h3 class="lg b">And the prompt cannot tell you which world it is in</h3>
+      <p>Every number above is for a reader entertaining whitelists. Add blacklists to the space —
+        the same 256 rules plus their negations — and the parameter-free probe reads 256 against
+        256, a ratio of exactly 1.00 instead of 15.00, so the entire case for leading with positive
+        examples evaporates. The YES-only prompt, which generalised a little in the first world,
+        becomes bit-identical to the NO-only one: pins its own demonstrations, generalises to
+        0.00%. And on a curated pool the identical YES-first prompt scores 100.00% accuracy in one
+        space and 68.91% in the other, a thirty-one point swing with nothing in the prompt to
+        distinguish them.</p>
+      <p>That is the practical form of the whole page. The value of a demonstration is not a
+        property of the demonstration. It is a property of the demonstration and the set of
+        explanations the reader had not yet ruled out — and you can see one of those two things.</p>
+
+      <h3 class="lg b">What this is not</h3>
+      <p>This is not <a>Day 4</a>'s few-shot prompting, which is what the technique is; it is what
+        it costs. It is not <a>Day 58</a>'s dynamic few-shot, which retrieves the nearest examples
+        to <em>this</em> query at runtime and has no budget in it — here the demonstrations are
+        chosen once, for all queries, against a fixed token ceiling. It is not <a>Day 65</a>'s
+        exemplar ordering, which permutes a set that has already been chosen; here the question is
+        which set, and the order is never varied. It is not <a>Day 71</a>'s prompt caching, which
+        prices the same tokens across calls over time rather than against each other inside one
+        call, though the two compose exactly: a demonstration block is the most cacheable thing in
+        any prompt. And there is no model in it — nothing here generates text, scores fluency, or
+        guesses what an assistant would say. It is set intersection, a tokenizer, and a budget.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">🔨 How it is built</h2>
+
+      <h3 class="lg b">1. The world is small enough to enumerate completely</h3>
+      <p>Four attributes of three values each is 81 distinct inputs, and a rule is a conjunction over
+        those attributes with wildcards allowed, which is 4<sup>4</sup>&nbsp;=&nbsp;256 of them.
+        Both are enumerated once into a bit matrix: for every input, the set of rules that label it
+        YES, packed into eight 32-bit words. Nothing is sampled and nothing is approximated — the
+        version space is an <code class="tok">AND</code> of those words, so intersecting a
+        demonstration into it is eight machine operations.</p>
+
+      <h3 class="lg b">2. A second space exists so the first one cannot be mistaken for the world</h3>
+      <p>The 512-rule space is the same 256 conjunctions plus all 256 of their negations, so a
+        reader in it will also consider "escalate everything <em>except</em> …". It is not a
+        variation for completeness. It is a control: the headline asymmetry between YES and NO
+        demonstrations is a property of the first space and is exactly 1.00 in the second, and every
+        panel is reported for both so that no result on this page can be read as a fact about
+        demonstrations when it is a fact about the rules on the table.</p>
+
+      <h3 class="lg b">3. Tokens come from text, not from a constant</h3>
+      <p>Each demonstration is rendered into a real string and a hand-written tokenizer is run over
+        it: alphanumeric runs split at six characters, punctuation counts as one, whitespace is
+        free. That is what makes costs vary between examples with the same information in them, which
+        is what makes the budget a knapsack instead of a division. It also makes the YES/NO probe
+        honest — the page checks that the two spellings tokenize identically on all 81 records rather
+        than assuming it, because if they did not, the 15.00 would be contaminated by a price
+        difference.</p>
+
+      <h3 class="lg b">4. Pinned, not accurate — and both are printed</h3>
+      <p>The primary score is the fraction of the 81 inputs on which every surviving rule agrees,
+        which involves no prior and no model. The accuracy column resolves a disagreement by
+        majority vote over the survivors under a uniform prior, which is the Bayes-optimal reader
+        and the one declared modelling choice on the page. They are side by side deliberately: the
+        argument of the scoreboard panel is that the declared one is the one that cannot see the
+        difference between the strategies.</p>
+
+      <h3 class="lg b">5. Eleven selectors, five of which are free</h3>
+      <p>Pool order, cheapest-first, YES-first, NO-first and alternate-labels need no computation at
+        all — they are sorts. Four greedies and the knapsack need the version space. The empty prompt
+        is on the board as a control, and it is there because a control that scores 92.59% is the
+        fastest way to discredit a metric. Every selector receives the identical pool and the
+        identical budget, and the greedies stop when nothing left in the pool changes anything, which
+        is why they finish under budget and the sorts do not.</p>
+
+      <h3 class="lg b">6. The optimum is enumerated, not estimated</h3>
+      <p>For a twelve-candidate pool, every one of the 4,096 subsets is walked with the version space
+        carried incrementally down the recursion and the branch cut the moment the cheapest remaining
+        example does not fit. That gives the best prompt the budget can buy, exactly, so "how much is
+        this heuristic leaving on the table" is a measurement rather than a guess — and the answer
+        for one of them is 0.000 points on 100.00% of prompts, which is not something a sampled
+        comparison could ever state.</p>
+
+      <h3 class="lg b">7. The knapsack is checked twice, and the second check is the point</h3>
+      <p>The dynamic program's value is cross-checked against brute-force enumeration of all
+        2<sup>16</sup> subsets of a reduced pool. Then the reconstruction is checked separately:
+        the returned set is re-scored from scratch and re-weighed from scratch, and both are compared
+        against the table. That separation is deliberate, because
+        <code class="tok">dp[budget]</code> is computed before the reconstruction exists and a
+        reconstruction bug is invisible to it — the page ships the broken walk alongside the correct
+        one and measures how often the value check passes while the answer is unusable.</p>
+
+      <h3 class="lg b">8. Ties are reported as ties</h3>
+      <p>Several comparisons on this page come back exactly equal, and the code tests them at
+        1e&minus;12 and prints the count rather than rounding them into a small difference. The
+        eleven-way tie at a budget of 800, the 0.000-point metric swap, the bit-identical rows at a
+        matched slot count and the 0.00% held-out law are all of that kind. A page that could not
+        distinguish "very small" from "exactly zero" would have nothing to say in any of those four
+        places.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Few-shot demonstrations under a token budget. Nothing here simulates language ability: there is
+// no model, no generated text and no guess about what an assistant would say. What is simulated is
+// the only thing a demonstration can mechanically do to a reader - eliminate rules that the
+// demonstration contradicts. The task is a 4-attribute x 3-value record (81 distinct inputs) and a
+// hidden labelling rule drawn from an enumerated space of rules; a demonstration removes from that
+// space every rule that disagrees with it; a query is PINNED when every rule still standing gives
+// it the same label, which is an upper bound on what any reader could get right, because when the
+// survivors disagree the answer is not in the prompt at all. Token costs come from a hand-written
+// tokenizer run over the literal rendered text of each demonstration. Every number below is exact
+// arithmetic over enumerated sets - version spaces are 256- or 512-bit bitsets and are intersected,
+// not sampled.
+
+function mulberry32(a){
+  return function(){
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+function shuffled(arr, rnd){
+  var a = arr.slice();
+  for (var i = a.length - 1; i > 0; i--){ var j = Math.floor(rnd() * (i + 1)); var t = a[i]; a[i] = a[j]; a[j] = t; }
+  return a;
+}
+
+// ---------------------------------------------------------------- the world
+var ATTRS = [
+  { name: "channel", vals: ["email", "chat", "phone"] },
+  { name: "plan",    vals: ["free", "pro", "enterprise"] },
+  { name: "tenure",  vals: ["trial", "monthly", "annual"] },
+  { name: "mood",    vals: ["calm", "annoyed", "furious"] }
+];
+var NA = 4, NV = 3, NX = 81, NP = 256;
+
+function xOf(i){ return [i % 3, (i / 3 | 0) % 3, (i / 9 | 0) % 3, (i / 27 | 0) % 3]; }
+function patOf(j){ return [j % 4, (j / 4 | 0) % 4, (j / 16 | 0) % 4, (j / 64 | 0) % 4]; }
+function conjSat(p, x){
+  for (var i = 0; i < NA; i++) if (p[i] !== 0 && p[i] - 1 !== x[i]) return 0;
+  return 1;
+}
+function specCount(p){ var n = 0; for (var i = 0; i < NA; i++) if (p[i] !== 0) n++; return n; }
+function patText(p){
+  var out = [];
+  for (var i = 0; i < NA; i++) if (p[i] !== 0) out.push(ATTRS[i].name + "=" + ATTRS[i].vals[p[i] - 1]);
+  return out.length ? out.join(" AND ") : "(anything)";
+}
+
+// The rules a demonstration is evidence about. Both spaces contain every whitelist; the second one
+// also contains every blacklist, i.e. the negation of every whitelist. A prompt cannot tell you
+// which space its reader is working in, which is the entire point of the pair.
+//   W  : 4^4 = 256 conjunctive patterns. Positive on any given input: 2^4 = 16.
+//   WB : those 256 plus their 256 negations = 512. Positive on any given input: 16 + 240 = 256.
+function buildSpace(kind){
+  var H = kind === "W" ? 256 : 512, Wd = H / 32;
+  var pos = new Uint32Array(NX * Wd);
+  for (var xi = 0; xi < NX; xi++){
+    var x = xOf(xi);
+    for (var j = 0; j < H; j++){
+      var lab = j < NP ? conjSat(patOf(j), x) : 1 - conjSat(patOf(j - NP), x);
+      if (lab) pos[xi * Wd + (j >> 5)] |= (1 << (j & 31));
+    }
+  }
+  return { kind: kind, H: H, Wd: Wd, pos: pos };
+}
+var SPACES = { W: buildSpace("W"), WB: buildSpace("WB") };
+var SPACE_LABEL = { W: "whitelist only (256 rules)", WB: "whitelist or blacklist (512 rules)" };
+
+// ---------------------------------------------------------------- version-space arithmetic
+function vsFull(sp){ var a = new Uint32Array(sp.Wd); for (var w = 0; w < sp.Wd; w++) a[w] = 0xFFFFFFFF; return a; }
+function vsAdd(vs, sp, xi, lab){
+  var b = xi * sp.Wd;
+  for (var w = 0; w < sp.Wd; w++) vs[w] = lab ? (vs[w] & sp.pos[b + w]) : (vs[w] & ~sp.pos[b + w]);
+}
+function applyTo(vs, sp, xi, lab, out){
+  var b = xi * sp.Wd;
+  for (var w = 0; w < sp.Wd; w++) out[w] = lab ? (vs[w] & sp.pos[b + w]) : (vs[w] & ~sp.pos[b + w]);
+}
+function popcount32(v){
+  v = v - ((v >>> 1) & 0x55555555);
+  v = (v & 0x33333333) + ((v >>> 2) & 0x33333333);
+  v = (v + (v >>> 4)) & 0x0F0F0F0F;
+  return Math.imul(v, 0x01010101) >>> 24;
+}
+function vsSize(vs, sp){ var n = 0; for (var w = 0; w < sp.Wd; w++) n += popcount32(vs[w]); return n; }
+// A query is PINNED when no surviving rule says 1 or no surviving rule says 0.
+function pinnedAt(vs, sp, xi){
+  var b = xi * sp.Wd, anyOne = 0, anyZero = 0;
+  for (var w = 0; w < sp.Wd; w++){
+    var p = sp.pos[b + w], v = vs[w];
+    if (v & p) anyOne = 1;
+    if (v & ~p) anyZero = 1;
+    if (anyOne && anyZero) return 0;
+  }
+  return 1;
+}
+function pinnedCount(vs, sp){ var n = 0; for (var xi = 0; xi < NX; xi++) n += pinnedAt(vs, sp, xi); return n; }
+// Bayes-optimal reader under a UNIFORM prior over the survivors - the one declared modelling choice
+// on the page, and it is reported beside the pinned fraction rather than instead of it.
+function majorityAcc(vs, sp, lab){
+  var right = 0;
+  for (var xi = 0; xi < NX; xi++){
+    var b = xi * sp.Wd, ones = 0, tot = 0;
+    for (var w = 0; w < sp.Wd; w++){ var v = vs[w]; ones += popcount32(v & sp.pos[b + w]); tot += popcount32(v); }
+    var say = ones * 2 > tot ? 1 : 0;
+    if (say === lab[xi]) right++;
+  }
+  return right / NX;
+}
+
+// ---------------------------------------------------------------- the tokenizer and the renderings
+function isAn(c){ return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122); }
+function toks(s){
+  var n = 0, i = 0, L = s.length;
+  while (i < L){
+    var c = s.charCodeAt(i);
+    if (c === 32){ i++; continue; }
+    if (isAn(c)){ var j = i; while (j < L && isAn(s.charCodeAt(j))) j++; n += Math.ceil((j - i) / 6); i = j; }
+    else { n++; i++; }
+  }
+  return n;
+}
+var FORMATS = ["terse", "kv", "prose"];
+var FORMAT_LABEL = { terse: "terse", kv: "key=value", prose: "prose sentence" };
+function renderEx(xi, lab, fmt){
+  var x = xOf(xi), v = [];
+  for (var i = 0; i < NA; i++) v.push(ATTRS[i].vals[x[i]]);
+  var L = lab ? "YES" : "NO";
+  if (fmt === "terse") return v.join(",") + " -> " + L;
+  if (fmt === "kv"){
+    var ps = [];
+    for (var k = 0; k < NA; k++) ps.push(ATTRS[k].name + "=" + v[k]);
+    return ps.join(" ") + " -> " + L;
+  }
+  return "Ticket received over " + v[0] + ". The customer is on the " + v[1] +
+         " plan and has been with us since " + v[2] + ". The sender sounds " + v[3] +
+         ". Escalate this ticket? " + L + ".";
+}
+function costOf(xi, lab, fmt){ return toks(renderEx(xi, lab, fmt)); }
+function formatCosts(){
+  var out = [];
+  for (var f = 0; f < FORMATS.length; f++){
+    var lo = 1e9, hi = 0, sum = 0, n = 0, same = 0;
+    for (var xi = 0; xi < NX; xi++){
+      var cy = costOf(xi, 1, FORMATS[f]), cn = costOf(xi, 0, FORMATS[f]);
+      if (cy === cn) same++;
+      lo = Math.min(lo, cy, cn); hi = Math.max(hi, cy, cn); sum += cy + cn; n += 2;
+    }
+    out.push({ fmt: FORMATS[f], lo: lo, hi: hi, mean: sum / n, labelSame: same,
+               sample: renderEx(0, 1, FORMATS[f]) });
+  }
+  var t = out[0].mean, p = out[2].mean;
+  return { rows: out, proseOverTerse: p / t };
+}
+
+// ---------------------------------------------------------------- trials
+var NONDEG = (function(){
+  var a = [];
+  for (var j = 0; j < NP; j++){ var s = specCount(patOf(j)); if (s >= 1 && s <= 3) a.push(j); }
+  return a;
+})();
+var DEFAULTS = { trials: 150, poolN: 20, budget: 160, seed: 20260826,
+                 pool: "natural", fmt: "mixed", space: "W", bruteCap: 30 };
+function withDefaults(o){
+  var r = {}, k;
+  for (k in DEFAULTS) r[k] = DEFAULTS[k];
+  for (k in (o || {})) if (o[k] !== undefined && o[k] !== null) r[k] = o[k];
+  return r;
+}
+function makeTrial(seed, o){
+  o = withDefaults(o);
+  var rnd = mulberry32(seed >>> 0);
+  var star = NONDEG[Math.floor(rnd() * NONDEG.length)];
+  var pat = patOf(star);
+  var lab = new Uint8Array(NX), members = [], others = [];
+  for (var xi = 0; xi < NX; xi++){
+    lab[xi] = conjSat(pat, xOf(xi));
+    (lab[xi] ? members : others).push(xi);
+  }
+  var picks;
+  if (o.pool === "curated"){
+    var want = Math.min(members.length, Math.floor(o.poolN / 2));
+    picks = shuffled(members, rnd).slice(0, want).concat(shuffled(others, rnd).slice(0, o.poolN - want));
+    picks = shuffled(picks, rnd);
+  } else {
+    var all = [];
+    for (xi = 0; xi < NX; xi++) all.push(xi);
+    picks = shuffled(all, rnd).slice(0, o.poolN);
+  }
+  var pool = [];
+  for (var i = 0; i < picks.length; i++){
+    var f = o.fmt === "mixed" ? FORMATS[Math.floor(rnd() * 3)] : o.fmt;
+    pool.push({ i: i, x: picks[i], lab: lab[picks[i]], fmt: f, cost: costOf(picks[i], lab[picks[i]], f) });
+  }
+  return { star: star, pat: pat, spec: specCount(pat), lab: lab, concept: members.length, pool: pool };
+}
+function reformat(pool, fmt){
+  var out = [];
+  for (var i = 0; i < pool.length; i++)
+    out.push({ i: i, x: pool[i].x, lab: pool[i].lab, fmt: fmt, cost: costOf(pool[i].x, pool[i].lab, fmt) });
+  return out;
+}
+function poolStats(pool){
+  var pos = 0, cost = 0, lo = 1e9, hi = 0;
+  for (var i = 0; i < pool.length; i++){
+    if (pool[i].lab) pos++;
+    cost += pool[i].cost; lo = Math.min(lo, pool[i].cost); hi = Math.max(hi, pool[i].cost);
+  }
+  return { n: pool.length, pos: pos, posFrac: pool.length ? pos / pool.length : 0,
+           cost: cost, lo: lo, hi: hi, spread: lo ? hi / lo : 0 };
+}
+
+// ---------------------------------------------------------------- scoring a chosen prompt
+function evalSel(sel, sp, trial){
+  var vs = vsFull(sp), shown = new Uint8Array(NX), cost = 0, waste = 0, wasteK = 0;
+  var tmp = new Uint32Array(sp.Wd);
+  for (var i = 0; i < sel.length; i++){
+    var e = sel[i], before = vsSize(vs, sp);
+    applyTo(vs, sp, e.x, e.lab, tmp);
+    if (vsSize(tmp, sp) === before){ waste += e.cost; wasteK++; }
+    for (var w = 0; w < sp.Wd; w++) vs[w] = tmp[w];
+    shown[e.x] = 1; cost += e.cost;
+  }
+  var pin = pinnedCount(vs, sp), ho = 0, hoD = 0;
+  for (var xi = 0; xi < NX; xi++) if (!shown[xi]){ hoD++; ho += pinnedAt(vs, sp, xi); }
+  return { k: sel.length, cost: cost, pin: pin / NX, pinN: pin,
+           ho: hoD ? ho / hoD : 0, hoD: hoD, vs: vsSize(vs, sp),
+           acc: majorityAcc(vs, sp, trial.lab),
+           waste: waste, wasteK: wasteK, wasteFrac: cost ? waste / cost : 0,
+           perPin: pin ? cost / pin : Infinity };
+}
+
+// ---------------------------------------------------------------- selectors
+function fitInOrder(list, B){
+  var out = [], c = 0;
+  for (var i = 0; i < list.length; i++) if (c + list[i].cost <= B){ out.push(list[i]); c += list[i].cost; }
+  return out;
+}
+function selOrder(pool, B){ return fitInOrder(pool, B); }
+function selCheapest(pool, B){
+  return fitInOrder(pool.slice().sort(function(a, b){ return a.cost - b.cost || a.x - b.x; }), B);
+}
+function selByLabel(pool, B, want){
+  var a = [], b = [];
+  for (var i = 0; i < pool.length; i++) (pool[i].lab === want ? a : b).push(pool[i]);
+  return fitInOrder(a.concat(b), B);
+}
+function selBalanced(pool, B){
+  var p = [], n = [], out = [];
+  for (var i = 0; i < pool.length; i++) (pool[i].lab ? p : n).push(pool[i]);
+  var a = 0, b = 0;
+  while (a < p.length || b < n.length){
+    if (a < p.length) out.push(p[a++]);
+    if (b < n.length) out.push(n[b++]);
+  }
+  return fitInOrder(out, B);
+}
+// Greedy on one of the two objectives, optionally per token. The lexicographic second key matters:
+// the marginal PINNED gain is flat over long stretches, so a greedy on the true objective has no
+// signal at all unless the "wrong" metric breaks its ties.
+function selGreedy(pool, B, sp, metric, perTok){
+  var vs = vsFull(sp), used = new Uint8Array(pool.length), out = [], c = 0;
+  var tmp = new Uint32Array(sp.Wd);
+  var amb = [];
+  for (var xi = 0; xi < NX; xi++) if (!pinnedAt(vs, sp, xi)) amb.push(xi);
+  while (true){
+    var base = vsSize(vs, sp);
+    var bi = -1, b1 = -1, b2 = -1, bc = 0;
+    for (var i = 0; i < pool.length; i++){
+      if (used[i]) continue;
+      var e = pool[i];
+      if (c + e.cost > B) continue;
+      applyTo(vs, sp, e.x, e.lab, tmp);
+      var dg = 0;
+      for (var q = 0; q < amb.length; q++) if (pinnedAt(tmp, sp, amb[q])) dg++;
+      var eg = base - vsSize(tmp, sp);
+      var s1, s2;
+      if (metric === "det"){ s1 = perTok ? dg / e.cost : dg; s2 = perTok ? eg / e.cost : eg; }
+      else { s1 = perTok ? eg / e.cost : eg; s2 = perTok ? dg / e.cost : dg; }
+      var better = false;
+      if (s1 > b1 + 1e-12) better = true;
+      else if (Math.abs(s1 - b1) <= 1e-12){
+        if (s2 > b2 + 1e-12) better = true;
+        else if (Math.abs(s2 - b2) <= 1e-12 && bi >= 0 && e.cost < bc) better = true;
+      }
+      if (better){ bi = i; b1 = s1; b2 = s2; bc = e.cost; }
+    }
+    if (bi < 0) break;
+    if (b1 <= 0 && b2 <= 0) break;
+    used[bi] = 1; c += pool[bi].cost; out.push(pool[bi]);
+    vsAdd(vs, sp, pool[bi].x, pool[bi].lab);
+    var na = [];
+    for (q = 0; q < amb.length; q++) if (!pinnedAt(vs, sp, amb[q])) na.push(amb[q]);
+    amb = na;
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- knapsack, and its reconstruction
+// Standalone value = how many rules this demonstration removes from the UNTOUCHED space. That makes
+// the objective modular, which is what a knapsack needs and what the real objective is not.
+function standaloneValues(pool, sp){
+  var vs0 = vsFull(sp), base = vsSize(vs0, sp), tmp = new Uint32Array(sp.Wd), v = new Int32Array(pool.length);
+  for (var i = 0; i < pool.length; i++){
+    applyTo(vs0, sp, pool[i].x, pool[i].lab, tmp);
+    v[i] = base - vsSize(tmp, sp);
+  }
+  return v;
+}
+function knapsackTable(pool, B, sp){
+  var n = pool.length, cap = B | 0;
+  var val = standaloneValues(pool, sp), wt = new Int32Array(n);
+  for (var i = 0; i < n; i++) wt[i] = pool[i].cost;
+  var dp = new Int32Array(cap + 1), keep = new Uint8Array(n * (cap + 1));
+  for (i = 0; i < n; i++){
+    var w = wt[i], v = val[i], row = i * (cap + 1);
+    for (var b = cap; b >= w; b--){
+      var cand = dp[b - w] + v;
+      if (cand > dp[b]){ dp[b] = cand; keep[row + b] = 1; }
+    }
+  }
+  return { n: n, cap: cap, val: val, wt: wt, dp: dp, keep: keep, best: dp[cap] };
+}
+// The reconstruction that is correct: walk items backwards and DECREMENT the capacity on a take.
+function knapsackExact(pool, B, sp){
+  var T = knapsackTable(pool, B, sp), set = [], b = T.cap, sv = 0, sw = 0;
+  for (var i = T.n - 1; i >= 0; i--){
+    if (T.keep[i * (T.cap + 1) + b]){ set.push(pool[i]); sv += T.val[i]; sw += T.wt[i]; b -= T.wt[i]; }
+  }
+  set.reverse();
+  return { set: set, dpValue: T.best, reconValue: sv, reconWeight: sw,
+           valueAgrees: sv === T.best, feasible: sw <= T.cap, dup: false, T: T };
+}
+// The reconstruction that is wrong, and the reason the wrongness survives review: it reads the same
+// keep table at the SAME capacity every step, so it takes everything that was ever worth taking at
+// full budget. dp[cap] - the number people print and check - is computed before any of this runs
+// and is completely unaffected.
+function knapsackBadRecon(pool, B, sp, T){
+  T = T || knapsackTable(pool, B, sp);
+  var set = [], sv = 0, sw = 0, seen = {};
+  for (var i = T.n - 1; i >= 0; i--){
+    if (T.keep[i * (T.cap + 1) + T.cap]){
+      set.push(pool[i]); sv += T.val[i]; sw += T.wt[i];
+      if (seen[pool[i].x]) return { dupe: true };
+      seen[pool[i].x] = 1;
+    }
+  }
+  set.reverse();
+  return { set: set, dpValue: T.best, reconValue: sv, reconWeight: sw,
+           valueAgrees: sv === T.best, feasible: sw <= T.cap, over: T.cap ? sw / T.cap : 0 };
+}
+function knapsackBrute(pool, B, sp){
+  var n = pool.length;
+  if (n > 22) return null;
+  var val = standaloneValues(pool, sp), best = 0, bestMask = 0;
+  for (var m = 0; m < (1 << n); m++){
+    var v = 0, w = 0;
+    for (var i = 0; i < n; i++) if (m & (1 << i)){ v += val[i]; w += pool[i].cost; if (w > B) break; }
+    if (w <= B && v > best){ best = v; bestMask = m; }
+  }
+  var set = [];
+  for (i = 0; i < n; i++) if (bestMask & (1 << i)) set.push(pool[i]);
+  return { best: best, set: set, mask: bestMask };
+}
+// The true optimum: the best PINNED fraction any subset inside the budget can reach. Exhaustive.
+function selOracle(pool, B, sp){
+  var order = pool.slice().sort(function(a, b){ return a.cost - b.cost || a.x - b.x; });
+  var n = order.length, best = null, bestPin = -1, bestCost = 0, chosen = [], nodes = 0;
+  function leaf(vs, c){
+    nodes++;
+    var p = pinnedCount(vs, sp);
+    if (p > bestPin || (p === bestPin && c < bestCost)){ bestPin = p; bestCost = c; best = chosen.slice(); }
+  }
+  function rec(i, vs, c){
+    if (i === n || c + order[i].cost > B){ leaf(vs, c); return; }
+    rec(i + 1, vs, c);
+    var t = new Uint32Array(vs);
+    vsAdd(t, sp, order[i].x, order[i].lab);
+    chosen.push(order[i]);
+    rec(i + 1, t, c + order[i].cost);
+    chosen.pop();
+  }
+  rec(0, vsFull(sp), 0);
+  return { set: best || [], pin: bestPin, cost: bestCost, nodes: nodes };
+}
+
+var STRATS = [
+  { id: "empty",     name: "no examples at all",         free: true,  fn: function(p, B, sp){ return []; } },
+  { id: "order",     name: "pool order",                 free: true,  fn: function(p, B, sp){ return selOrder(p, B); } },
+  { id: "cheapest",  name: "cheapest first",             free: true,  fn: function(p, B, sp){ return selCheapest(p, B); } },
+  { id: "positives", name: "YES examples first",         free: true,  fn: function(p, B, sp){ return selByLabel(p, B, 1); } },
+  { id: "negatives", name: "NO examples first",          free: true,  fn: function(p, B, sp){ return selByLabel(p, B, 0); } },
+  { id: "balanced",  name: "alternate the two labels",   free: true,  fn: function(p, B, sp){ return selBalanced(p, B); } },
+  { id: "elim",      name: "greedy · rules killed", free: false, fn: function(p, B, sp){ return selGreedy(p, B, sp, "elim", false); } },
+  { id: "elimtok",   name: "greedy · killed / token", free: false, fn: function(p, B, sp){ return selGreedy(p, B, sp, "elim", true); } },
+  { id: "det",       name: "greedy · queries pinned", free: false, fn: function(p, B, sp){ return selGreedy(p, B, sp, "det", false); } },
+  { id: "dettok",    name: "greedy · pinned / token", free: false, fn: function(p, B, sp){ return selGreedy(p, B, sp, "det", true); } },
+  { id: "knap",      name: "exact knapsack · standalone value", free: false, fn: function(p, B, sp){ return knapsackExact(p, B, sp).set; } }
+];
+function stratById(id){ for (var i = 0; i < STRATS.length; i++) if (STRATS[i].id === id) return STRATS[i]; return null; }
+
+// ---------------------------------------------------------------- PROBE 1, parameter-free
+// One input. One word changed. Every input on the board, both spaces. No sliders touch this.
+function labelProbe(){
+  var rows = [], gpSet = {}, gnSet = {}, bpSet = {}, bnSet = {}, costSame = 0;
+  var W = SPACES.W, WB = SPACES.WB, tmp = new Uint32Array(16);
+  for (var xi = 0; xi < NX; xi++){
+    var vw = vsFull(W), vb = vsFull(WB), bw = vsSize(vw, W), bb = vsSize(vb, WB);
+    applyTo(vw, W, xi, 1, tmp); var gp = bw - vsSize(tmp.subarray(0, W.Wd), W);
+    applyTo(vw, W, xi, 0, tmp); var gn = bw - vsSize(tmp.subarray(0, W.Wd), W);
+    applyTo(vb, WB, xi, 1, tmp); var bp = bb - vsSize(tmp.subarray(0, WB.Wd), WB);
+    applyTo(vb, WB, xi, 0, tmp); var bn = bb - vsSize(tmp.subarray(0, WB.Wd), WB);
+    var cy = costOf(xi, 1, "kv"), cn = costOf(xi, 0, "kv");
+    if (cy === cn) costSame++;
+    gpSet[gp] = 1; gnSet[gn] = 1; bpSet[bp] = 1; bnSet[bn] = 1;
+    rows.push({ x: xi, text: renderEx(xi, 1, "kv"), cy: cy, cn: cn, gp: gp, gn: gn, bp: bp, bn: bn,
+                ratioW: gn ? gp / gn : Infinity, ratioWB: bn ? bp / bn : Infinity });
+  }
+  var k = function(o){ return Object.keys(o).map(Number).sort(function(a, b){ return a - b; }); };
+  return { rows: rows, gp: k(gpSet), gn: k(gnSet), bp: k(bpSet), bn: k(bnSet),
+           costSame: costSame, n: NX,
+           ratioW: k(gpSet)[0] / k(gnSet)[0], ratioWB: k(bpSet)[0] / k(bnSet)[0] };
+}
+// The same ratio in closed form, brute-forced for several shapes of the world.
+function elimShapes(){
+  var out = [];
+  var shapes = [[2, 3], [3, 3], [4, 3], [5, 3], [6, 3], [4, 2], [4, 4], [4, 5], [6, 4]];
+  for (var s = 0; s < shapes.length; s++){
+    var a = shapes[s][0], v = shapes[s][1], H = Math.pow(v + 1, a), pos = 0;
+    for (var j = 0; j < H; j++){
+      var t = j, ok = 1;
+      for (var i = 0; i < a; i++){ var d = t % (v + 1); t = (t / (v + 1)) | 0; if (d !== 0 && d !== 1){ ok = 0; break; } }
+      if (ok) pos++;
+    }
+    out.push({ a: a, v: v, H: H, X: Math.pow(v, a), pos: pos, neg: H - pos,
+               measured: (H - pos) / pos, closed: Math.pow((v + 1) / 2, a) - 1 });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- PROBE 2, the two plateaus
+// One-sided prompts, k = 1..12, both spaces. The numbers here are laws, not averages.
+function plateauSweep(o){
+  o = withDefaults(o);
+  var kinds = ["W", "WB"], modes = ["pos", "neg", "mix"], rows = [];
+  for (var kk = 0; kk < kinds.length; kk++){
+    var sp = SPACES[kinds[kk]];
+    for (var mm = 0; mm < modes.length; mm++){
+      var cells = [];
+      for (var k = 1; k <= 12; k++){
+        var accPin = 0, accHo = 0, accCost = 0, hoZero = 0, exact = 0, n = 0;
+        for (var t = 0; t < o.trials; t++){
+          var tr = makeTrial(o.seed + t * 7919, withDefaults({ poolN: 30, pool: "curated", fmt: "kv" }));
+          var p = [], q = [];
+          for (var i = 0; i < tr.pool.length; i++) (tr.pool[i].lab ? p : q).push(tr.pool[i]);
+          var sel;
+          if (modes[mm] === "pos") sel = p.slice(0, k);
+          else if (modes[mm] === "neg") sel = q.slice(0, k);
+          else { sel = []; for (var z = 0; z < k; z++) sel.push(z % 2 === 0 ? p[z >> 1] : q[z >> 1]); }
+          var bad = false;
+          for (z = 0; z < sel.length; z++) if (!sel[z]) bad = true;
+          if (bad || sel.length < k) continue;
+          var ev = evalSel(sel, sp, tr);
+          accPin += ev.pin; accHo += ev.ho; accCost += ev.cost;
+          if (ev.ho === 0) hoZero++;
+          if (ev.pinN === k) exact++;
+          n++;
+        }
+        cells.push({ k: k, n: n, pin: accPin / n, ho: accHo / n, cost: accCost / n,
+                     hoZeroFrac: hoZero / n, exactK: exact / n });
+      }
+      rows.push({ space: kinds[kk], mode: modes[mm], cells: cells });
+    }
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- the budget sweep
+var BUDGETS = [40, 60, 90, 130, 180, 250, 400, 800];
+function runStrategies(o, budget, ids){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var use = ids || STRATS.map(function(s){ return s.id; });
+  var acc = {};
+  for (var i = 0; i < use.length; i++)
+    acc[use[i]] = { k: 0, cost: 0, pin: 0, ho: 0, acc: 0, vs: 0, waste: 0, wasteK: 0, perPin: 0, wins: 0, n: 0 };
+  var poolPos = 0, poolSpread = 0;
+  for (var t = 0; t < o.trials; t++){
+    var tr = makeTrial(o.seed + t * 7919, o);
+    var ps = poolStats(tr.pool);
+    poolPos += ps.posFrac; poolSpread += ps.spread;
+    var bestPin = -1;
+    var evs = {};
+    for (i = 0; i < use.length; i++){
+      var st = stratById(use[i]);
+      var sel = st.fn(tr.pool, budget, sp);
+      var ev = evalSel(sel, sp, tr);
+      evs[use[i]] = ev;
+      if (ev.pin > bestPin) bestPin = ev.pin;
+    }
+    for (i = 0; i < use.length; i++){
+      var a = acc[use[i]], e = evs[use[i]];
+      a.k += e.k; a.cost += e.cost; a.pin += e.pin; a.ho += e.ho; a.acc += e.acc; a.vs += e.vs;
+      a.waste += e.waste; a.wasteK += e.wasteK;
+      a.perPin += (e.pinN ? e.cost / e.pinN : 0);
+      if (e.pin >= bestPin - 1e-12) a.wins++;
+      a.n++;
+    }
+  }
+  var out = [];
+  for (i = 0; i < use.length; i++){
+    var a2 = acc[use[i]], st2 = stratById(use[i]), n = a2.n || 1;
+    out.push({ id: use[i], name: st2.name, free: st2.free, k: a2.k / n, cost: a2.cost / n,
+               pin: a2.pin / n, ho: a2.ho / n, acc: a2.acc / n, vs: a2.vs / n,
+               waste: a2.waste / n, wasteK: a2.wasteK / n,
+               wasteFrac: a2.cost ? a2.waste / a2.cost : 0,
+               perPin: a2.perPin / n, wins: a2.wins / n });
+  }
+  return { rows: out, budget: budget, trials: o.trials,
+           poolPos: poolPos / (o.trials || 1), poolSpread: poolSpread / (o.trials || 1) };
+}
+function budgetCurve(o, ids){
+  var out = [];
+  for (var b = 0; b < BUDGETS.length; b++) out.push(runStrategies(o, BUDGETS[b], ids));
+  return out;
+}
+
+// ---------------------------------------------------------------- the oracle gap
+function oracleGap(o){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var ids = ["order", "cheapest", "positives", "balanced", "elim", "elimtok", "det", "dettok", "knap"];
+  var acc = {}, i;
+  for (i = 0; i < ids.length; i++) acc[ids[i]] = { pin: 0, gap: 0, hit: 0, cost: 0 };
+  var orc = { pin: 0, cost: 0, nodes: 0 }, n = 0;
+  for (var t = 0; t < o.trials; t++){
+    var tr = makeTrial(o.seed + t * 4241, withDefaults({ poolN: 12, pool: o.pool, fmt: o.fmt }));
+    var O = selOracle(tr.pool, o.budget, sp);
+    orc.pin += O.pin / NX; orc.cost += O.cost; orc.nodes += O.nodes;
+    for (i = 0; i < ids.length; i++){
+      var ev = evalSel(stratById(ids[i]).fn(tr.pool, o.budget, sp), sp, tr);
+      acc[ids[i]].pin += ev.pin; acc[ids[i]].cost += ev.cost;
+      acc[ids[i]].gap += (O.pin / NX) - ev.pin;
+      if (ev.pinN >= O.pin) acc[ids[i]].hit++;
+    }
+    n++;
+  }
+  var rows = [];
+  for (i = 0; i < ids.length; i++)
+    rows.push({ id: ids[i], name: stratById(ids[i]).name, free: stratById(ids[i]).free,
+                pin: acc[ids[i]].pin / n, cost: acc[ids[i]].cost / n,
+                gap: acc[ids[i]].gap / n, hit: acc[ids[i]].hit / n });
+  return { rows: rows, oracle: { pin: orc.pin / n, cost: orc.cost / n, nodes: orc.nodes / n }, n: n };
+}
+
+// ---------------------------------------------------------------- the reconstruction audit
+function knapAudit(o){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var n = 0, valOk = 0, feas = 0, badValOk = 0, badFeas = 0, overSum = 0, sameSet = 0, bruteOk = 0, bruteN = 0;
+  var dupHits = 0;
+  for (var t = 0; t < o.trials; t++){
+    var tr = makeTrial(o.seed + t * 6151, o);
+    var T = knapsackTable(tr.pool, o.budget, sp);
+    var good = knapsackExact(tr.pool, o.budget, sp);
+    var bad = knapsackBadRecon(tr.pool, o.budget, sp, T);
+    if (good.valueAgrees) valOk++;
+    if (good.feasible) feas++;
+    if (bad.dupe) dupHits++;
+    else {
+      if (bad.valueAgrees) badValOk++;
+      if (bad.feasible) badFeas++;
+      overSum += bad.reconWeight / T.cap;
+      var a = good.set.map(function(e){ return e.i; }).sort().join(","),
+          b = bad.set.map(function(e){ return e.i; }).sort().join(",");
+      if (a === b) sameSet++;
+    }
+    if (bruteN < (o.bruteCap || 30)){
+      var sub = tr.pool.slice(0, 16);
+      var br = knapsackBrute(sub, o.budget, sp);
+      var Ts = knapsackTable(sub, o.budget, sp);
+      var gs = knapsackExact(sub, o.budget, sp);
+      if (br){ bruteN++; if (br.best === Ts.best && gs.reconValue === br.best && gs.reconWeight <= o.budget) bruteOk++; }
+    }
+    n++;
+  }
+  return { n: n, valOk: valOk / n, feas: feas / n, badValOk: badValOk / n, badFeas: badFeas / n,
+           over: overSum / n, sameSet: sameSet / n, bruteN: bruteN, bruteOk: bruteN ? bruteOk / bruteN : 1 };
+}
+
+// ---------------------------------------------------------------- format: same evidence, three bills
+function formatSweep(o, ids){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var use = ids || ["cheapest", "balanced", "dettok"];
+  var rows = [];
+  for (var b = 0; b < BUDGETS.length; b++){
+    var cells = {};
+    for (var f = 0; f < FORMATS.length; f++) cells[FORMATS[f]] = { pin: 0, k: 0, cost: 0 };
+    var n = 0;
+    for (var t = 0; t < o.trials; t++){
+      var tr = makeTrial(o.seed + t * 7919, withDefaults({ poolN: o.poolN, pool: o.pool, fmt: "kv" }));
+      for (f = 0; f < FORMATS.length; f++){
+        var pool = reformat(tr.pool, FORMATS[f]);
+        var pin = 0, k = 0, cost = 0;
+        for (var u = 0; u < use.length; u++){
+          var ev = evalSel(stratById(use[u]).fn(pool, BUDGETS[b], sp), sp, tr);
+          pin += ev.pin; k += ev.k; cost += ev.cost;
+        }
+        cells[FORMATS[f]].pin += pin / use.length;
+        cells[FORMATS[f]].k += k / use.length;
+        cells[FORMATS[f]].cost += cost / use.length;
+      }
+      n++;
+    }
+    var row = { B: BUDGETS[b], cells: {} };
+    for (f = 0; f < FORMATS.length; f++)
+      row.cells[FORMATS[f]] = { pin: cells[FORMATS[f]].pin / n, k: cells[FORMATS[f]].k / n, cost: cells[FORMATS[f]].cost / n };
+    row.spread = row.cells.terse.pin - row.cells.prose.pin;
+    row.tie = Math.abs(row.spread) < 1e-12;
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- do the two metrics ever disagree?
+// Two questions that look like one. (A) the greedy on the CHEAP proxy - rules removed - against the
+// greedy on the objective the page actually scores, queries pinned. (B) the same greedy with and
+// without dividing by the demonstration's token cost. Both are reported as "did they pick the same
+// demonstrations" AND "did it matter", because those two answers are not the same answer.
+function greedyPairs(o){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var modes = ["kv", "terse", "prose", "mixed"], out = [];
+  for (var m = 0; m < modes.length; m++){
+    var A = { same: 0, tie: 0, diffTie: 0, d: 0 }, B = { same: 0, tie: 0, diffTie: 0, d: 0 };
+    var spread = 0, n = 0;
+    for (var t = 0; t < o.trials; t++){
+      var tr = makeTrial(o.seed + t * 3313, withDefaults({ poolN: o.poolN, pool: o.pool, fmt: modes[m] }));
+      spread += poolStats(tr.pool).spread;
+      var g = {};
+      g.elim = selGreedy(tr.pool, o.budget, sp, "elim", false);
+      g.det = selGreedy(tr.pool, o.budget, sp, "det", false);
+      g.dettok = selGreedy(tr.pool, o.budget, sp, "det", true);
+      var key = function(a){ return a.map(function(e){ return e.i; }).sort(function(p, q){ return p - q; }).join(","); };
+      var pin = {};
+      for (var k in g) pin[k] = evalSel(g[k], sp, tr).pin;
+      var pairs = [[A, "elim", "det"], [B, "det", "dettok"]];
+      for (var z = 0; z < pairs.length; z++){
+        var acc = pairs[z][0], u = pairs[z][1], v = pairs[z][2];
+        var s = key(g[u]) === key(g[v]), eq = Math.abs(pin[u] - pin[v]) < 1e-12;
+        if (s) acc.same++;
+        if (eq) acc.tie++;
+        if (!s && eq) acc.diffTie++;
+        acc.d += pin[v] - pin[u];
+      }
+      n++;
+    }
+    out.push({ fmt: modes[m], n: n, spread: spread / n,
+               metric: { same: A.same / n, tie: A.tie / n, diffTie: A.diffTie / n, d: A.d / n },
+               cost:   { same: B.same / n, tie: B.tie / n, diffTie: B.diffTie / n, d: B.d / n } });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- format is a change of units
+// The three renderings carry byte-for-byte identical evidence: same records, same labels, same
+// order, different words around them. So the only thing a rendering can do is change how many
+// demonstrations a budget admits - and if that is true, rescaling the budget must reproduce the
+// other rendering EXACTLY, not approximately. These pairs are the test.
+var UNIT_PAIRS = [[40, 90], [60, 130], [90, 180], [130, 250]];
+function formatUnits(o){
+  o = withDefaults(o);
+  var ids = ["cheapest", "positives", "balanced", "elim", "elimtok", "det", "dettok", "knap"];
+  var out = [];
+  for (var i = 0; i < UNIT_PAIRS.length; i++){
+    var bk = UNIT_PAIRS[i][0], bp = UNIT_PAIRS[i][1];
+    var K = runStrategies(withDefaults({ trials: o.trials, poolN: o.poolN, seed: o.seed,
+                                         pool: o.pool, fmt: "kv", space: o.space }), bk, ids);
+    var P = runStrategies(withDefaults({ trials: o.trials, poolN: o.poolN, seed: o.seed,
+                                         pool: o.pool, fmt: "prose", space: o.space }), bp, ids);
+    var maxD = 0, maxK = 0, allEq = true;
+    for (var r = 0; r < ids.length; r++){
+      var d = Math.abs(K.rows[r].pin - P.rows[r].pin), dk = Math.abs(K.rows[r].k - P.rows[r].k);
+      if (d > maxD) maxD = d;
+      if (dk > maxK) maxK = dk;
+      if (d > 1e-12) allEq = false;
+    }
+    out.push({ bkv: bk, bprose: bp, ratio: bp / bk, k: K.rows[0].k,
+               pinKv: K.rows[6].pin, pinProse: P.rows[6].pin,
+               maxD: maxD, maxK: maxK, identical: allEq, rows: ids.length });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the same prompt, two spaces
+function spaceCompare(o){
+  o = withDefaults(o);
+  var ids = ["positives", "negatives", "balanced", "cheapest", "dettok"], out = [];
+  var W = runStrategies(withDefaults({ trials: o.trials, poolN: o.poolN, budget: o.budget,
+                                       seed: o.seed, pool: o.pool, fmt: o.fmt, space: "W" }), o.budget, ids);
+  var B = runStrategies(withDefaults({ trials: o.trials, poolN: o.poolN, budget: o.budget,
+                                       seed: o.seed, pool: o.pool, fmt: o.fmt, space: "WB" }), o.budget, ids);
+  for (var i = 0; i < ids.length; i++)
+    out.push({ id: ids[i], name: W.rows[i].name, w: W.rows[i], wb: B.rows[i],
+               flip: W.rows[i].pin - B.rows[i].pin });
+  return out;
+}
+
+// ---------------------------------------------------------------- can a NO demonstration be dead?
+// Census, not argument. Every prefix of a NO-only prompt and of a YES-only prompt, both spaces.
+// The claim under test is one-directional: the rule that fires on a record and nothing else always
+// survives every earlier NO, so a NO always has something to delete - while a YES narrows the space
+// to the rules that agree about where the concept starts, after which further YESes have nothing
+// left to take.
+function deadCensus(o){
+  o = withDefaults(o);
+  var res = { noPrompts: 0, noDead: 0, yesPrompts: 0, yesDead: 0, spaces: 0 };
+  var kinds = ["W", "WB"];
+  for (var kk = 0; kk < kinds.length; kk++){
+    var sp = SPACES[kinds[kk]];
+    res.spaces++;
+    for (var t = 0; t < o.trials; t++){
+      var tr = makeTrial(o.seed + t * 619, withDefaults({ poolN: 40, pool: "curated", fmt: o.fmt }));
+      var no = [], yes = [];
+      for (var i = 0; i < tr.pool.length; i++) (tr.pool[i].lab ? yes : no).push(tr.pool[i]);
+      for (var k = 1; k <= no.length; k++){
+        res.noPrompts++; res.noDead += evalSel(no.slice(0, k), sp, tr).wasteK;
+      }
+      for (k = 1; k <= yes.length; k++){
+        res.yesPrompts++; res.yesDead += evalSel(yes.slice(0, k), sp, tr).wasteK;
+      }
+    }
+  }
+  return res;
+}
+// And the boundary the census does NOT cover: "NO examples first" is a strategy, not a prompt. Once
+// the pool runs out of NO examples it spills into YES ones - which is where its dead tokens come
+// from, and, on the same rows, where its entire score comes from.
+function spillLadder(o){
+  o = withDefaults(o);
+  var sp = SPACES[o.space], sizes = [12, 16, 20, 24, 30], out = [];
+  for (var s = 0; s < sizes.length; s++){
+    var supply = 0, taken = 0, spill = 0, dead = 0, waste = 0, pin = 0, n = 0;
+    for (var t = 0; t < o.trials; t++){
+      var tr = makeTrial(o.seed + t * 7919, withDefaults({ poolN: sizes[s], pool: "curated", fmt: o.fmt }));
+      var sel = selByLabel(tr.pool, o.budget, 0), nNo = 0;
+      for (var i = 0; i < tr.pool.length; i++) if (!tr.pool[i].lab) nNo++;
+      var ev = evalSel(sel, sp, tr);
+      supply += nNo; taken += sel.length; spill += Math.max(0, sel.length - nNo);
+      dead += ev.wasteK; waste += ev.wasteFrac; pin += ev.pin; n++;
+    }
+    out.push({ poolN: sizes[s], supply: supply / n, taken: taken / n, spill: spill / n,
+               dead: dead / n, waste: waste / n, pin: pin / n });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- the redundancy audit
+function wasteAudit(o){
+  o = withDefaults(o);
+  var sp = SPACES[o.space];
+  var ids = ["order", "cheapest", "positives", "negatives", "balanced", "dettok"];
+  var R = runStrategies(o, o.budget, ids);
+  var rows = [];
+  for (var i = 0; i < R.rows.length; i++){
+    var r = R.rows[i];
+    rows.push({ id: r.id, name: r.name, k: r.k, cost: r.cost, wasteK: r.wasteK,
+                waste: r.waste, wasteFrac: r.wasteFrac, pin: r.pin,
+                liveCost: r.cost - r.waste });
+  }
+  return rows;
+}
+// ===== ENGINE:END =====
+
+const $ = function(id){ return document.getElementById(id); };
+const pc = function(x){ return (100 * x).toFixed(2) + "%"; };
+const p3 = function(x){ return (100 * x).toFixed(3) + "%"; };
+const n0 = function(x){ return Math.round(x).toLocaleString("en-US"); };
+const n1 = function(x){ return x.toFixed(1); };
+const n2 = function(x){ return x.toFixed(2); };
+const esc = function(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); };
+const cap = function(o, n){ var r = withDefaults(o); r.trials = Math.min(r.trials, n); return r; };
+
+function readCfg(){
+  return withDefaults({
+    budget: +$("sBud").value, poolN: +$("sPool").value, trials: +$("sTrials").value,
+    pool: $("selPool").value, fmt: $("selFmt").value, space: $("selSpace").value
+  });
+}
+function head(cols){
+  var h = "<tr>";
+  for (var i = 0; i < cols.length; i++) h += "<th>" + cols[i] + "</th>";
+  return h + "</tr>";
+}
+function tag(free){
+  return free ? '<span class="pill p-free">free</span>' : '<span class="pill p-paid">paid</span>';
+}
+
+// ---------------------------------------------------------------- probe 1
+function renderProbe(){
+  var P = labelProbe(), F = formatCosts();
+  var h = head(["record, written as a demonstration", "tokens<br>YES", "tokens<br>NO",
+                "rules deleted<br>by YES", "rules deleted<br>by NO", "ratio",
+                "512-rule space<br>YES", "512-rule space<br>NO", "ratio"]);
+  var pick = [0, 13, 26, 40, 53, 67, 80];
+  for (var i = 0; i < pick.length; i++){
+    var r = P.rows[pick[i]];
+    h += "<tr><td><code class='tok'>" + esc(r.text) + "</code></td><td>" + r.cy + "</td><td>" + r.cn +
+         "</td><td class='ok'>" + r.gp + "</td><td class='bad'>" + r.gn + "</td><td class='b'>" +
+         r.ratioW.toFixed(2) + "</td><td>" + r.bp + "</td><td>" + r.bn + "</td><td class='b'>" +
+         r.ratioWB.toFixed(2) + "</td></tr>";
+  }
+  h += "<tr class='hi'><td class='b'>all " + P.n + " records &mdash; distinct values</td><td class='b'>" +
+       (P.costSame === P.n ? "identical" : "differ") + "</td><td class='b'>on " + P.costSame + "/" + P.n +
+       "</td><td class='b'>" + P.gp.join(", ") + "</td><td class='b'>" + P.gn.join(", ") +
+       "</td><td class='b'>" + P.ratioW.toFixed(2) + "</td><td class='b'>" + P.bp.join(", ") +
+       "</td><td class='b'>" + P.bn.join(", ") + "</td><td class='b'>" + P.ratioWB.toFixed(2) + "</td></tr>";
+  $("probeTbl").innerHTML = h;
+  $("probeNote").innerHTML =
+    "Across every one of the " + P.n + " records the YES column takes <strong>" + P.gp.length +
+    "</strong> distinct value and the NO column takes <strong>" + P.gn.length +
+    "</strong>: <strong>" + P.gp[0] + "</strong> against <strong>" + P.gn[0] +
+    "</strong>, a ratio of exactly <strong>" + P.ratioW.toFixed(2) +
+    "</strong>, for a bill that is identical on <strong>" + P.costSame + " of " + P.n +
+    "</strong> records. It is not a distribution and there is nothing to tune. " +
+    "Now switch the reader to the 512-rule space and the same two demonstrations delete <strong>" +
+    P.bp[0] + "</strong> and <strong>" + P.bn[0] + "</strong> &mdash; a ratio of exactly <strong>" +
+    P.ratioWB.toFixed(2) + "</strong>. The asymmetry the advice rests on is not a property of the " +
+    "demonstration; it is a property of what the reader had not yet ruled out.";
+
+  var hs = head(["attributes &times; values", "inputs", "rules", "positive on<br>a given input",
+                 "deleted by YES", "deleted by NO", "measured ratio", "((V+1)/2)<sup>A</sup> &minus; 1", ""]);
+  var S = elimShapes(), agree = 0;
+  for (i = 0; i < S.length; i++){
+    var s = S[i], ok = Math.abs(s.measured - s.closed) < 1e-9;
+    if (ok) agree++;
+    hs += "<tr" + (s.a === 4 && s.v === 3 ? " class='hi'" : "") + "><td>" + s.a + " &times; " + s.v +
+          "</td><td>" + n0(s.X) + "</td><td>" + n0(s.H) + "</td><td>" + n0(s.pos) + "</td><td>" +
+          n0(s.neg) + "</td><td>" + n0(s.pos) + "</td><td class='b'>" + s.measured.toFixed(4) +
+          "</td><td>" + s.closed.toFixed(4) + "</td><td class='" + (ok ? "ok" : "bad") + "'>" +
+          (ok ? "=" : "&ne;") + "</td></tr>";
+  }
+  $("shapeTbl").innerHTML = hs;
+  $("shapeNote").innerHTML = "Brute-forced over the whole rule space, <strong>" + agree + " of " +
+    S.length + "</strong> shapes agree with the closed form to 1e&minus;9. The advice's strength is " +
+    "exponential in the number of attributes and has nothing to do with the task.";
+
+  var hc = head(["rendering", "example", "tokens", "range", "vs terse", "YES = NO cost"]);
+  for (i = 0; i < F.rows.length; i++){
+    var f = F.rows[i];
+    hc += "<tr><td>" + FORMAT_LABEL[f.fmt] + "</td><td style='font-size:11px'><code class='tok'>" +
+          esc(f.sample.length > 62 ? f.sample.slice(0, 60) + "…" : f.sample) + "</code></td><td class='b'>" +
+          f.mean.toFixed(2) + "</td><td>" + f.lo + "&ndash;" + f.hi + "</td><td>" +
+          (f.mean / F.rows[0].mean).toFixed(3) + "&times;</td><td class='ok'>" + f.labelSame + "/81</td></tr>";
+  }
+  $("costTbl").innerHTML = hc;
+  $("costNote").innerHTML = "Same records, same labels, same order &mdash; <strong>" +
+    F.proseOverTerse.toFixed(2) + "&times;</strong> the tokens. The two panels near the bottom of " +
+    "the page decide whether that is a difference or a unit conversion.";
+  return P;
+}
+
+// ---------------------------------------------------------------- probe 2
+function renderPlateau(c){
+  var R = plateauSweep(cap(c, 60));
+  var ks = R[0].cells.map(function(x){ return x.k; });
+  var h = head(["rules the reader entertains", "prompt", ""].concat(ks.map(function(k){ return "k=" + k; })));
+  var MODE = { pos: "YES only", neg: "NO only", mix: "alternating" };
+  var lawNeg = 0, lawTot = 0;
+  for (var i = 0; i < R.length; i++){
+    var r = R[i];
+    h += "<tr" + (r.mode === "neg" && r.space === "W" ? " class='mis'" : "") + "><td>" +
+         (r.mode === "pos" ? SPACE_LABEL[r.space] : "") + "</td><td>" + MODE[r.mode] +
+         "</td><td class='xs mut'>pinned</td>";
+    for (var j = 0; j < r.cells.length; j++) h += "<td>" + (100 * r.cells[j].pin).toFixed(2) + "</td>";
+    h += "</tr><tr" + (r.mode === "neg" && r.space === "W" ? " class='mis'" : "") +
+         "><td></td><td></td><td class='xs mut'>held out</td>";
+    for (j = 0; j < r.cells.length; j++){
+      var v = r.cells[j].ho;
+      h += "<td class='" + (v === 0 ? "bad" : "") + "'>" + (100 * v).toFixed(2) + "</td>";
+      if (r.mode !== "mix"){ lawTot++; if (v === 0 && !(r.space === "W" && r.mode === "pos")) lawNeg++; }
+    }
+    h += "</tr>";
+  }
+  $("plateauTbl").innerHTML = h;
+  var W = R.filter(function(x){ return x.space === "W"; });
+  var neg = W[1].cells, pos = W[0].cells, mix = W[2].cells;
+  var exactLaw = neg.filter(function(x){ return Math.abs(x.pin - x.k / 81) < 1e-12 && x.ho === 0; }).length;
+  var plateauLo = pos[3], plateauHi = pos[8];
+  $("plateauNote").innerHTML =
+    "The NO-only row is a law, not an average: pinned is <strong>k/81</strong> on <strong>" +
+    exactLaw + " of " + neg.length + "</strong> lengths, and held-out is <strong>0.00%</strong> on " +
+    "all of them. A prompt of NO demonstrations determines the demonstrations and nothing else, at " +
+    "any length, on any seed. " +
+    "The YES-only row generalises &mdash; and then stops: from k=" + plateauLo.k + " to k=" + plateauHi.k +
+    ", six more demonstrations and about <strong>" + Math.round(plateauHi.cost - plateauLo.cost) +
+    "</strong> more tokens, pinned holds at <strong>" + (100 * plateauLo.pin).toFixed(2) +
+    "%</strong> while held-out <em>falls</em> from <strong>" + (100 * plateauLo.ho).toFixed(2) +
+    "%</strong> to <strong>" + (100 * plateauHi.ho).toFixed(2) + "%</strong>. " +
+    "🔴 In the 512-rule space the YES-only row is bit-identical to the NO-only one &mdash; the same " +
+    "k/81, the same 0.00% &mdash; so the entire case for leading with positive examples exists only " +
+    "in the left-hand world. Alternating reaches <strong>" +
+    (100 * mix[mix.length - 1].pin).toFixed(2) + "%</strong> at k=" + mix[mix.length - 1].k +
+    " in both.";
+}
+
+// ---------------------------------------------------------------- the scoreboard
+function renderMain(c){
+  var R = runStrategies(c, c.budget);
+  var h = head(["how the examples were chosen", "", "examples", "tokens", "rules left",
+                "pinned", "held out", "accuracy", "dead tokens", "best of the eleven"]);
+  var by = {};
+  for (var i = 0; i < R.rows.length; i++) by[R.rows[i].id] = R.rows[i];
+  var bestPin = Math.max.apply(null, R.rows.map(function(r){ return r.pin; }));
+  var accs = R.rows.map(function(r){ return r.acc; });
+  for (i = 0; i < R.rows.length; i++){
+    var r = R.rows[i];
+    h += "<tr" + (r.pin >= bestPin - 1e-12 ? " class='hi'" : (r.id === "empty" || r.id === "negatives" ? " class='mis'" : "")) +
+         "><td>" + r.name + "</td><td>" + tag(r.free) + "</td><td>" + n2(r.k) + "</td><td>" +
+         n1(r.cost) + "</td><td>" + n1(r.vs) + "</td><td class='b'>" + p3(r.pin) + "</td><td>" +
+         p3(r.ho) + "</td><td class='" + (r.acc > 0.9 ? "warn" : "") + "'>" + p3(r.acc) +
+         "</td><td>" + pc(r.wasteFrac) + "</td><td>" + pc(r.wins) + "</td></tr>";
+  }
+  $("mainTbl").innerHTML = h;
+  var accSpan = Math.max.apply(null, accs) - Math.min.apply(null, accs);
+  var pinSpan = bestPin - Math.min.apply(null, R.rows.map(function(r){ return r.pin; }));
+  $("mainNote").innerHTML =
+    "🔴 Read the control row first. The <strong>empty prompt</strong> &mdash; zero examples, zero " +
+    "tokens &mdash; scores <strong>" + p3(by.empty.acc) + "</strong> accuracy, because the labels " +
+    "are skewed and saying NO to everything is nearly always right. A <strong>" + n1(by.negatives.cost) +
+    "</strong>-token prompt of NO demonstrations scores <strong>" + p3(by.negatives.acc) +
+    "</strong>: <strong>" + (100 * (by.negatives.acc - by.empty.acc)).toFixed(3) +
+    "</strong> points of accuracy for " + n1(by.negatives.cost) + " tokens, while pinning <strong>" +
+    p3(by.negatives.ho) + "</strong> of the inputs it did not contain. Across all eleven rows the " +
+    "accuracy column spans <strong>" + (100 * accSpan).toFixed(2) + "</strong> points and the pinned " +
+    "column spans <strong>" + (100 * pinSpan).toFixed(2) + "</strong>. " +
+    "🔴 And the recommendation the probe implies loses: <strong>YES examples first</strong> pins " +
+    p3(by.positives.pin) + " against <strong>alternate the two labels</strong> at " + p3(by.balanced.pin) +
+    " &mdash; a difference of <strong>" + (100 * (by.positives.pin - by.balanced.pin)).toFixed(3) +
+    "</strong> points &mdash; and the exact knapsack pins " + p3(by.knap.pin) + " against a greedy's " +
+    p3(by.elimtok.pin) + " while spending " + n1(by.knap.cost) + " tokens against " + n1(by.elimtok.cost) + ".";
+  return R;
+}
+
+// ---------------------------------------------------------------- oracle + knapsack
+function renderOracle(c){
+  var O = oracleGap(cap(c, 80));
+  var h = head(["how the examples were chosen", "", "pinned", "tokens", "gap to the optimum", "is the optimum"]);
+  h += "<tr class='hi'><td class='b'>exhaustive optimum &mdash; all 4,096 subsets</td><td>" +
+       '<span class="pill p-key">oracle</span>' + "</td><td class='b'>" + p3(O.oracle.pin) +
+       "</td><td>" + n1(O.oracle.cost) + "</td><td>&mdash;</td><td>100.00%</td></tr>";
+  for (var i = 0; i < O.rows.length; i++){
+    var r = O.rows[i];
+    h += "<tr><td>" + r.name + "</td><td>" + tag(r.free) + "</td><td>" + p3(r.pin) + "</td><td>" +
+         n1(r.cost) + "</td><td class='" + (r.gap < 1e-12 ? "ok" : "bad") + "'>" +
+         (100 * r.gap).toFixed(3) + "</td><td class='" + (r.hit >= 1 ? "ok" : "") + "'>" + pc(r.hit) +
+         "</td></tr>";
+  }
+  $("oracleTbl").innerHTML = h;
+  var best = O.rows.filter(function(r){ return r.gap < 1e-12; });
+  var knap = O.rows.filter(function(r){ return r.id === "knap"; })[0];
+  $("oracleNote").innerHTML = "Averaged over <strong>" + O.n + "</strong> prompts and <strong>" +
+    n0(O.oracle.nodes) + "</strong> enumerated subsets each. " +
+    (best.length ? "<strong>" + best[0].name + "</strong> reaches the exhaustive optimum on <strong>" +
+      pc(best[0].hit) + "</strong> of prompts, gap <strong>0.000</strong> &mdash; a statement a " +
+      "sampled comparison could not make. " : "") +
+    "The exact knapsack gets there on " + pc(knap.hit) + ", leaving " + (100 * knap.gap).toFixed(3) +
+    " points behind while spending " + n1(knap.cost) + " tokens.";
+
+  var K = knapAudit(cap(c, 120));
+  var hk = head(["check", "what it measures", "result"]);
+  var rows = [
+    ["value vs brute force", "dp[budget] against all 2<sup>16</sup> subsets of a 16-example pool, " +
+      "value and reconstruction", pc(K.bruteOk) + " over " + K.bruteN + " instances", K.bruteOk >= 1],
+    ["correct walk &middot; value", "the returned set re-scored from scratch equals dp[budget]",
+      pc(K.valOk), K.valOk >= 1],
+    ["correct walk &middot; weight", "the returned set re-weighed from scratch fits the budget",
+      pc(K.feas), K.feas >= 1],
+    ["broken walk &middot; value", "the check people actually run still passes", pc(K.badValOk), false],
+    ["broken walk &middot; weight", "the prompt it returns fits the budget", pc(K.badFeas), false],
+    ["broken walk &middot; overrun", "how far over the budget it is", K.over.toFixed(3) + "&times;", false],
+    ["broken walk &middot; agreement", "how often it returns the same set as the correct walk",
+      pc(K.sameSet), false]
+  ];
+  for (i = 0; i < rows.length; i++)
+    hk += "<tr><td>" + rows[i][0] + "</td><td class='xs mut'>" + rows[i][1] + "</td><td class='" +
+          (rows[i][3] ? "ok" : (i >= 3 ? "bad" : "")) + "'>" + rows[i][2] + "</td></tr>";
+  $("knapTbl").innerHTML = hk;
+  $("knapNote").innerHTML = "🔴 <code class='tok'>dp[budget]</code> is finished before the " +
+    "reconstruction runs, so it cannot see a reconstruction bug of any kind. The broken walk " +
+    "reproduces it on <strong>" + pc(K.badValOk) + "</strong> of instances and hands back a prompt " +
+    "that fits on <strong>" + pc(K.badFeas) + "</strong>, running <strong>" + K.over.toFixed(3) +
+    "&times;</strong> over budget. Verify the set, not the number.";
+  return { O: O, K: K };
+}
+
+// ---------------------------------------------------------------- budget ladder
+function renderCurve(c){
+  var C = budgetCurve(cap(c, 80));
+  var ids = C[0].rows.map(function(r){ return r.id; });
+  var names = C[0].rows.map(function(r){ return r.name; });
+  var h = head(["budget"].concat(names.map(function(n){ return n.replace(/greedy · /, "greedy<br>"); })));
+  for (var b = 0; b < C.length; b++){
+    var R = C[b], vals = R.rows.map(function(r){ return r.pin; });
+    var mx = Math.max.apply(null, vals), mn = Math.min.apply(null, vals.slice(1));
+    var tie = Math.abs(mx - mn) < 1e-12;
+    h += "<tr" + (tie ? " class='hi'" : "") + "><td class='b'>" + R.budget + " tokens</td>";
+    for (var i = 0; i < R.rows.length; i++){
+      var v = R.rows[i].pin;
+      h += "<td class='" + (R.rows[i].id !== "empty" && Math.abs(v - mx) < 1e-12 ? "ok" : "") + "'>" +
+           (100 * v).toFixed(3) + "</td>";
+    }
+    h += "</tr>";
+  }
+  $("curveTbl").innerHTML = h;
+  var last = C[C.length - 1], lv = last.rows.filter(function(r){ return r.id !== "empty"; }).map(function(r){ return r.pin; });
+  var spread = Math.max.apply(null, lv) - Math.min.apply(null, lv);
+  var lo = C[0], loV = lo.rows.filter(function(r){ return r.id !== "empty"; });
+  var loMax = Math.max.apply(null, loV.map(function(r){ return r.pin; }));
+  var loMin = Math.min.apply(null, loV.map(function(r){ return r.pin; }));
+  var greedy = last.rows.filter(function(r){ return r.id === "elimtok"; })[0];
+  var sorts = last.rows.filter(function(r){ return r.id === "cheapest"; })[0];
+  $("curveNote").innerHTML =
+    "🔴 At <strong>" + last.budget + " tokens</strong> the budget stops binding and all ten " +
+    "non-empty strategies are <strong>bit-identical</strong> at <strong>" + p3(lv[0]) +
+    "</strong> &mdash; spread <strong>" + spread.toFixed(15).replace(/0+$/, "0") +
+    "</strong>. The greedy reaches that figure on <strong>" + n1(greedy.cost) +
+    "</strong> tokens against <strong>" + n1(sorts.cost) + "</strong>, which is the only thing left " +
+    "to win once the ceiling is reached. At <strong>" + lo.budget + " tokens</strong> the same " +
+    "eleven rules span <strong>" + (100 * (loMax - loMin)).toFixed(2) +
+    "</strong> points. Every argument about how to choose examples is an argument about the top " +
+    "rows of this table.";
+  return C;
+}
+
+// ---------------------------------------------------------------- format
+function renderFormat(c){
+  var F = formatSweep(cap(c, 60));
+  var h = head(["budget", "terse<br>pinned", "terse<br>examples", "key=value<br>pinned",
+                "key=value<br>examples", "prose<br>pinned", "prose<br>examples", "terse &minus; prose"]);
+  for (var i = 0; i < F.length; i++){
+    var r = F[i];
+    h += "<tr" + (r.tie ? " class='hi'" : "") + "><td class='b'>" + r.B + "</td><td>" +
+         p3(r.cells.terse.pin) + "</td><td class='mut'>" + n1(r.cells.terse.k) + "</td><td>" +
+         p3(r.cells.kv.pin) + "</td><td class='mut'>" + n1(r.cells.kv.k) + "</td><td>" +
+         p3(r.cells.prose.pin) + "</td><td class='mut'>" + n1(r.cells.prose.k) + "</td><td class='" +
+         (r.tie ? "ok" : "bad") + "'>" + (100 * r.spread).toFixed(3) + "</td></tr>";
+  }
+  $("fmtTbl").innerHTML = h;
+  var worst = F.slice().sort(function(a, b){ return b.spread - a.spread; })[0];
+  var ties = F.filter(function(r){ return r.tie; });
+  $("fmtNote").innerHTML = "At a matched budget the rendering is worth up to <strong>" +
+    (100 * worst.spread).toFixed(2) + "</strong> points (B=" + worst.B + "), and at the top of the " +
+    "ladder " + (ties.length ? "the three renderings tie <strong>exactly</strong> at " +
+      p3(ties[0].cells.terse.pin) : "the gap closes") + ", because the budget admits the whole pool " +
+    "in any of them.";
+
+  var U = formatUnits(cap(c, 100));
+  var hu = head(["examples that fit", "key=value budget", "prose budget", "ratio",
+                 "largest pinned difference across 8 strategy rows", "largest example-count difference", ""]);
+  var identical = 0;
+  for (i = 0; i < U.length; i++){
+    var u = U[i];
+    if (u.identical) identical++;
+    hu += "<tr" + (u.identical ? " class='hi'" : "") + "><td class='b'>" + n2(u.k) + "</td><td>" +
+          u.bkv + "</td><td>" + u.bprose + "</td><td>" + u.ratio.toFixed(3) + "&times;</td><td class='" +
+          (u.identical ? "ok" : "warn") + "'>" + (100 * u.maxD).toFixed(4) + " pts</td><td>" +
+          u.maxK.toFixed(4) + "</td><td class='" + (u.identical ? "ok" : "warn") + "'>" +
+          (u.identical ? "identical" : "&asymp;") + "</td></tr>";
+  }
+  $("unitTbl").innerHTML = hu;
+  var maxAll = Math.max.apply(null, U.map(function(u){ return u.maxD; }));
+  $("unitNote").innerHTML = "Same pools, same labels, same order &mdash; only the words around them " +
+    "and a rescaled budget. <strong>" + identical + " of " + U.length + "</strong> budget pairs come " +
+    "back <strong>bit-identical across all eight strategy rows</strong>, and the worst disagreement " +
+    "anywhere is <strong>" + (100 * maxAll).toFixed(4) + "</strong> points against the <strong>" +
+    (100 * worst.spread).toFixed(2) + "</strong> the same renderings were worth one panel up. A " +
+    "rendering is a divisor on the budget and nothing else.";
+  return { F: F, U: U };
+}
+
+// ---------------------------------------------------------------- the two metrics
+function renderPairs(c){
+  var G = greedyPairs(cap(c, 120));
+  var h = head(["how each example is written", "cost spread in the pool",
+                "objective: chose<br>differently", "objective: score<br>identical",
+                "objective: points", "per-token: chose<br>differently",
+                "per-token: score<br>identical", "per-token: points"]);
+  for (var i = 0; i < G.length; i++){
+    var r = G[i];
+    h += "<tr" + (r.metric.tie >= 1 && r.cost.tie >= 1 ? " class='hi'" : "") + "><td>" +
+         FORMAT_LABEL[r.fmt] + (r.fmt === "mixed" ? " (all three)" : "") + "</td><td>" +
+         r.spread.toFixed(3) + "&times;</td><td>" + pc(1 - r.metric.same) + "</td><td class='" +
+         (r.metric.tie >= 1 ? "ok" : "warn") + "'>" + pc(r.metric.tie) + "</td><td class='" +
+         (Math.abs(r.metric.d) < 1e-12 ? "ok" : "bad") + "'>" + (100 * r.metric.d).toFixed(3) +
+         "</td><td>" + pc(1 - r.cost.same) + "</td><td class='" + (r.cost.tie >= 1 ? "ok" : "warn") +
+         "'>" + pc(r.cost.tie) + "</td><td class='" + (Math.abs(r.cost.d) < 1e-12 ? "ok" : "bad") +
+         "'>" + (100 * r.cost.d).toFixed(3) + "</td></tr>";
+  }
+  $("pairTbl").innerHTML = h;
+  var kv = G.filter(function(r){ return r.fmt === "kv"; })[0];
+  var tight = G.slice().sort(function(a, b){ return a.spread - b.spread; })[0];
+  var loud  = G.slice().sort(function(a, b){ return Math.abs(b.cost.d) - Math.abs(a.cost.d); })[0];
+  var wide  = G.slice().sort(function(a, b){ return b.spread - a.spread; })[0];
+  $("pairNote").innerHTML =
+    "On <strong>" + FORMAT_LABEL[kv.fmt] + "</strong> demonstrations the two greedies disagree about " +
+    "which examples to include on <strong>" + pc(1 - kv.metric.same) + "</strong> of prompts and the " +
+    "score is identical on <strong>" + pc(kv.metric.tie) + "</strong> of them &mdash; a difference of " +
+    "<strong>" + (100 * kv.metric.d).toFixed(3) + "</strong> points, tested at 1e&minus;12 rather " +
+    "than rounded. Cost-normalisation disagrees on <strong>" + pc(1 - kv.cost.same) +
+    "</strong> and moves the score by <strong>" + (100 * kv.cost.d).toFixed(3) + "</strong>. " +
+    "🔴 And the cost spread does not predict any of it. The widest spread on the table is <strong>" +
+    FORMAT_LABEL[wide.fmt] + "</strong> at <strong>" + wide.spread.toFixed(3) +
+    "&times;</strong>, worth <strong>" + (100 * wide.cost.d).toFixed(3) +
+    "</strong> points; the largest disagreement is <strong>" + FORMAT_LABEL[loud.fmt] +
+    "</strong> at <strong>" + (100 * loud.cost.d).toFixed(3) + "</strong> points on a spread of " +
+    "only <strong>" + loud.spread.toFixed(3) + "&times;</strong>" +
+    (loud.fmt === tight.fmt ? ", which is the <em>narrowest</em> spread on the table" : "") +
+    ". What decides whether the selection rule matters is how many demonstrations the budget buys, " +
+    "not how much their lengths vary &mdash; and " + FORMAT_LABEL[loud.fmt] + " is the rendering " +
+    "this budget buys fewest of.";
+  return G;
+}
+
+// ---------------------------------------------------------------- spaces + waste
+function renderSpace(c){
+  var S = spaceCompare(cap(withDefaults({ budget: c.budget, poolN: c.poolN,
+                trials: c.trials, fmt: c.fmt, space: c.space, pool: "curated" }), 150));
+  var h = head(["how the examples were chosen", "256 rules<br>pinned", "256 rules<br>accuracy",
+                "512 rules<br>pinned", "512 rules<br>accuracy", "accuracy swing"]);
+  var maxSwing = 0, zero = 0;
+  for (var i = 0; i < S.length; i++){
+    var r = S[i], d = r.w.acc - r.wb.acc;
+    if (Math.abs(d) > Math.abs(maxSwing)) maxSwing = d;
+    if (Math.abs(d) < 1e-12) zero++;
+    h += "<tr" + (Math.abs(d) > 0.05 ? " class='mis'" : (Math.abs(d) < 1e-12 ? " class='hi'" : "")) +
+         "><td>" + r.name + "</td><td>" + p3(r.w.pin) + "</td><td class='b'>" + p3(r.w.acc) +
+         "</td><td>" + p3(r.wb.pin) + "</td><td class='b'>" + p3(r.wb.acc) + "</td><td class='" +
+         (Math.abs(d) < 1e-12 ? "ok" : "bad") + "'>" + (100 * d).toFixed(3) + "</td></tr>";
+  }
+  $("spaceTbl").innerHTML = h;
+  $("spaceNote").innerHTML = "Curated pool, same budget, same seeds, byte-identical prompts. The " +
+    "largest swing is <strong>" + (100 * maxSwing).toFixed(2) + "</strong> points and <strong>" +
+    zero + "</strong> row" + (zero === 1 ? " is" : "s are") + " affected by exactly <strong>0.000" +
+    "</strong>. Nothing in the prompt says which column you are in.";
+
+  var W = wasteAudit(cap(c, 150));
+  var hw = head(["how the examples were chosen", "examples", "tokens", "deleted nothing",
+                 "tokens wasted", "share", "pinned"]);
+  for (i = 0; i < W.length; i++){
+    var w = W[i];
+    hw += "<tr" + (w.id === "negatives" ? " class='mis'" : "") + "><td>" + w.name + "</td><td>" +
+          n2(w.k) + "</td><td>" + n1(w.cost) + "</td><td>" + n2(w.wasteK) + "</td><td>" +
+          n1(w.waste) + "</td><td class='" + (w.wasteFrac === 0 ? "ok" : "warn") + "'>" +
+          pc(w.wasteFrac) + "</td><td class='b'>" + p3(w.pin) + "</td></tr>";
+  }
+  $("wasteTbl").innerHTML = hw;
+  var neg = W.filter(function(x){ return x.id === "negatives"; })[0];
+  var bal = W.filter(function(x){ return x.id === "balanced"; })[0];
+  var spW2 = SPACES[c.space], noOnly = { waste: 0, k: 0, pin: 0, n: 0 };
+  for (var tt = 0; tt < 20; tt++){
+    var trW = makeTrial(c.seed + tt * 619, withDefaults({ poolN: 30, pool: "curated", fmt: c.fmt }));
+    var justNo = trW.pool.filter(function(e){ return !e.lab; });
+    var evW = evalSel(justNo, spW2, trW);
+    noOnly.waste += evW.wasteFrac; noOnly.k += evW.wasteK; noOnly.pin += evW.pin; noOnly.n++;
+  }
+  $("wasteNote").innerHTML = "🔴 The perfectly efficient prompt is the useless one. A prompt of " +
+    "<em>nothing but</em> NO demonstrations wastes <strong>" + pc(noOnly.waste / noOnly.n) +
+    "</strong> of its tokens &mdash; every single one deletes something, because the rule that fires " +
+    "on that record alone always survives everything before it &mdash; and pins <strong>" +
+    p3(noOnly.pin / noOnly.n) + "</strong>. On the live pool, <strong>" + neg.name +
+    "</strong> wastes <strong>" + pc(neg.wasteFrac) + "</strong> and pins <strong>" + p3(neg.pin) +
+    "</strong> while <strong>" + bal.name + "</strong> throws away <strong>" + pc(bal.wasteFrac) +
+    "</strong> and pins <strong>" + p3(bal.pin) + "</strong>. &ldquo;Did this example do " +
+    "anything&rdquo; is not the same question as &ldquo;did this example help&rdquo;.";
+
+  var DC = deadCensus(cap(c, 40));
+  var SP = spillLadder(cap(c, 100));
+  var hs = head(["candidate examples on hand", "NO examples available", "examples taken",
+                 "spilled into YES", "demonstrations that deleted nothing", "dead tokens",
+                 "pinned"]);
+  for (var si = 0; si < SP.length; si++){
+    var sr = SP[si];
+    hs += "<tr" + (sr.spill > 0 ? " class='amb'" : "") + "><td class='b'>" + sr.poolN +
+          "</td><td>" + n2(sr.supply) + "</td><td>" + n2(sr.taken) + "</td><td class='" +
+          (sr.spill > 0 ? "warn" : "ok") + "'>" + n2(sr.spill) + "</td><td>" + n2(sr.dead) +
+          "</td><td class='" + (sr.waste === 0 ? "ok" : "warn") + "'>" + pc(sr.waste) +
+          "</td><td class='b'>" + p3(sr.pin) + "</td></tr>";
+  }
+  $("spillTbl").innerHTML = hs;
+  var spilled = SP.filter(function(r){ return r.spill > 0; });
+  var dry = SP.filter(function(r){ return r.spill === 0; });
+  var bestSpill = SP.slice().sort(function(a, b){ return b.pin - a.pin; })[0];
+  var worstDry = dry.slice().sort(function(a, b){ return a.pin - b.pin; })[0];
+  $("spillNote").innerHTML =
+    "The census first: <strong>" + n0(DC.noPrompts) + "</strong> NO-only prompts across both rule " +
+    "spaces contain <strong>" + n0(DC.noDead) + "</strong> dead demonstrations, and <strong>" +
+    n0(DC.yesPrompts) + "</strong> YES-only prompts contain <strong>" + n0(DC.yesDead) +
+    "</strong>. The asymmetry is one-directional and structural: the rule that fires on a record " +
+    "and nothing else survives every earlier NO, so a NO always has something left to take, while " +
+    "a run of YESes narrows the space to the rules that agree about where the concept starts and " +
+    "then has nothing. " +
+    "🔴 The exception is the ladder above. At <strong>" + spilled.length + " of " + SP.length +
+    "</strong> pool sizes the budget outruns the supply of NO examples and the row spills into YES " +
+    "ones &mdash; <strong>" + n2(spilled.length ? spilled[0].spill : 0) + "</strong> of them at a " +
+    "pool of " + (spilled.length ? spilled[0].poolN : "-") + " &mdash; which is the only place the " +
+    "column is not <span class='ok'>0.00%</span>. And that is the row that works: <strong>" +
+    p3(bestSpill.pin) + "</strong> pinned where the dry rows sit at <strong>" + p3(worstDry.pin) +
+    "</strong>. The dead tokens are not the defect. They are the receipt for the one YES example " +
+    "that made the prompt worth sending, and a rule that never wastes a token is a rule that never " +
+    "buys one either.";
+  return { S: S, W: W, DC: DC, SP: SP };
+}
+
+// ---------------------------------------------------------------- assertions
+function render(){
+  var c = readCfg();
+  $("vBud").textContent = c.budget; $("vPool").textContent = c.poolN; $("vTrials").textContent = c.trials;
+
+  var P = renderProbe();
+  renderPlateau(c);
+  var M = renderMain(c);
+  var OK = renderOracle(c);
+  var CU = renderCurve(c);
+  var FU = renderFormat(c);
+  var GP = renderPairs(c);
+  var SW = renderSpace(c);
+
+  var pass = 0, fail = 0, lines = [];
+  function ok(cond, label){ if (cond) pass++; else { fail++; lines.push("  FAIL  " + label); } }
+
+  // 1. the RNG
+  {
+    var a = mulberry32(7), b = mulberry32(7), d = mulberry32(8), xa = [], xb = [], xd = [];
+    for (var i = 0; i < 500; i++){ xa.push(a()); xb.push(b()); xd.push(d()); }
+    for (i = 0; i < 500; i++) ok(xa[i] === xb[i], "mulberry32 is not deterministic");
+    ok(xa.some(function(v, k){ return v !== xd[k]; }), "two seeds produced one stream");
+    for (i = 0; i < 500; i++) ok(xa[i] >= 0 && xa[i] < 1, "mulberry32 left the unit interval");
+  }
+
+  // 2. the world and the spaces are what they claim to be
+  {
+    var seenX = {}, seenP = {};
+    for (i = 0; i < NX; i++) seenX[xOf(i).join("")] = 1;
+    ok(Object.keys(seenX).length === NX, "the 81 inputs are not distinct");
+    for (i = 0; i < NP; i++) seenP[patOf(i).join("")] = 1;
+    ok(Object.keys(seenP).length === NP, "the 256 rules are not distinct");
+    for (var s in SPACES){
+      var sp = SPACES[s];
+      ok(sp.H === sp.Wd * 32, "space " + s + " is not word aligned");
+      for (var xi = 0; xi < NX; xi++){
+        var cnt = 0;
+        for (var w = 0; w < sp.Wd; w++) cnt += popcount32(sp.pos[xi * sp.Wd + w]);
+        ok(cnt === (s === "W" ? 16 : 256), "space " + s + " has " + cnt + " rules positive on input " + xi);
+      }
+    }
+    // the 512-rule space really is the 256 plus their negations
+    for (xi = 0; xi < NX; xi++){
+      var x = xOf(xi);
+      for (var j = 0; j < NP; j++){
+        var bit = (SPACES.WB.pos[xi * 16 + ((j + NP) >> 5)] >>> ((j + NP) & 31)) & 1;
+        ok(bit === 1 - conjSat(patOf(j), x), "the negated half of the 512-rule space is wrong");
+      }
+    }
+  }
+
+  // 3. the tokenizer, and the thing the probe depends on
+  {
+    ok(toks("a") === 1 && toks("abcdef") === 1 && toks("abcdefg") === 2, "the tokenizer split rule moved");
+    ok(toks("a b c") === 3 && toks("a,b") === 3, "punctuation is not a token");
+    ok(toks("") === 0, "the empty string costs something");
+    var same = 0;
+    for (var f = 0; f < FORMATS.length; f++)
+      for (xi = 0; xi < NX; xi++)
+        if (costOf(xi, 1, FORMATS[f]) === costOf(xi, 0, FORMATS[f])) same++;
+    ok(same === NX * FORMATS.length, "YES and NO do not cost the same in every rendering");
+    var FC = formatCosts();
+    ok(FC.rows[0].mean < FC.rows[1].mean && FC.rows[1].mean < FC.rows[2].mean, "the renderings are not ordered by cost");
+    ok(FC.proseOverTerse > 3, "prose is only " + FC.proseOverTerse.toFixed(2) + "x terse");
+  }
+
+  // 4. PROBE 1 - the parameter-free one
+  {
+    ok(P.gp.length === 1 && P.gp[0] === 240, "the YES column is not a single value of 240");
+    ok(P.gn.length === 1 && P.gn[0] === 16, "the NO column is not a single value of 16");
+    ok(P.bp.length === 1 && P.bp[0] === 256, "the 512-space YES column is not a single value");
+    ok(P.bn.length === 1 && P.bn[0] === 256, "the 512-space NO column is not a single value");
+    ok(P.ratioW === 15, "the ratio is not exactly 15");
+    ok(P.ratioWB === 1, "the 512-space ratio is not exactly 1");
+    ok(P.costSame === NX, "the two spellings do not cost the same on all 81 records");
+    var S2 = elimShapes();
+    for (i = 0; i < S2.length; i++)
+      ok(Math.abs(S2[i].measured - S2[i].closed) < 1e-9,
+         "shape " + S2[i].a + "x" + S2[i].v + " disagrees with the closed form");
+    ok(S2.filter(function(z){ return z.a === 4 && z.v === 3; })[0].measured === 15, "the 4x3 shape is not 15");
+  }
+
+  // 5. version-space monotonicity: evidence can only shrink the space and only pin more
+  {
+    var sp2 = SPACES[c.space], tr = makeTrial(c.seed, c), vs = vsFull(sp2);
+    var prevSize = vsSize(vs, sp2), prevPin = pinnedCount(vs, sp2);
+    ok(prevSize === sp2.H, "the empty prompt does not leave every rule standing");
+    ok(prevPin === 0, "the empty prompt pins something");
+    for (i = 0; i < tr.pool.length; i++){
+      vsAdd(vs, sp2, tr.pool[i].x, tr.pool[i].lab);
+      var sz = vsSize(vs, sp2), pn = pinnedCount(vs, sp2);
+      ok(sz <= prevSize, "a demonstration grew the version space");
+      ok(pn >= prevPin, "a demonstration unpinned a query");
+      ok(sz >= 1, "every rule was eliminated, including the true one");
+      prevSize = sz; prevPin = pn;
+    }
+    // the true rule survives every demonstration drawn from it
+    var alive = (vs[tr.star >> 5] >>> (tr.star & 31)) & 1;
+    ok(alive === 1, "the rule the labels came from was eliminated by its own labels");
+  }
+
+  // 6. PROBE 2 - the exact laws
+  {
+    var spW = SPACES.W, spB = SPACES.WB, lawOk = 0, lawN = 0, hoOk = 0;
+    for (var t = 0; t < 40; t++){
+      var tr2 = makeTrial(c.seed + t * 7919, withDefaults({ poolN: 30, pool: "curated", fmt: "kv" }));
+      var negs = tr2.pool.filter(function(e){ return !e.lab; });
+      var poss = tr2.pool.filter(function(e){ return e.lab; });
+      for (var k = 1; k <= Math.min(10, negs.length); k++){
+        var ev = evalSel(negs.slice(0, k), spW, tr2);
+        lawN++;
+        if (ev.pinN === k) lawOk++;
+        if (ev.ho === 0) hoOk++;
+        ok(ev.pinN === k, "a NO-only prompt of " + k + " pins " + ev.pinN + " and not " + k);
+        ok(ev.ho === 0, "a NO-only prompt generalised");
+        // in the 512-rule space the YES-only prompt obeys the SAME law
+        if (k <= poss.length){
+          var evb = evalSel(poss.slice(0, k), spB, tr2);
+          ok(evb.pinN === k, "a YES-only prompt in the 512-rule space pins " + evb.pinN);
+          ok(evb.ho === 0, "a YES-only prompt in the 512-rule space generalised");
+        }
+      }
+    }
+    ok(lawOk === lawN && hoOk === lawN, "the NO-only law failed on " + (lawN - lawOk) + " of " + lawN);
+  }
+
+  // 7. the selectors respect the budget and never repeat an example
+  {
+    var sp3 = SPACES[c.space];
+    for (t = 0; t < 12; t++){
+      var tr3 = makeTrial(c.seed + t * 131, c);
+      for (i = 0; i < STRATS.length; i++){
+        var sel = STRATS[i].fn(tr3.pool, c.budget, sp3), cost = 0, seen = {};
+        for (var q = 0; q < sel.length; q++){
+          cost += sel[q].cost;
+          ok(!seen[sel[q].i], STRATS[i].id + " used the same example twice");
+          seen[sel[q].i] = 1;
+        }
+        ok(cost <= c.budget, STRATS[i].id + " spent " + cost + " of " + c.budget);
+        ok(sel.length <= tr3.pool.length, STRATS[i].id + " returned more examples than exist");
+      }
+    }
+  }
+
+  // 8. cheapest-first really is the maximum example count
+  {
+    for (t = 0; t < 12; t++){
+      var tr4 = makeTrial(c.seed + t * 977, c);
+      var kc = selCheapest(tr4.pool, c.budget).length, best = 0;
+      var sorted = tr4.pool.slice().sort(function(a2, b2){ return a2.cost - b2.cost; });
+      var run = 0;
+      for (i = 0; i < sorted.length; i++){ if (run + sorted[i].cost > c.budget) break; run += sorted[i].cost; best++; }
+      ok(kc === best, "cheapest-first fit " + kc + " where " + best + " was possible");
+    }
+  }
+
+  // 9. the knapsack: value AND reconstruction, against brute force
+  {
+    for (t = 0; t < 10; t++){
+      var tr5 = makeTrial(c.seed + t * 311, withDefaults({ poolN: 14, pool: c.pool, fmt: c.fmt }));
+      var sp5 = SPACES[c.space];
+      var g = knapsackExact(tr5.pool, c.budget, sp5), br = knapsackBrute(tr5.pool, c.budget, sp5);
+      ok(g.dpValue === br.best, "the DP value disagrees with brute force: " + g.dpValue + " vs " + br.best);
+      ok(g.reconValue === g.dpValue, "the reconstructed set does not carry the DP value");
+      ok(g.reconWeight <= c.budget, "the reconstructed set is over budget");
+      var ids = {}, dup = false;
+      for (i = 0; i < g.set.length; i++){ if (ids[g.set[i].i]) dup = true; ids[g.set[i].i] = 1; }
+      ok(!dup, "the reconstruction returned the same example twice");
+    }
+    ok(OK.K.valOk === 1 && OK.K.feas === 1, "the correct reconstruction failed its own audit");
+    ok(OK.K.bruteOk === 1, "the DP disagreed with brute force in the audit");
+    // and the broken one passes the check people run while failing the one they do not
+    ok(OK.K.badValOk > 0.3, "the broken walk never reproduced the DP value, so the trap is not shown");
+    ok(OK.K.badFeas < OK.K.badValOk, "the broken walk was feasible as often as it was 'correct'");
+    ok(OK.K.over > 1, "the broken walk did not overrun the budget");
+  }
+
+  // 10. the oracle bounds everything, and one heuristic reaches it
+  {
+    for (i = 0; i < OK.O.rows.length; i++)
+      ok(OK.O.rows[i].pin <= OK.O.oracle.pin + 1e-12, OK.O.rows[i].id + " beat the exhaustive optimum");
+    var hits = OK.O.rows.filter(function(r){ return r.gap < 1e-12; });
+    ok(hits.length >= 1, "no strategy reached the exhaustive optimum");
+    var knapRow = OK.O.rows.filter(function(r){ return r.id === "knap"; })[0];
+    var greedyRow = OK.O.rows.filter(function(r){ return r.id === "elimtok"; })[0];
+    ok(knapRow.gap > greedyRow.gap, "the exact knapsack did not lose to the greedy");
+  }
+
+  // 11. the scoreboard's claims
+  {
+    var by = {};
+    for (i = 0; i < M.rows.length; i++) by[M.rows[i].id] = M.rows[i];
+    ok(by.empty.cost === 0 && by.empty.pin === 0, "the empty control is not empty");
+    ok(by.empty.acc > 0.85, "the empty prompt does not score high accuracy, so the metric point is unmade");
+    ok(by.negatives.acc - by.empty.acc < 0.02, "the NO-only prompt bought more than 2 accuracy points");
+    ok(by.negatives.cost > 100, "the NO-only prompt did not actually spend the budget");
+    ok(by.negatives.ho < 0.1, "the NO-only prompt generalised on the live settings");
+    var accs2 = M.rows.map(function(r){ return r.acc; }), pins = M.rows.map(function(r){ return r.pin; });
+    var accSpan = Math.max.apply(null, accs2) - Math.min.apply(null, accs2);
+    var pinSpan = Math.max.apply(null, pins) - Math.min.apply(null, pins);
+    ok(pinSpan > 4 * accSpan, "the pinned column does not separate the strategies much more than accuracy");
+    // I built this page to show YES-first winning. It does not.
+    ok(by.positives.pin <= by.balanced.pin + 1e-9 || by.positives.pin < by.elimtok.pin,
+       "YES-first beat both the folk rule and the greedy");
+    ok(by.knap.pin < by.elimtok.pin, "the exact knapsack did not lose to the greedy on the scoreboard");
+    ok(by.cheapest.k > by.positives.k, "cheapest-first did not fit more examples");
+    ok(by.negatives.pin < by.balanced.pin, "a perfectly efficient prompt was not the worst one");
+    // the precise claim, checked directly: a NO demonstration can never delete zero rules, because
+    // the rule that fires on that record alone always survives everything before it
+    var spN = SPACES[c.space], deadNo = 0, noN = 0;
+    for (t = 0; t < 20; t++){
+      var trN = makeTrial(c.seed + t * 619, withDefaults({ poolN: 30, pool: "curated", fmt: c.fmt }));
+      var onlyNo = trN.pool.filter(function(e){ return !e.lab; });
+      var evN = evalSel(onlyNo, spN, trN);
+      noN++;
+      if (evN.wasteK > 0) deadNo++;
+      ok(evN.wasteK === 0, "a NO-only prompt contained " + evN.wasteK + " demonstrations that deleted nothing");
+      ok(evN.pinN === onlyNo.length, "a NO-only prompt pinned " + evN.pinN + " of " + onlyNo.length);
+    }
+    ok(deadNo === 0, deadNo + " of " + noN + " NO-only prompts contained a dead demonstration");
+  }
+
+  // 12. the budget ladder, and the tie at the top
+  {
+    var last = CU[CU.length - 1].rows.filter(function(r){ return r.id !== "empty"; });
+    var v0 = last[0].pin;
+    for (i = 0; i < last.length; i++)
+      ok(Math.abs(last[i].pin - v0) < 1e-12, last[i].id + " is not tied at the top of the ladder");
+    for (var bI = 1; bI < CU.length; bI++){
+      var prev = {}, cur = {};
+      for (i = 0; i < CU[bI].rows.length; i++){ cur[CU[bI].rows[i].id] = CU[bI].rows[i].pin; prev[CU[bI - 1].rows[i].id] = CU[bI - 1].rows[i].pin; }
+      for (var id in cur) ok(cur[id] >= prev[id] - 1e-9, id + " got worse with a bigger budget");
+    }
+    var lo2 = CU[0].rows.filter(function(r){ return r.id !== "empty"; });
+    var loSpread = Math.max.apply(null, lo2.map(function(r){ return r.pin; })) -
+                   Math.min.apply(null, lo2.map(function(r){ return r.pin; }));
+    ok(loSpread > 0.1, "the strategies do not separate even at the tightest budget");
+  }
+
+  // 13. format is a change of units
+  {
+    var ident = FU.U.filter(function(u){ return u.identical; });
+    ok(ident.length >= 1, "no matched-slot budget pair came back identical");
+    var worstU = Math.max.apply(null, FU.U.map(function(u){ return u.maxD; }));
+    var worstF = Math.max.apply(null, FU.F.map(function(r){ return Math.abs(r.spread); }));
+    ok(worstU < worstF / 5, "matching the slot count did not collapse the format gap");
+    var top = FU.F[FU.F.length - 1];
+    ok(Math.abs(top.cells.terse.pin - top.cells.prose.pin) < 1e-12,
+       "the three renderings do not tie exactly at the top budget");
+  }
+
+  // 14. the metric null, and where it stops
+  {
+    var kvR = GP.filter(function(r){ return r.fmt === "kv"; })[0];
+    ok(kvR.metric.diffTie >= 0, "the different-set-same-score counter is broken");
+    ok(Math.abs(kvR.metric.d) < 1e-9 ? kvR.metric.tie > 0.9 : true, "a zero mean hid a real spread");
+    var anyBreak = GP.filter(function(r){ return r.cost.tie < 0.999; });
+    ok(anyBreak.length >= 1, "cost-normalisation tied everywhere, so the null has no boundary");
+    var G40 = greedyPairs(withDefaults({ trials: 40, poolN: c.poolN, pool: c.pool, budget: 40, space: c.space }));
+    var G40kv = G40.filter(function(r){ return r.fmt === "kv"; })[0];
+    ok(G40kv.metric.tie < kvR.metric.tie + 1e-9, "the tie rate did not fall at a tighter budget");
+  }
+
+  // 15. the two spaces
+  {
+    var swings = SW.S.map(function(r){ return Math.abs(r.w.acc - r.wb.acc); });
+    ok(Math.max.apply(null, swings) > 0.05, "no row swings between the two rule spaces");
+    ok(Math.min.apply(null, swings) < 1e-12, "no row is unaffected by the rule space");
+    var negRow = SW.S.filter(function(r){ return r.id === "negatives"; })[0];
+    ok(Math.abs(negRow.w.pin - negRow.wb.pin) < 1e-12, "the NO-first row differs between the spaces");
+  }
+
+  // 16. the census, and the boundary a verifier assertion of mine got wrong
+  {
+    ok(SW.DC.noDead === 0, "a NO-only prompt contained " + SW.DC.noDead + " dead demonstrations");
+    ok(SW.DC.yesDead > 0, "no YES-only prompt ever contained a dead demonstration");
+    ok(SW.DC.noPrompts > 100 && SW.DC.yesPrompts > 100, "the census is too small to mean anything");
+    // "NO examples first" is a STRATEGY, and it is 0.00% dead only while the NO supply lasts.
+    var dry = SW.SP.filter(function(r){ return r.spill === 0; });
+    var wet = SW.SP.filter(function(r){ return r.spill > 0; });
+    // the implication runs one way only: a dead token requires a spill, but one spilled YES is
+    // never dead - it deletes 240 rules - so a spill does NOT imply a dead token.
+    for (i = 0; i < SW.SP.length; i++)
+      ok(SW.SP[i].waste === 0 || SW.SP[i].spill > 0,
+         "the NO-first row wasted tokens at pool " + SW.SP[i].poolN + " without spilling into YES");
+    for (i = 0; i < dry.length; i++)
+      ok(dry[i].waste === 0, "a NO-first row with no spill still wasted tokens at pool " + dry[i].poolN);
+    ok(wet.length >= 1, "the NO-first row never spilled, so the exception is not shown");
+    ok(SW.SP.filter(function(r){ return r.waste > 0; }).length >= 1,
+       "no pool size shows the dead tokens, so the exception is not measured");
+    // and the spill is what makes the row work at all
+    var bestP = Math.max.apply(null, SW.SP.map(function(r){ return r.pin; }));
+    var wetBest = Math.max.apply(null, wet.map(function(r){ return r.pin; }));
+    ok(Math.abs(wetBest - bestP) < 1e-12, "the best NO-first row is not one that spilled");
+    for (i = 0; i < dry.length; i++)
+      ok(dry[i].pin < wetBest, "a dry NO-first row beat every spilled one");
+    // monotone: more candidates on hand means MORE NO examples and a worse prompt here
+    for (i = 1; i < SW.SP.length; i++)
+      ok(SW.SP[i].supply > SW.SP[i - 1].supply, "the NO supply did not grow with the pool");
+  }
+
+  var byF = {};
+  for (i = 0; i < M.rows.length; i++) byF[M.rows[i].id] = M.rows[i];
+  var lastRow = CU[CU.length - 1];
+  var lastVals = lastRow.rows.filter(function(r){ return r.id !== "empty"; });
+  var identU = FU.U.filter(function(u){ return u.identical; }).length;
+  var kvP = GP.filter(function(r){ return r.fmt === "kv"; })[0];
+  var oracleHit = OK.O.rows.filter(function(r){ return r.gap < 1e-12; })[0];
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + pass + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  probe 1 (parameter-free): 81 records, one word changed -- the YES column takes ONE value (" +
+      P.gp[0] + ") and the NO column ONE (" + P.gn[0] + "), ratio exactly " + P.ratioW.toFixed(2) +
+      " at identical cost on " + P.costSame + "/81",
+    "  probe 1 (control)       : add blacklists to the rule space and the same two demonstrations",
+    "                            read " + P.bp[0] + " and " + P.bn[0] + " -- ratio exactly " +
+      P.ratioWB.toFixed(2) + ", nothing in the prompt says which",
+    "  law     : a NO-only prompt pins exactly k/81 and 0.00% of everything else, every k, every seed",
+    "  refuted : I built this to recommend YES-first. It pins " + p3(byF.positives.pin) + " against " +
+      p3(byF.balanced.pin) + " for",
+    "            alternating and " + p3(byF.elimtok.pin) + " for a greedy -- 15x the evidence, no win",
+    "  blind   : the EMPTY prompt scores " + p3(byF.empty.acc) + " accuracy and a " +
+      n1(byF.negatives.cost) + "-token NO-only prompt " + p3(byF.negatives.acc),
+    "  refuted : the exact knapsack -- brute-force verified -- pins " + p3(byF.knap.pin) +
+      " against a greedy's " + p3(byF.elimtok.pin),
+    "  trap    : the broken reconstruction reproduces dp[budget] on " + pc(OK.K.badValOk) +
+      " and fits the budget on " + pc(OK.K.badFeas),
+    "  null    : the objective you optimise moves the score by " + (100 * kvP.metric.d).toFixed(3) +
+      " points on " + pc(kvP.metric.tie) + " of prompts",
+    "  null    : at " + lastRow.budget + " tokens all " + lastVals.length +
+      " strategies are bit-identical at " + p3(lastVals[0].pin),
+    "  null    : matched on slot count, " + identU + " of " + FU.U.length +
+      " format pairs are bit-identical across 8 strategy rows",
+    "  exact   : " + (oracleHit ? oracleHit.name + " reaches the exhaustive optimum on " +
+      pc(oracleHit.hit) + " of prompts" : "no heuristic reached the optimum"),
+    "  census  : " + n0(SW.DC.noPrompts) + " NO-only prompts contain " + SW.DC.noDead +
+      " dead demonstrations; " + n0(SW.DC.yesPrompts) + " YES-only prompts contain " + n0(SW.DC.yesDead),
+    "  exception: 'NO examples first' is 0.00% dead only until the pool runs out of NO examples --",
+    "            and the pool sizes where it spills are the only ones where the row scores at all"
+  ])).join("\n");
+}
+
+["sBud", "sPool", "sTrials"].forEach(function(id){ $(id).addEventListener("input", scheduleRender); });
+["selPool", "selFmt", "selSpace"].forEach(function(id){ $(id).addEventListener("change", scheduleRender); });
+let pending = null;
+function scheduleRender(){ clearTimeout(pending); pending = setTimeout(render, 160); }
+render();
+</script>
+</body>
+</html>
