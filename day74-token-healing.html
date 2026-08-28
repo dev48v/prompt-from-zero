@@ -1,0 +1,2019 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 74 &mdash; Token healing</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .vio { color:#5b21b6; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#6d28d9; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  code.seam { background:#ede9fe; color:#4c1d95; border-radius:4px; padding:1px 5px; font-size:11.5px;
+              font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:700; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f5f3ff; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#ede9fe; color:#4c1d95; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  .bar { display:inline-block; height:8px; background:#8b5cf6; border-radius:2px; vertical-align:middle; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw vio mb2">PROMPTFROMZERO &middot; DAY 74</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      &#129657; Token healing &mdash; Day 73 was about where the reply gets cut. This one is about
+      where the <em>prompt</em> does, because the last thing you type is not the last thing the model
+      reads: your string is turned into tokens first, and if it stops in the middle of one, the token
+      sequence handed to the model is a sequence that cannot occur in front of the text you wanted.
+      Nothing here simulates language ability &mdash; the tokenizer, the boundary test, the
+      extension-set lookup and nine healing rules are real string code, and every one of
+      <strong>1,029</strong> cut positions across 20 target texts is enumerated &mdash; of which
+      <strong>71.53%</strong> are not a token boundary of the text that follows &mdash; so a rate is
+      a count and never a sample. Exactly two numbers are declared, both on sliders and both labelled
+      where they are used.
+      The parameter-free centrepiece is one five-character token: cut
+      <code class="tok">https</code> at each of the five places you can cut it, and the rule every
+      library ships &mdash; rewind one token, demand the next one extend it &mdash; fixes
+      <strong>two</strong> of the five, makes <strong>two</strong> strictly <em>worse</em>, and the
+      fifth needed nothing. Rewinding deeper does not rescue the set either: the extendable rewind
+      clears <strong>three</strong> of the four broken cuts and stops one token short on the fourth,
+      because the two characters it has accumulated begin no entry at all, and the strict version of
+      the same idea makes the intended URL <em>unreachable</em>. &#128308; Then the advice everyone repeats turns out to be a fact about a
+      vocabulary rather than about prompting: a cut after a space is off-boundary
+      <strong>69.40%</strong> of the time when the vocabulary glues the space to the following word
+      and <strong>8.96%</strong> when it does not &mdash; the same corpus, the same segmenter, a
+      <strong>7.75&times;</strong> difference &mdash; and "strip the trailing whitespace" is worth
+      <strong>+16.13</strong> points on prose, <strong>&minus;1.10</strong> on JSON and
+      <strong>&minus;4.24</strong> on a field list. One character carries it: ending a prompt
+      <code class="tok">The invoice is</code> costs nothing and ending it
+      <code class="tok">The invoice is&nbsp;</code> makes the model spell the next word out over
+      <strong>7</strong> off-boundary steps.
+      &#128308; The depth nobody checks: the rewind the intended text actually requires is exactly
+      one token on <strong>36.82%</strong> of off-boundary cuts and runs to <strong>7</strong>, so the
+      shipped rule is the right depth on barely a third of them &mdash; it helps
+      <strong>41.98%</strong> of cuts, <em>hurts</em> <strong>39.67%</strong>, and its net
+      <strong>+19.93</strong> points is an average over a coin flip.
+      &#128308; The obvious generalisation is the worst row on the page: rewind further and keep the
+      same "extend all of it" constraint, and the constraint set comes back
+      <strong>empty</strong> on <strong>589 of 736</strong> off-boundary cuts &mdash;
+      <strong>80.03%</strong> &mdash; because the removed text spans two tokens and no single
+      vocabulary entry begins with it. The harness then demands a token that does not exist, the
+      intended text is <em>unreachable</em>, and it is the one row that still reads
+      <strong>33.43%</strong> when the seam has been declared free and every other row is exactly
+      <strong>100.00%</strong>.
+      &#128308; And the winner is not the feature: <em>rewind to the start of the current word</em>
+      delivers <strong>90.37%</strong> against the shipped rule's 60.35% and the control's 40.42%,
+      hurts <strong>1.22%</strong> of cuts instead of 39.67%, and does it while sending
+      <strong>fewer</strong> prompt tokens than the unreachable oracle.
+      &#128308; Two null results, both located rather than claimed: the constraint mode everyone
+      argues about &mdash; must-extend versus walk-the-trie &mdash; is worth exactly
+      <strong>0.00</strong> points on all four tokenizers, and at a declared damage horizon of zero
+      <strong>eight of the nine</strong> policies come back <em>bit-identical</em> at 100.00%, which
+      is where the page says what it is assuming. The ninth is the unreachable row, and that is the
+      in-page assertion of mine that <em>failed</em>: I wrote "all nine", and a text no permitted
+      token can spell does not become spellable because the seam was declared free. 297,917 in-page
+      assertions, the prefix lemma checked on all <strong>4,116</strong> cut-and-tokenizer pairs with
+      0 violations, plus
+      <strong>389,226</strong> in an independent Node verifier that rebuilds the tokenizer as a
+      charCode trie, the fewest-token segmenter by full enumeration of every segmentation, the
+      extension sets by trie descent and every policy from its English description. Pure vanilla
+      JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">&#128300; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">recover &mdash; an off-boundary step still writes the intended text
+            <span id="vRec" class="b" style="float:right">35%</span>
+            <input id="sRec" type="range" min="0" max="100" step="5" value="35"></label>
+          <label class="sl">horizon &mdash; how many steps the damage reaches
+            <span id="vHor" class="b" style="float:right">8</span>
+            <input id="sHor" type="range" min="0" max="8" step="1" value="8"></label>
+          <label class="sl">where to cut the example prompt
+            <span id="vPos" class="b" style="float:right">17</span>
+            <input id="sPos" type="range" min="1" max="48" step="1" value="17"></label>
+        </div>
+        <div class="flex g4 wrapf mt3">
+          <label class="xs mut">tokenizer <select id="selTok"></select></label>
+          <label class="xs mut">what the model was asked to write <select id="selFam"></select></label>
+          <label class="xs mut">example text <select id="selTgt"></select></label>
+          <label class="xs mut">healing policy for the trace <select id="selPol"></select></label>
+        </div>
+        <p class="note mt3">
+          Two numbers on this page are <strong>declared</strong> and everything else is a count. The
+          first is <strong>recover</strong>: a step whose decoded length is not a token boundary of
+          the text the model is trying to write is standing in a token sequence that cannot occur in
+          front of that text, and this is the probability it writes the intended text anyway. The
+          second is <strong>horizon</strong>: how many such steps the damage is assumed to reach
+          before the reader is back on familiar ground. Set the horizon to 0 and the whole feature is
+          worth 0.00 &mdash; which is the honest place to start reading, because it says exactly what
+          the page is assuming. The <strong>vocabulary</strong> is declared too, and its only claimed
+          properties are the ones every real subword vocabulary has: multi-character entries, some
+          beginning with a space, some gluing punctuation to a neighbour, and some that are proper
+          prefixes of longer ones. Everything else &mdash; every boundary, every extension set, every
+          rewind, every token count &mdash; is a real string operation over 1,029 enumerated cuts, so
+          a <span class="ok">0.00%</span> here is a zero and not "none seen".
+        </p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 1 &middot; FIVE WAYS TO CUT ONE TOKEN &mdash; parameter-free</p>
+          <p class="sm mut2 mb3">One prompt, <code class="tok">const url = "https&hellip;</code>,
+            cut at each of the five positions inside the single token
+            <code class="tok">https</code>. No slider reaches this panel.
+            <span class="b">seam</span> is how many off-boundary steps the model must take;
+            <span class="b">healed</span> is the same number after the rule every library ships.</p>
+          <div class="scroll"><table class="num" id="p1Tbl"></table></div>
+          <p class="sm mt3" id="p1Note"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 1b &middot; THE TRAILING SPACE &mdash; parameter-free</p>
+          <p class="sm mut2 mb3">The most repeated piece of prompt advice there is, asked of two
+            vocabularies over the same texts and the same segmenter. The only difference is whether a
+            word's leading space belongs to the word.</p>
+          <div class="scroll"><table class="num" id="p1bTbl"></table></div>
+          <p class="sm mt3" id="p1bNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE CUT CENSUS &mdash; every position, by the character in front of it</p>
+        <p class="sm mut2 mb3">Every character position of every target text is a place a prompt or a
+          prefill could end. <span class="b">off</span> is the share that are not a token boundary of
+          the text that follows &mdash; the ones where the model is handed a sequence that cannot
+          occur. <span class="b">heal1</span> and <span class="b">strip</span> are the two rules,
+          scored on the same cuts, and the two columns swap places between rows.</p>
+        <div class="scroll"><table class="num" id="censusTbl"></table></div>
+        <p class="sm mt3" id="censusNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">HOW DEEP THE SEAM IS</p>
+          <p class="sm mut2 mb3">Off-boundary cuts, by the number of steps the reader spends
+            off-boundary before it lands back on one. This is not a tail: read the share at 1.</p>
+          <div class="scroll"><table class="num" id="depthTbl"></table></div>
+          <p class="note mt2" id="depthNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">HOW DEEP THE REWIND MUST BE</p>
+          <p class="sm mut2 mb3">The same cuts, by how many prompt tokens must come off to reach a
+            boundary of the intended text. Every shipped implementation removes exactly one.</p>
+          <div class="scroll"><table class="num" id="needTbl"></table></div>
+          <p class="note mt2" id="needNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE SCOREBOARD &mdash; nine rules on the same 1,029 cuts</p>
+        <p class="sm mut2 mb3">Same texts, same tokenizer, same arithmetic.
+          <span class="b">clean</span> is the share of cuts left with no seam at all;
+          <span class="b">delivered</span> applies the two declared numbers;
+          <span class="b">hurt</span> and <span class="b">helped</span> are per-cut comparisons
+          against the first row, which is the control. <span class="pill p-free">free</span> means the
+          rule needs no vocabulary access and no constrained decoding.</p>
+        <div class="scroll"><table class="num" id="polTbl"></table></div>
+        <p class="sm mt3" id="polNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE CONSTRAINT SET &mdash; what healing is allowed to emit</p>
+          <p class="sm mut2 mb3">Everything a healing harness can know at heal time is which
+            vocabulary entries begin with the text it removed. The set always contains that text, so
+            healing is always feasible &mdash; and when it contains <em>nothing else</em> the rule
+            declines, which is the same thing as doing nothing.</p>
+          <div class="scroll"><table class="num" id="widthTbl"></table></div>
+          <p class="note mt2" id="widthNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">BY FAMILY &mdash; where the free advice is worth anything</p>
+          <p class="sm mut2 mb3">The same cuts, split by what the model was asked to write.
+            <span class="b">free</span> is what stripping the trailing whitespace buys, in points,
+            and it changes sign.</p>
+          <div class="scroll"><table class="num" id="famTbl"></table></div>
+          <p class="note mt2" id="famNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE PREFILLS PEOPLE ACTUALLY WRITE</p>
+        <p class="sm mut2 mb3">Sixteen assistant prefills, each a real prefix of one of the target
+          texts, so this is the same measurement applied to the strings that get typed by hand.
+          <span class="b">acted</span> says whether the shipped rule did anything at all;
+          <span class="b">need</span> is the rewind depth the text requires.</p>
+        <div class="scroll"><table class="num" id="preTbl"></table></div>
+        <p class="sm mt3" id="preNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE FIRST DECLARED NUMBER</p>
+          <p class="sm mut2 mb3">Delivered against <code class="tok">recover</code>. The top and the
+            bottom of this ladder are both worth reading: one end is a set-theoretic statement, the
+            other is a null result with exactly one exception.</p>
+          <div class="scroll"><table class="num" id="recTbl"></table></div>
+          <p class="note mt2" id="recNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE SECOND DECLARED NUMBER</p>
+          <p class="sm mut2 mb3">Delivered against <code class="tok">horizon</code>, with the
+            <span class="b">hurt</span> share beside it &mdash; because one finding on this page
+            depends on the horizon and the panel says which.</p>
+          <div class="scroll"><table class="num" id="horTbl"></table></div>
+          <p class="note mt2" id="horNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE CONTROL &mdash; four tokenizers, two vocabularies, two segmenters</p>
+        <p class="sm mut2 mb3">Nothing above should be a property of one tokenizer, so here are all
+          four over the same corpus. <span class="b">lemma</span> is the identity the whole page rests
+          on, checked cut by cut: the prompt's tokens are a prefix of the intended text's tokens
+          exactly when the cut lands on a boundary. <span class="b">mode</span> is the difference
+          between the two constraint modes, and it is the page's flattest number.</p>
+        <div class="scroll"><table class="num" id="tokTbl"></table></div>
+        <p class="sm mt3" id="tokNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">ONE CUT, WRITTEN OUT</p>
+        <p class="sm mut2 mb3">The example text, the cut position and the policy come from the
+          controls at the top. This is the whole mechanism with nothing aggregated: the prompt's
+          tokens, the intended text's tokens, where the rewind lands, and every step the reader takes
+          before it is back on a boundary.</p>
+        <pre id="traceOut">running&hellip;</pre>
+        <p class="sm mt3" id="traceNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHAT IT COSTS</p>
+        <p class="sm mut2 mb3">Healing is a prompt-side edit, so its bill is the prompt's token
+          count. Every rule here removes tokens rather than adding them, which has a second
+          consequence worth more than the saving: a shorter prompt is still a <em>prefix</em> of the
+          longer one, so none of these rules can invalidate a prefix cache.</p>
+        <div class="scroll"><table class="num" id="costTbl"></table></div>
+        <p class="note mt2" id="costNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">The last thing you type is not the last thing the model reads</h2>
+      <p>A prompt is a string to you and a list of integers to the model. Between the two sits a
+        tokenizer, and a tokenizer is not a formatter &mdash; it is a segmenter with opinions. Given
+        the text <code class="tok">https://example.com</code> it will produce a handful of tokens, one
+        of which is very likely the whole of <code class="tok">https</code>, because that string
+        occurs often enough in the training corpus to have earned an entry. Now end your prompt one
+        character earlier. The tokenizer cannot produce <code class="tok">https</code>, because the
+        fifth character is not there, so it produces <code class="tok">http</code> instead. Your
+        prompt's token list is now a list that never appears in front of the text you were asking
+        for, because in that text those four characters are always the first four fifths of a single
+        token.</p>
+      <p>That is the entire subject of this page. It has a name &mdash; token healing &mdash; and a
+        standard fix: rewind the last token, and constrain the first generated token to begin with
+        the text you removed. Everything else here is measurement of that fix, of the cheaper thing
+        you could do instead, and of the two places where the fix does damage that no test would
+        catch, because a prompt that ends mid-token returns HTTP 200 and a completion that looks like
+        a completion.</p>
+
+      <h3 class="lg b">The lemma the page rests on</h3>
+      <p>There is one clean fact underneath all of it. Let <code class="tok">T</code> be the text the
+        model is going to write and <code class="tok">P</code> a prefix of it &mdash; your prompt.
+        Then the tokenization of <code class="tok">P</code> is a prefix of the tokenization of
+        <code class="tok">T</code> <em>exactly</em> when the length of <code class="tok">P</code> is a
+        token boundary of <code class="tok">T</code>. One direction is arithmetic: if the tokens
+        agree, the lengths sum to a boundary. The other is the interesting one, and it holds for both
+        segmenter families here for the same reason &mdash; no token of
+        <code class="tok">T</code> crosses a boundary of <code class="tok">T</code>, so the region in
+        front of that boundary is segmented without ever consulting a character behind it. The page
+        does not take this on trust: it checks it cut by cut, on 1,029 cuts under each of four
+        tokenizers, and reports the violation count.</p>
+      <p>What the lemma buys is that "off-distribution" stops being a vibe and becomes a decidable
+        test. The prompt is fine if its length is a boundary of the intended text and broken if it is
+        not, and both are computable from the two strings. That is why this page can prove things
+        about a phenomenon that is usually discussed in anecdotes.</p>
+
+      <h3 class="lg b">The parameter-free part: one token, five cuts</h3>
+      <p>Take <code class="tok">const url = "https</code> and remove characters from the end. Five of
+        the resulting prompts stop somewhere inside <code class="tok">https</code>. Only the last of
+        them is a boundary. The other four hand the model a token list it has never seen in that
+        position, and they do not all cost the same: cut after <code class="tok">http</code> and the
+        reader has one off-boundary step to survive, cut after <code class="tok">h</code> and it has
+        four, because the truncated prompt shattered into single characters and the model has to
+        re-spell its way back to the boundary.</p>
+      <p>Now apply the shipped rule to each. After <code class="tok">http</code> it is perfect: rewind
+        that one token, demand a token beginning <code class="tok">http</code>, and the tokenizer's
+        own choice &mdash; <code class="tok">https</code> &mdash; satisfies the constraint, so the
+        seam is gone. After <code class="tok">h</code> it is also perfect, for the same reason. In
+        between, after <code class="tok">ht</code> and <code class="tok">htt</code>, it is worse than
+        doing nothing, because rewinding one token there rewinds one <em>character</em>, which does
+        not reach the boundary at all &mdash; it just gives the reader one more off-boundary step to
+        get through. Two fixed, two damaged, one that needed nothing, and no parameter anywhere in
+        the panel.</p>
+
+      <h3 class="lg b">The advice that is really about a vocabulary</h3>
+      <p>"Do not leave a trailing space at the end of your prompt" is the single most repeated piece
+        of tokenizer folklore, and it is correct &mdash; for the tokenizers it was written about. In
+        a GPT-style vocabulary a word carries its leading space:
+        <code class="tok">&nbsp;the</code> is one token and <code class="tok">the</code> is another.
+        A prompt ending in a space therefore lands in the middle of the next word's token before that
+        word has been written, and the model must produce a token beginning with a letter where the
+        text has one beginning with a space. In a WordPiece-style vocabulary the space is its own
+        token, and the same cut is a clean boundary.</p>
+      <p>Measured over the same corpus with the same segmenter, cuts after a space are off-boundary
+        69.40% of the time under the space-attached vocabulary and 8.96% under the space-separated
+        one. That is a fact about the vocabulary and not about prompting, and it has a consequence
+        the advice does not carry: stripping trailing whitespace is worth +16.13 points on prose,
+        &minus;1.10 on JSON and &minus;4.24 on a field list, because in JSON the space after a colon
+        is part of <code class="tok">":&nbsp;"</code> and removing it moves the cut from one
+        non-boundary to a different, deeper one. The rule that is nearly free is also the rule that
+        can be negative, and the sign depends on what you asked for.</p>
+
+      <h3 class="lg b">Depth, and why one token is the wrong number</h3>
+      <p>Every implementation of token healing removes exactly one token. The rewind the intended
+        text actually requires is exactly one token on 36.82% of off-boundary cuts and reaches seven.
+        The reason is not exotic: a truncated long token shatters. Cut
+        <code class="tok">```json</code> after <code class="tok">```js</code> and the prompt is not
+        one broken token but two &mdash; <code class="tok">```</code> and
+        <code class="tok">js</code> &mdash; so rewinding one of them leaves you inside the other. The
+        fix that follows from the mechanism is to keep rewinding while the accumulated text is still
+        a proper prefix of some vocabulary entry, and it lifts the clean-cut share from 36.82% to
+        65.08%.</p>
+      <p>But only with the right constraint. Rewind two tokens and keep demanding that the
+        <em>next single token</em> begin with everything you removed, and you have asked for a
+        vocabulary entry starting with a two-token string. On this corpus that entry does not exist on
+        589 of 736 off-boundary cuts &mdash; the constraint set is empty &mdash; and the intended
+        text becomes unreachable rather than unlikely. That row is the only one on the page that is
+        still below 100% when the seam has been declared costless, because unreachability is not a
+        probability. The trie walk, which permits a token that is a prefix of what you removed and
+        keeps owing the rest, has no such failure and costs one extra branch in the decoder.</p>
+
+      <h3 class="lg b">What actually wins</h3>
+      <p>Not the feature. Rewinding to the start of the current word &mdash; keep removing tokens
+        until you remove one that begins with a space or a newline &mdash; delivers 90.37% against
+        the shipped rule's 60.35% and the control's 40.42%. It hurts 1.22% of off-boundary cuts
+        instead of 39.67%. It sends fewer prompt tokens than the oracle does. And it needs the
+        vocabulary only for the trie constraint, not for the decision of where to stop, because "the
+        last space" is a property of your string.</p>
+      <p>The reason it wins is the same reason depth-1 loses: a boundary is much more likely to sit
+        at the start of a word than one token back from an arbitrary character. That is a statement
+        about vocabularies, not about models, and it is why the rule survives the tokenizer control
+        &mdash; 83.56%, 81.78%, 83.46% and 82.57% clean across the four.</p>
+
+      <h3 class="lg b">Where the page states its assumptions</h3>
+      <p>Two numbers are declared. Set <code class="tok">horizon</code> to 0 &mdash; assume the damage
+        does not reach past the first step &mdash; and eight of the nine policies come back
+        bit-identical at 100.00%, which is the honest null: if a seam costs nothing, healing is worth
+        nothing. The ninth is the unreachable row, and it is where an assertion of mine failed: the
+        panel was built claiming all nine, and unreachability is not a probability, so declaring the
+        seam free does not make a text spellable that no permitted token can spell. Setting
+        <code class="tok">recover</code> to 1 has the same shape and the same single exception. In between, the ordering of the policies does not change at any setting
+        of either dial, and the one finding that <em>is</em> horizon-dependent &mdash; that the
+        shipped rule hurts as well as helps &mdash; is reported with its horizon beside it: 0.00% of
+        cuts at horizon 1, 14.67% at 2, 31.93% at 4. The net gain is positive at every setting.</p>
+
+      <h3 class="lg b">What this is not</h3>
+      <p>It is not a claim about a specific tokenizer. The vocabulary is hand-written and its
+        properties are declared; change which entries are proper prefixes of which and
+        <em>which</em> cuts misalign changes, while the existence of the seam does not. It is not a
+        claim about a specific model either: nothing here models language, and the reader always
+        intends to write the target text. What is measured is how many steps the harness makes it
+        spend in a token sequence that cannot occur, and what each repair does to that number.</p>
+      <p>It is also not Day 59 and not Day 73. Day 59 seeded a trailing assistant turn to lock the
+        reply's format, and treated the prefill as a string. Day 73 was the other end &mdash; where
+        the reply gets cut and what the harness hands back. This page is the seam <em>between</em>
+        them: the last token of what you send, which is the one place a prompt can be wrong without
+        a single character of it being wrong.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">&#128296; How it is built</h2>
+      <p>Every number on the MEASURE tab comes from the block between
+        <code class="tok">ENGINE:BEGIN</code> and <code class="tok">ENGINE:END</code> in this file's
+        source. It touches no DOM, reads no clock and calls no random number generator. An independent
+        Node verifier rebuilds each load-bearing structure a second way &mdash; a charCode trie
+        instead of a first-character index, a full enumeration of every segmentation instead of a
+        dynamic program, trie descent instead of a filter over the vocabulary list &mdash; and
+        compares them item for item.</p>
+
+      <h3 class="lg b">1. The corpus is data and the cuts are enumerated</h3>
+      <p>Twenty target texts across seven families &mdash; JSON, code, URLs, prose, markdown, a field
+        list, tags &mdash; and every interior character position of each one is a cut. That is 1,029
+        cuts, and every rate on the page is a count over them or over a named subset, so there is
+        nothing to resample and no confidence interval to quote.</p>
+
+      <h3 class="lg b">2. Two vocabularies, one of them derived</h3>
+      <p>The space-attached vocabulary is hand-written; the space-separated one is
+        <em>derived</em> from it by removing the leading space from every entry that has one, so the
+        two differ in exactly the property under test and in nothing else. Every character in the
+        corpus is a token, which makes both vocabularies total &mdash; there is no unknown-token path
+        and no string that cannot be produced. Three entries are deliberately awkward so that
+        longest-match is not always the fewest-token segmentation; without them the two segmenters
+        would agree everywhere and the control would say nothing.</p>
+
+      <h3 class="lg b">3. Two segmenters from two real families</h3>
+      <p>Longest match, left to right, which is the WordPiece shape; and fewest tokens with ties
+        broken toward the longer first token, which is the Unigram shape at equal unit costs. The
+        second is a dynamic program over suffix costs in the page; the verifier re-derives it by
+        enumerating every segmentation of every string and taking the minimum, which is a different
+        algorithm and a different tie-break implementation reaching the same answer.</p>
+
+      <h3 class="lg b">4. The reader is declared in five clauses, and they are in the source</h3>
+      <p>It always intends to write the remaining target text; its next token is the first token of
+        the tokenizer's own segmentation of that text; a step is on-seam when the decoded length is
+        not a boundary of the intended text's tokenization; the harness may constrain the first
+        emitted token, substituting the longest permitted entry that still matches when the intended
+        one is refused; and if no permitted entry matches, the text is unreachable. Delivery is
+        <code class="tok">recover</code> raised to the number of on-seam steps, capped by
+        <code class="tok">horizon</code>. There is no language model in it, which is the point: the
+        quantity being measured is the harness's contribution alone.</p>
+
+      <h3 class="lg b">5. Nine policies, each written from its English description</h3>
+      <p>Do nothing. Rewind one token and force the same token back &mdash; which is bit-identical to
+        doing nothing, and is asserted to be. Strip trailing whitespace. Rewind one token if some
+        longer entry extends it, with the must-extend constraint, and again with the trie constraint.
+        Rewind while extendable, with each constraint. Rewind to the last space-initial token. And an
+        oracle that rewinds to the intended text's own boundary, which is not implementable and is
+        labelled as the upper bound it is. Each policy also reports whether it <em>acted</em>, because
+        a rule that declines returns the control exactly and one class of cut makes every rule
+        decline.</p>
+
+      <h3 class="lg b">6. The walk stops early, and that is a lemma too</h3>
+      <p>Once the reader is on a boundary with nothing owed, every remaining step is on-boundary and
+        contributes nothing, so the walk stops there instead of running to the end of the text. The
+        verifier does not: it walks every step to the end of every string and compares the counts,
+        which is how the early stop is checked rather than assumed.</p>
+
+      <h3 class="lg b">7. The extension set is the whole of what a harness can know</h3>
+      <p>At heal time the only fact available is which vocabulary entries begin with the removed text.
+        The set always contains that text &mdash; it is a token &mdash; so healing is always feasible
+        at depth one; and when the set contains nothing else, the constraint permits exactly the
+        token that was already there, so the rule declines. The page counts that class rather than
+        smoothing it away, and the verifier rebuilds the same sets by descending a trie.</p>
+
+      <h3 class="lg b">8. The claims are attacked, not restated</h3>
+      <p>The in-page assertions check the lemma on every cut under every tokenizer; that the oracle
+        leaves no seam anywhere; that forcing the token back is bit-identical to the control on every
+        cut; that healing a cut which was already a boundary changes nothing; that the extension set
+        always contains the removed text; that delivery is monotone in both declared numbers; and that
+        every policy's aggregate equals the mean of its per-cut values. The verifier re-derives all
+        of it from its own oracle stack and re-checks every number quoted in the headline against the
+        engine.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Token healing: the seam at the END of a prompt. Nothing here simulates language ability. There is
+// no model, no sampling and no claim about what an assistant "tends" to write. What is built is the
+// TOKENIZER and the four lines of harness that sit between your prompt string and the first
+// generated token: two vocabularies (one that glues a leading space onto its words, one that keeps
+// the space separate), two segmenters (longest-match and fewest-tokens), a boundary test, an
+// extension-set lookup and eight healing policies people actually ship. Every target text is DATA
+// and every character position of it is enumerated as a cut, so a rate here is an exact count over
+// a finite set and never a sample. Exactly two numbers are DECLARED, both on sliders and both
+// labelled where they are used: `recover`, the probability that a step standing off the intended
+// text's own token boundaries still writes the intended text, and `horizon`, how many steps the
+// damage is assumed to reach. Everything else is integer combinatorics over strings.
+
+// ---------------------------------------------------------------- 1. the corpus, as data
+var TARGETS = [
+  { id: "json-compact", fam: "json", t: '{"customer": "Rivera & Sons", "amount": 120.00, "status": "paid"}' },
+  { id: "json-nested", fam: "json", t: '{"result": [{"id": 12, "name": "Patel"}], "total": 1}' },
+  { id: "json-pretty", fam: "json", t: '{\n  "customer": "Nguyen",\n  "amount": 48.50\n}' },
+  { id: "json-note", fam: "json", t: '{"note": "see attached, urgent", "amount": 12.00}' },
+  { id: "code-js", fam: "code", t: "function total(items) { return items.reduce((a, b) => a + b, 0); }" },
+  { id: "code-py", fam: "code", t: "def total(items):\n    return sum(items)" },
+  { id: "code-url", fam: "code", t: 'const url = "https://dev48.infy.uk/prompt/day74";' },
+  { id: "code-sql", fam: "code", t: "SELECT total FROM invoice WHERE status = 'paid';" },
+  { id: "url-plain", fam: "url", t: "See https://dev48.infy.uk/prompt/day74 for the full table." },
+  { id: "url-md", fam: "url", t: "[the table](https://dev48.infy.uk/prompt/day74)" },
+  { id: "url-http", fam: "url", t: "Full details at http://dev48.infy.uk/prompt and the archive." },
+  { id: "prose-overdue", fam: "prose", t: "The invoice is overdue and the customer has been notified twice." },
+  { id: "prose-reply", fam: "prose", t: "There is no need to reply if the amount has already been paid." },
+  { id: "prose-thanks", fam: "prose", t: "Thanks for the note. I have set the status to under review." },
+  { id: "md-fence", fam: "md", t: '```json\n{"ok": true}\n```' },
+  { id: "md-head", fam: "md", t: "### Summary\n\nThe customer is on hold and the invoice is late." },
+  { id: "md-steps", fam: "md", t: "1. open the invoice\n2. set the status\n3. save and close" },
+  { id: "list-fields", fam: "list", t: "- customer: Rivera & Sons\n- amount: 120.00\n- status: paid" },
+  { id: "tag-inline", fam: "tag", t: "<answer>The amount is 120.00 and the status is paid.</answer>" },
+  { id: "tag-block", fam: "tag", t: "<answer>\n  120.00\n</answer>" }
+];
+var FAMILIES = ["all", "json", "code", "url", "prose", "md", "list", "tag"];
+
+// ---------------------------------------------------------------- 2. the vocabulary, declared
+// The only properties the results depend on are the ones every real subword vocabulary has: it
+// holds multi-character entries; some of those entries begin with a space; some glue punctuation to
+// a neighbour; and some are proper prefixes of longer entries ("http" of "https", "```js" of
+// "```json"). THREE entries here - 'ount": ', 'atus": ', 'omer": ' - are deliberately awkward, so
+// that longest-match is not always the fewest-token segmentation. Real vocabularies are full of
+// them; without any, the two segmenters would be indistinguishable and the control would say
+// nothing.
+var MERGES_ATTACHED = [
+  // URLs and paths - the classic seam
+  "http", "https", "://", "dev48", ".infy", ".uk", "/prompt", "/day74", "/day",
+  // fences and code framing
+  "```", "```json", "json", "js", "on", "=>", " =>", "((", "));", "):", " {", " }",
+  // json punctuation
+  '{"', '":', '": "', '",', '"}', '",\n', "\n  ", "\n}", '[{"', '"}]', ": ", ", ", '."', '".',
+  // tags
+  "</", "/>", "<answer>", "</answer>", ">\n", "\n<",
+  // whitespace and list framing
+  "\n\n", "\n    ", "\n- ", "1. ", "2. ", "3. ", "- ", "###", " & ",
+  // numbers
+  "120", "00", ".0", ".00", "12", "48", "50", "74",
+  // bare words
+  "customer", "amount", "status", "paid", "total", "items", "function", "return", "invoice",
+  "result", "name", "Patel", "Rivera", "Nguyen", "Sons", "note", "answer", "Summary", "reduce",
+  "sum", "def", "const", "url", "SELECT", "FROM", "WHERE", "true", "There", "The", "Thanks",
+  "Full", "See", "ok", "id",
+  // words with the space attached
+  " the", " is", " and", " customer", " amount", " status", " paid", " return", " items",
+  " function", " for", " full", " table", " has", " been", " notified", " twice", " overdue",
+  " invoice", " to", " a", " b", " Sons", " no", " need", " reply", " if", " already", " on",
+  " hold", " late", " set", " under", " review", " see", " attached", " urgent", " details",
+  " at", " archive", " open", " save", " close", " name", " total", " sum", " url", " Summary",
+  " note", " have", " I", " there", " details at",
+  // the three awkward entries, disclosed above
+  'ount": ', 'atus": ', 'omer": ', "am", "stat", "cust"
+];
+
+// The space-separated vocabulary is DERIVED, never hand-written: every entry that begins with a
+// space loses it, and the space becomes a token of its own. That is the WordPiece/BERT shape, and
+// it is the reason "strip the trailing whitespace" is advice about a vocabulary rather than about
+// prompting.
+function deriveSeparate(list){
+  var out = [], seen = {}, i, e;
+  for (i = 0; i < list.length; i++){
+    e = list[i];
+    if (e.charAt(0) === " " && e.length > 1 && e !== " & "){
+      e = e.slice(1);
+      // an entry like "details at" still holds an interior space; split it too
+      if (e.indexOf(" ") >= 0) e = e.split(" ")[0];
+    }
+    if (e.length && !seen[e]){ seen[e] = 1; out.push(e); }
+  }
+  return out;
+}
+var MERGES_SEPARATE = deriveSeparate(MERGES_ATTACHED);
+
+// every character in the corpus is a token of its own, so both vocabularies are TOTAL
+function buildVocab(merges){
+  var v = [], seen = {}, i, j, s;
+  for (i = 0; i < merges.length; i++) if (!seen[merges[i]]){ seen[merges[i]] = 1; v.push(merges[i]); }
+  for (i = 0; i < TARGETS.length; i++){
+    s = TARGETS[i].t;
+    for (j = 0; j < s.length; j++) if (!seen[s.charAt(j)]){ seen[s.charAt(j)] = 1; v.push(s.charAt(j)); }
+  }
+  for (i = 0; i < merges.length; i++){
+    s = merges[i];
+    for (j = 0; j < s.length; j++) if (!seen[s.charAt(j)]){ seen[s.charAt(j)] = 1; v.push(s.charAt(j)); }
+  }
+  return v;
+}
+
+function makeVocab(merges){
+  var list = buildVocab(merges), set = {}, byFirst = {}, i, c;
+  for (i = 0; i < list.length; i++){
+    set[list[i]] = 1;
+    c = list[i].charAt(0);
+    if (!byFirst[c]) byFirst[c] = [];
+    byFirst[c].push(list[i]);
+  }
+  for (c in byFirst) byFirst[c].sort(function(a, b){ return b.length - a.length; });
+  return { list: list, set: set, byFirst: byFirst };
+}
+var VOCABS = { attached: makeVocab(MERGES_ATTACHED), separate: makeVocab(MERGES_SEPARATE) };
+var VOCAB_IDS = ["attached", "separate"];
+var VOCAB_LABEL = { attached: "space attached to the word (GPT-style)",
+                    separate: "space kept separate (WordPiece-style)" };
+
+// every vocabulary entry that matches s at i, longest first
+function matchesAt(V, s, i){
+  var cand = V.byFirst[s.charAt(i)], out = [], j;
+  if (cand) for (j = 0; j < cand.length; j++)
+    if (s.substr(i, cand[j].length) === cand[j]) out.push(cand[j]);
+  if (!out.length) out.push(s.charAt(i));
+  return out;
+}
+
+// ---------------------------------------------------------------- 3. two segmenters
+// longest-match, left to right - the WordPiece shape
+function segLongest(V, s){
+  var out = [], i = 0;
+  while (i < s.length){
+    var t = matchesAt(V, s, i)[0];
+    out.push(t);
+    i += t.length;
+  }
+  return out;
+}
+// fewest tokens, ties broken by the LONGER first token - the Unigram/SentencePiece shape with
+// equal unit costs. A forward DP over suffix costs; the verifier re-derives it by enumeration.
+function segFewest(V, s){
+  var n = s.length, cost = new Array(n + 1), pick = new Array(n + 1), i, j, m, t, c;
+  cost[n] = 0; pick[n] = "";
+  for (i = n - 1; i >= 0; i--){
+    m = matchesAt(V, s, i);
+    cost[i] = Infinity; pick[i] = null;
+    for (j = 0; j < m.length; j++){
+      t = m[j];
+      if (i + t.length > n) continue;
+      c = cost[i + t.length];
+      if (c === Infinity) continue;
+      // fewer tokens wins; on a tie the longer token wins (m is already longest-first)
+      if (c + 1 < cost[i]){ cost[i] = c + 1; pick[i] = t; }
+    }
+    if (pick[i] === null){ pick[i] = s.charAt(i); cost[i] = cost[i + 1] + 1; }
+  }
+  var out = [];
+  i = 0;
+  while (i < n){ out.push(pick[i]); i += pick[i].length; }
+  return out;
+}
+var SEGS = { longest: segLongest, fewest: segFewest };
+var SEG_IDS = ["longest", "fewest"];
+var SEG_LABEL = { longest: "longest match", fewest: "fewest tokens" };
+
+var TOKENIZERS = [];
+(function(){
+  for (var a = 0; a < VOCAB_IDS.length; a++) for (var b = 0; b < SEG_IDS.length; b++)
+    TOKENIZERS.push({ id: VOCAB_IDS[a] + "-" + SEG_IDS[b], vocab: VOCAB_IDS[a], seg: SEG_IDS[b],
+                      label: VOCAB_LABEL[VOCAB_IDS[a]] + " · " + SEG_LABEL[SEG_IDS[b]] });
+})();
+var TOKENIZER_IDS = [];
+(function(){ for (var i = 0; i < TOKENIZERS.length; i++) TOKENIZER_IDS.push(TOKENIZERS[i].id); })();
+function tkOf(id){
+  for (var i = 0; i < TOKENIZERS.length; i++) if (TOKENIZERS[i].id === id) return TOKENIZERS[i];
+  return TOKENIZERS[0];
+}
+
+var TCACHE = {};
+function toks(tid, s){
+  var k = tid + " " + s;
+  if (TCACHE[k]) return TCACHE[k];
+  var tk = tkOf(tid);
+  var r = SEGS[tk.seg](VOCABS[tk.vocab], s);
+  TCACHE[k] = r;
+  return r;
+}
+function nTok(tid, s){ return toks(tid, s).length; }
+// the set of offsets at which a token starts or ends, as a plain object
+function bounds(ts){
+  var b = { 0: true }, n = 0, i;
+  for (i = 0; i < ts.length; i++){ n += ts[i].length; b[n] = true; }
+  return b;
+}
+var BCACHE = {};
+function boundsOf(tid, s){
+  var k = tid + " " + s;
+  if (BCACHE[k]) return BCACHE[k];
+  var b = bounds(toks(tid, s));
+  BCACHE[k] = b;
+  return b;
+}
+function isBoundary(tid, s, p){ return !!boundsOf(tid, s)[p]; }
+// the token of tok(s) that starts exactly at p, or null when p is not a boundary
+function tokenAt(tid, s, p){
+  var ts = toks(tid, s), n = 0, i;
+  for (i = 0; i < ts.length; i++){
+    if (n === p) return ts[i];
+    n += ts[i].length;
+    if (n > p) return null;
+  }
+  return null;
+}
+// the largest boundary of tok(s) that is <= p
+function boundaryAtOrBefore(tid, s, p){
+  var ts = toks(tid, s), n = 0, best = 0, i;
+  for (i = 0; i < ts.length; i++){
+    if (n > p) break;
+    best = n;
+    n += ts[i].length;
+  }
+  if (n <= p) best = n;
+  return best;
+}
+
+// ---------------------------------------------------------------- 4. extension sets
+// Everything a healing implementation can know at heal time: which vocabulary entries have the
+// removed text R as a prefix. R is itself a token, so this set is never empty - healing is always
+// FEASIBLE. When the set holds only R, healing is provably a no-op: the constraint permits exactly
+// the token that was already there.
+var ECACHE = {};
+function extSet(vid, R){
+  var k = vid + " " + R;
+  if (ECACHE[k]) return ECACHE[k];
+  var V = VOCABS[vid], out = [], i;
+  for (i = 0; i < V.list.length; i++)
+    if (V.list[i].length >= R.length && V.list[i].slice(0, R.length) === R) out.push(V.list[i]);
+  out.sort(function(a, b){ return b.length - a.length; });
+  ECACHE[k] = out;
+  return out;
+}
+function properlyExtendable(vid, R){
+  var e = extSet(vid, R), i;
+  for (i = 0; i < e.length; i++) if (e[i].length > R.length) return true;
+  return false;
+}
+
+// ---------------------------------------------------------------- 5. the reader, declared
+// Semantics, stated in full because everything downstream is arithmetic over them:
+//   (a) the reader always intends to write the remaining target text; its next token is the first
+//       token of the tokenizer's own segmentation of that remaining text. It is not choosing WHAT
+//       to say, only how the text it is going to say is cut up.
+//   (b) a step is ON-SEAM when the decoded length is not a token boundary of the intended text's
+//       own tokenization - a token sequence that cannot occur as a prefix of it. Each on-seam step
+//       delivers the intended text with declared probability `recover`.
+//   (c) the harness may constrain the FIRST emitted token; that is what healing is. If the reader's
+//       intended token is not permitted, the harness substitutes the longest permitted entry that
+//       is still a prefix of the remaining text; that step is on-seam by construction.
+//   (d) if no permitted entry is a prefix of the remaining text, the intended text is UNREACHABLE.
+//   (e) delivery = recover ^ min(d, horizon), or 0 when unreachable. `horizon` is the second
+//       declared number: how far past the seam the damage is assumed to reach.
+// Constraint modes: "none"; "prefix" (the shipped one - the token must have R as a prefix);
+// "either" (the trie walk - the token may also be a prefix of R, with the rest still owed).
+function walk(tid, T, pos0, mode, R){
+  var tk = tkOf(tid), vid = tk.vocab;
+  var pos = pos0, rem = mode === "none" ? "" : R, d = 0, steps = 0, unreachable = false;
+  var path = [];
+  while (pos < T.length){
+    var onB = isBoundary(tid, T, pos);
+    if (!rem.length && onB) break;                 // resynced and nothing owed
+    var want = toks(tid, T.slice(pos))[0];
+    var t = want, forced = false;
+    if (rem.length){
+      var okWant = mode === "prefix"
+        ? (want.length >= rem.length && want.slice(0, rem.length) === rem)
+        : (want.length >= rem.length ? want.slice(0, rem.length) === rem
+                                     : rem.slice(0, want.length) === want);
+      if (!okWant){
+        var cand = matchesAt(VOCABS[vid], T, pos), j, hit = null;
+        for (j = 0; j < cand.length; j++){
+          var c = cand[j], good;
+          good = mode === "prefix"
+            ? (c.length >= rem.length && c.slice(0, rem.length) === rem)
+            : (c.length >= rem.length ? c.slice(0, rem.length) === rem
+                                      : rem.slice(0, c.length) === c);
+          if (good){ hit = c; break; }             // matchesAt is longest-first
+        }
+        if (hit === null){ unreachable = true; break; }
+        t = hit; forced = true;
+      }
+    }
+    if (!onB || forced) d++;
+    path.push(t);
+    pos += t.length;
+    rem = rem.length > t.length ? rem.slice(t.length) : "";
+    steps++;
+    if (steps > 96) break;
+  }
+  return { d: d, steps: steps, end: pos, unreachable: unreachable, path: path };
+}
+
+// ---------------------------------------------------------------- 6. nine healing policies
+// Each is a real rule someone ships, written from its English description. `paid` means it needs
+// access to the vocabulary and to constrained decoding; the two unpaid rows are the controls.
+var POLICIES = [
+  { id: "none", label: "nothing - send the prompt as written", paid: false },
+  { id: "force", label: "rewind one token, then force that same token back", paid: true },
+  { id: "strip", label: "strip trailing whitespace - no vocabulary needed", paid: false },
+  { id: "heal1", label: "rewind 1 token if extendable, next token must EXTEND it", paid: true },
+  { id: "heal1t", label: "rewind 1 token if extendable, walk the trie", paid: true },
+  { id: "healext", label: "rewind while extendable, next token must extend all of it", paid: true },
+  { id: "healextt", label: "rewind while extendable, walk the trie", paid: true },
+  { id: "healword", label: "rewind to the last space-initial token, walk the trie", paid: true },
+  { id: "oracle", label: "rewind to the intended text's own boundary (not implementable)", paid: true }
+];
+var POLICY_IDS = [];
+(function(){ for (var i = 0; i < POLICIES.length; i++) POLICY_IDS.push(POLICIES[i].id); })();
+
+// the prompt-side decision: where does the harness rewind to, and what does it then demand.
+// `acted` is false when the rule looks at the prompt and declines - which is not a detail: a rule
+// that declines returns the control exactly, and one class of cut makes every rule decline.
+function plan(tid, T, p, pol){
+  var tk = tkOf(tid), vid = tk.vocab;
+  var P = T.slice(0, p), tp = toks(tid, P), k, pos0, R, i;
+  var noAct = { pos0: p, mode: "none", R: "", dropped: 0, acted: false };
+  if (pol === "none") return noAct;
+  if (pol === "force") return { pos0: p, mode: "none", R: "", dropped: 0, acted: true };
+  if (pol === "strip"){
+    var q = p;
+    while (q > 0 && (T.charAt(q - 1) === " " || T.charAt(q - 1) === "\n")) q--;
+    if (q === p) return noAct;
+    return { pos0: q, mode: "none", R: "", dropped: nTok(tid, P) - nTok(tid, T.slice(0, q)), acted: true };
+  }
+  if (pol === "oracle"){
+    pos0 = boundaryAtOrBefore(tid, T, p);
+    if (pos0 === p) return noAct;
+    return { pos0: pos0, mode: "either", R: T.slice(pos0, p),
+             dropped: tp.length - nTok(tid, T.slice(0, pos0)), acted: true };
+  }
+  if (!tp.length) return noAct;
+  if (pol === "heal1" || pol === "heal1t"){
+    R = tp[tp.length - 1];
+    // the shipped condition: only rewind a token that some longer entry extends
+    if (!properlyExtendable(vid, R)) return noAct;
+    return { pos0: p - R.length, mode: pol === "heal1" ? "prefix" : "either", R: R,
+             dropped: 1, acted: true };
+  }
+  if (pol === "healword"){
+    k = 0; R = "";
+    while (k < tp.length && k < 8){
+      k++; R = tp[tp.length - k] + R;
+      if (R.charAt(0) === " " || R.charAt(0) === "\n") break;
+    }
+    if (!properlyExtendable(vid, tp[tp.length - 1])) return noAct;
+    return { pos0: p - R.length, mode: "either", R: R, dropped: k, acted: true };
+  }
+  // healext / healextt: keep rewinding while the accumulated text is a PROPER prefix of some entry
+  R = tp[tp.length - 1];
+  if (!properlyExtendable(vid, R)) return noAct;
+  k = 1;
+  while (k < tp.length && k < 6 && properlyExtendable(vid, R)) { k++; R = tp[tp.length - k] + R; }
+  return { pos0: p - R.length, mode: pol === "healext" ? "prefix" : "either", R: R,
+           dropped: k, acted: true };
+}
+
+var CCACHE = {};
+function evalCut(tid, ti, p, pol){
+  var key = tid + "|" + ti + "|" + p + "|" + pol;
+  if (CCACHE[key]) return CCACHE[key];
+  var T = TARGETS[ti].t, pl = plan(tid, T, p, pol);
+  var w = walk(tid, T, pl.pos0, pl.mode, pl.R);
+  var r = { pos0: pl.pos0, mode: pl.mode, R: pl.R, dropped: pl.dropped, acted: !!pl.acted,
+            d: w.d, unreachable: w.unreachable, end: w.end, path: w.path };
+  CCACHE[key] = r;
+  return r;
+}
+function deliver(res, recover, horizon){
+  if (res.unreachable) return 0;
+  var e = Math.min(res.d, horizon);
+  if (e === 0) return 1;
+  if (recover === 0) return 0;
+  return Math.pow(recover, e);
+}
+
+// ---------------------------------------------------------------- 7. the cut set
+function cutsFor(fam){
+  var out = [], i, j;
+  for (i = 0; i < TARGETS.length; i++){
+    if (fam !== "all" && TARGETS[i].fam !== fam) continue;
+    for (j = 1; j < TARGETS[i].t.length; j++) out.push({ ti: i, p: j });
+  }
+  return out;
+}
+var CUTS_ALL = cutsFor("all");
+
+// the character immediately before the cut, as a class
+function cutClass(T, p){
+  var c = T.charAt(p - 1);
+  if (c === " ") return "space";
+  if (c === "\n") return "newline";
+  if (c >= "0" && c <= "9") return "digit";
+  if ((c >= "a" && c <= "z") || (c >= "A" && c <= "Z")) return "letter";
+  return "punct";
+}
+var CLASSES = ["letter", "space", "punct", "digit", "newline"];
+
+// ---------------------------------------------------------------- 8. panels
+var DEFAULTS = { tid: "attached-longest", recover: 0.35, horizon: 8, fam: "all", pol: "heal1" };
+function withDefaults(c){
+  var o = {}, k;
+  for (k in DEFAULTS) o[k] = DEFAULTS[k];
+  for (k in c) if (c[k] !== undefined) o[k] = c[k];
+  return o;
+}
+
+// PROBE 1 - the URL seam, parameter-free
+function probeUrl(tid){
+  var ti = -1, i;
+  for (i = 0; i < TARGETS.length; i++) if (TARGETS[i].id === "code-url") ti = i;
+  var T = TARGETS[ti].t, at = T.indexOf("https"), rows = [];
+  for (i = 1; i <= 5; i++){
+    var p = at + i, tp = toks(tid, T.slice(0, p));
+    var canon = isBoundary(tid, T, p);
+    var none = evalCut(tid, ti, p, "none"), h1 = evalCut(tid, ti, p, "heal1");
+    var cell = {}, q;
+    for (q = 0; q < POLICY_IDS.length; q++){
+      var rr = evalCut(tid, ti, p, POLICY_IDS[q]);
+      cell[POLICY_IDS[q]] = { d: rr.d, unreachable: rr.unreachable, R: rr.R, pos0: rr.pos0 };
+    }
+    rows.push({ p: p, prefix: T.slice(at, p), last: tp[tp.length - 1], nTok: tp.length,
+                canon: canon, dNone: none.d, dHeal: h1.d, acted: h1.acted, cell: cell,
+                R: tp[tp.length - 1],
+                ext: extSet(tkOf(tid).vocab, tp[tp.length - 1]).length,
+                recovery: none.path.join("|") });
+  }
+  return { ti: ti, T: T, at: at, rows: rows, canonToken: tokenAt(tid, T, at) };
+}
+
+// PROBE 1b - the trailing space, parameter-free, both vocabularies
+function probeSpace(seg){
+  var picks = ["prose-overdue", "prose-reply", "md-head", "url-plain"], rows = [], i, j;
+  for (i = 0; i < picks.length; i++){
+    var ti = -1;
+    for (j = 0; j < TARGETS.length; j++) if (TARGETS[j].id === picks[i]) ti = j;
+    var T = TARGETS[ti].t, sp = T.indexOf(" ", 8);
+    if (sp < 0) sp = T.indexOf(" ");
+    var cell = {};
+    for (j = 0; j < VOCAB_IDS.length; j++){
+      var tid = VOCAB_IDS[j] + "-" + seg;
+      var withSp = evalCut(tid, ti, sp + 1, "none");
+      var noSp = evalCut(tid, ti, sp, "none");
+      cell[VOCAB_IDS[j]] = {
+        withCanon: isBoundary(tid, T, sp + 1), noCanon: isBoundary(tid, T, sp),
+        withD: withSp.d, noD: noSp.d,
+        stripD: evalCut(tid, ti, sp + 1, "strip").d,
+        healD: evalCut(tid, ti, sp + 1, "heal1").d,
+        tokenSpanning: tokenAt(tid, T, sp)
+      };
+    }
+    rows.push({ id: picks[i], sp: sp, before: T.slice(Math.max(0, sp - 12), sp + 1),
+                after: T.slice(sp + 1, sp + 9), cell: cell });
+  }
+  return rows;
+}
+
+// THE CENSUS - every cut position, by the character in front of it
+function census(c){
+  var cuts = cutsFor(c.fam), byC = {}, i, k;
+  for (i = 0; i < CLASSES.length; i++)
+    byC[CLASSES[i]] = { n: 0, off: 0, dsum: 0, d1: 0, d2: 0, d3: 0, healed: 0, stripped: 0 };
+  var tot = { n: 0, off: 0, dsum: 0, d1: 0, d2: 0, d3: 0, healed: 0, stripped: 0 };
+  for (i = 0; i < cuts.length; i++){
+    var T = TARGETS[cuts[i].ti].t, p = cuts[i].p, kl = cutClass(T, p);
+    var canon = isBoundary(c.tid, T, p);
+    var b = byC[kl];
+    b.n++; tot.n++;
+    if (!canon){
+      var none = evalCut(c.tid, cuts[i].ti, p, "none");
+      var h1 = evalCut(c.tid, cuts[i].ti, p, "heal1");
+      var st = evalCut(c.tid, cuts[i].ti, p, "strip");
+      b.off++; tot.off++;
+      b.dsum += none.d; tot.dsum += none.d;
+      if (none.d === 1){ b.d1++; tot.d1++; }
+      else if (none.d === 2){ b.d2++; tot.d2++; }
+      else if (none.d >= 3){ b.d3++; tot.d3++; }
+      if (h1.d === 0 && !h1.unreachable){ b.healed++; tot.healed++; }
+      if (st.d === 0 && !st.unreachable){ b.stripped++; tot.stripped++; }
+    }
+  }
+  var rows = [];
+  for (i = 0; i < CLASSES.length; i++){
+    k = CLASSES[i];
+    rows.push({ cls: k, n: byC[k].n, off: byC[k].off,
+                offRate: byC[k].n ? byC[k].off / byC[k].n : 0,
+                meanD: byC[k].off ? byC[k].dsum / byC[k].off : 0,
+                d1: byC[k].d1, d2: byC[k].d2, d3: byC[k].d3,
+                healRate: byC[k].off ? byC[k].healed / byC[k].off : 0,
+                stripRate: byC[k].off ? byC[k].stripped / byC[k].off : 0 });
+  }
+  return { rows: rows, tot: tot, offRate: tot.n ? tot.off / tot.n : 0,
+           meanD: tot.off ? tot.dsum / tot.off : 0 };
+}
+
+// THE DEPTH LADDER - among off-boundary cuts, how deep is the seam and how deep is the rewind
+function depthTable(c){
+  var cuts = cutsFor(c.fam), maxD = 0, hist = {}, need = {}, i;
+  var off = 0, h1res = 0, h1worse = 0, h1block = 0, h1decl = 0;
+  var extFix = 0, exttFix = 0, trieFix = 0, wordFix = 0, extBlock = 0, emptySet = 0;
+  for (i = 0; i < cuts.length; i++){
+    var T = TARGETS[cuts[i].ti].t, p = cuts[i].p;
+    if (isBoundary(c.tid, T, p)) continue;
+    off++;
+    var none = evalCut(c.tid, cuts[i].ti, p, "none");
+    var h1 = evalCut(c.tid, cuts[i].ti, p, "heal1");
+    var ht = evalCut(c.tid, cuts[i].ti, p, "heal1t");
+    var he = evalCut(c.tid, cuts[i].ti, p, "healext");
+    var het = evalCut(c.tid, cuts[i].ti, p, "healextt");
+    var hw = evalCut(c.tid, cuts[i].ti, p, "healword");
+    hist[none.d] = (hist[none.d] || 0) + 1;
+    if (none.d > maxD) maxD = none.d;
+    // the exact rewind the intended text requires, in prompt tokens
+    var orc = plan(c.tid, T, p, "oracle");
+    var kNeed = nTok(c.tid, T.slice(0, p)) - nTok(c.tid, T.slice(0, orc.pos0));
+    need[kNeed] = (need[kNeed] || 0) + 1;
+    if (h1.d > 0 || h1.unreachable) h1res++;
+    if (h1.d > none.d || (h1.unreachable && !none.unreachable)) h1worse++;
+    if (h1.unreachable) h1block++;
+    if (!h1.acted) h1decl++;
+    if (he.d === 0 && !he.unreachable) extFix++;
+    if (he.unreachable) extBlock++;
+    var pe = plan(c.tid, T, p, "healext");
+    if (pe.acted && extSet(tkOf(c.tid).vocab, pe.R).length === 0) emptySet++;
+    if (het.d === 0 && !het.unreachable) exttFix++;
+    if (ht.d === 0 && !ht.unreachable) trieFix++;
+    if (hw.d === 0 && !hw.unreachable) wordFix++;
+  }
+  var rows = [], k;
+  for (k = 1; k <= maxD; k++) if (hist[k]) rows.push({ d: k, n: hist[k], share: hist[k] / off });
+  var nrows = [], mx = 0;
+  for (k in need) if (+k > mx) mx = +k;
+  for (k = 1; k <= mx; k++) if (need[k]) nrows.push({ k: k, n: need[k], share: need[k] / off });
+  return { off: off, rows: rows, need: nrows, maxD: maxD, maxNeed: mx,
+           h1res: h1res, h1resShare: off ? h1res / off : 0,
+           h1worse: h1worse, h1worseShare: off ? h1worse / off : 0,
+           h1block: h1block, h1decl: h1decl, h1declShare: off ? h1decl / off : 0,
+           extFix: extFix, extShare: off ? extFix / off : 0, extBlock: extBlock,
+           extBlockShare: off ? extBlock / off : 0,
+           emptySet: emptySet, emptyShare: off ? emptySet / off : 0,
+           exttFix: exttFix, exttShare: off ? exttFix / off : 0,
+           trieFix: trieFix, trieShare: off ? trieFix / off : 0,
+           wordFix: wordFix, wordShare: off ? wordFix / off : 0 };
+}
+
+// THE SCOREBOARD - eight policies over the same cuts
+function policyTable(c){
+  var cuts = cutsFor(c.fam), out = [], i, j;
+  for (j = 0; j < POLICIES.length; j++){
+    var pol = POLICIES[j].id;
+    var canon = 0, del = 0, dsum = 0, unre = 0, drop = 0, width = 0, wn = 0;
+    var offN = 0, decl = 0, hurt = 0, help = 0, same = 0;
+    for (i = 0; i < cuts.length; i++){
+      var T = TARGETS[cuts[i].ti].t, p = cuts[i].p;
+      var r = evalCut(c.tid, cuts[i].ti, p, pol);
+      var base = evalCut(c.tid, cuts[i].ti, p, "none");
+      if (r.d === 0 && !r.unreachable) canon++;
+      del += deliver(r, c.recover, c.horizon);
+      dsum += r.d;
+      if (r.unreachable) unre++;
+      drop += r.dropped;
+      if (!r.acted) decl++;
+      if (r.R.length){ width += extSet(tkOf(c.tid).vocab, r.R).length; wn++; }
+      if (!isBoundary(c.tid, T, p)){
+        offN++;
+        var dr = deliver(r, c.recover, c.horizon), db = deliver(base, c.recover, c.horizon);
+        if (dr < db) hurt++; else if (dr > db) help++; else same++;
+      }
+    }
+    var n = cuts.length;
+    out.push({ id: pol, label: POLICIES[j].label, paid: POLICIES[j].paid,
+               canon: canon / n, del: del / n, meanD: dsum / n, unre: unre,
+               drop: drop / n, width: wn ? width / wn : 0, decl: decl,
+               declShare: decl / n, hurt: hurt, help: help, same: same,
+               hurtShare: offN ? hurt / offN : 0, helpShare: offN ? help / offN : 0 });
+  }
+  return out;
+}
+
+// BY FAMILY - the same cuts split by what the model was asked to write
+function familyTable(c){
+  var out = [], i, j;
+  for (i = 1; i < FAMILIES.length; i++){
+    var cc = withDefaults(c);
+    cc.fam = FAMILIES[i];
+    var ce = census(cc), pt = policyTable(cc), dp = depthTable(cc), cell = {};
+    for (j = 0; j < pt.length; j++) cell[pt[j].id] = pt[j];
+    out.push({ fam: FAMILIES[i], n: ce.tot.n, offRate: ce.offRate, meanD: ce.meanD,
+               k1: dp.need.length ? dp.need[0].share : 0,
+               none: cell.none.del, strip: cell.strip.del, heal1: cell.heal1.del,
+               extt: cell.healextt.del, word: cell.healword.del,
+               gain: cell.heal1.del - cell.none.del,
+               free: cell.strip.del - cell.none.del });
+  }
+  return out;
+}
+
+// THE CONSTRAINT WIDTH - what a healing harness is allowed to emit
+function widthTable(c){
+  var cuts = cutsFor(c.fam), hist = {}, i, off = 0, only = 0, onlyFixed = 0, contains = 0;
+  for (i = 0; i < cuts.length; i++){
+    var T = TARGETS[cuts[i].ti].t, p = cuts[i].p;
+    if (isBoundary(c.tid, T, p)) continue;
+    off++;
+    // what a healing harness actually looks at: the prompt's own last token
+    var tp = toks(c.tid, T.slice(0, p)), R = tp[tp.length - 1];
+    var e = extSet(tkOf(c.tid).vocab, R);
+    var b = e.length >= 8 ? "8+" : String(e.length);
+    hist[b] = (hist[b] || 0) + 1;
+    if (e.length === 1){
+      only++;
+      if (evalCut(c.tid, cuts[i].ti, p, "heal1").d === 0) onlyFixed++;
+    }
+    if (e.length && e[e.length - 1] === R) contains++;
+  }
+  var keys = ["1", "2", "3", "4", "5", "6", "7", "8+"], rows = [], i2;
+  for (i2 = 0; i2 < keys.length; i2++) if (hist[keys[i2]])
+    rows.push({ w: keys[i2], n: hist[keys[i2]], share: hist[keys[i2]] / off });
+  return { off: off, rows: rows, only: only, onlyShare: off ? only / off : 0,
+           onlyFixed: onlyFixed, contains: contains };
+}
+
+// THE PREFILLS people actually write
+var PREFILLS = [
+  { label: '{"', target: "json-compact" },
+  { label: '{"customer": ', target: "json-compact" },
+  { label: '{"customer": "', target: "json-compact" },
+  { label: '{"result": [{"', target: "json-nested" },
+  { label: "function ", target: "code-js" },
+  { label: "function total(items) { return ", target: "code-js" },
+  { label: 'const url = "http', target: "code-url" },
+  { label: 'const url = "https', target: "code-url" },
+  { label: "See https://dev48", target: "url-plain" },
+  { label: "The invoice is", target: "prose-overdue" },
+  { label: "The invoice is ", target: "prose-overdue" },
+  { label: "```js", target: "md-fence" },
+  { label: "```json\n", target: "md-fence" },
+  { label: "### Summary\n\n", target: "md-head" },
+  { label: "<answer>", target: "tag-inline" },
+  { label: "- customer: ", target: "list-fields" }
+];
+function prefillTable(c){
+  var rows = [], i, j;
+  for (i = 0; i < PREFILLS.length; i++){
+    var ti = -1;
+    for (j = 0; j < TARGETS.length; j++) if (TARGETS[j].id === PREFILLS[i].target) ti = j;
+    var T = TARGETS[ti].t, s = PREFILLS[i].label, p = s.length;
+    var okPrefix = T.slice(0, p) === s;
+    var canon = isBoundary(c.tid, T, p);
+    var none = evalCut(c.tid, ti, p, "none");
+    var h1 = evalCut(c.tid, ti, p, "heal1");
+    var he = evalCut(c.tid, ti, p, "healextt");
+    var st = evalCut(c.tid, ti, p, "strip");
+    var orc = plan(c.tid, T, p, "oracle");
+    rows.push({ label: s, target: PREFILLS[i].target, okPrefix: okPrefix, p: p,
+                nTok: nTok(c.tid, s), canon: canon, dNone: none.d, acted: h1.acted,
+                dHeal: h1.d, healBlocked: h1.unreachable, dExt: he.d, extBlocked: he.unreachable,
+                dStrip: st.d, stripBlocked: st.unreachable,
+                R: toks(c.tid, s)[nTok(c.tid, s) - 1],
+                width: extSet(tkOf(c.tid).vocab, toks(c.tid, s)[nTok(c.tid, s) - 1]).length,
+                need: nTok(c.tid, T.slice(0, p)) - nTok(c.tid, T.slice(0, orc.pos0)),
+                delNone: deliver(none, c.recover, c.horizon),
+                delHeal: deliver(h1, c.recover, c.horizon) });
+  }
+  return rows;
+}
+
+// THE DECLARED DIALS - what each policy is worth as they move
+function recoverLadder(c){
+  var vals = [0, 0.25, 0.5, 0.75, 1], rows = [], i, j;
+  for (i = 0; i < vals.length; i++){
+    var cc = withDefaults(c);
+    cc.recover = vals[i];
+    var t = policyTable(cc), cell = {};
+    for (j = 0; j < t.length; j++) cell[t[j].id] = t[j].del;
+    rows.push({ recover: vals[i], cell: cell,
+                gap: cell.heal1 - cell.none, gapExt: cell.healextt - cell.none,
+                gapFree: cell.strip - cell.none });
+  }
+  return rows;
+}
+function horizonLadder(c){
+  var rows = [], i, j;
+  for (i = 0; i <= 4; i++){
+    var cc = withDefaults(c);
+    cc.horizon = i;
+    var t = policyTable(cc), cell = {}, hurt = {};
+    for (j = 0; j < t.length; j++){ cell[t[j].id] = t[j].del; hurt[t[j].id] = t[j].hurtShare; }
+    rows.push({ horizon: i, cell: cell, hurt: hurt, gap: cell.heal1 - cell.none });
+  }
+  return rows;
+}
+
+// THE FOUR TOKENIZERS - the control: is any of this an artifact of one segmenter or one vocabulary
+function tokMatrix(c){
+  var rows = [], i, j;
+  for (i = 0; i < TOKENIZERS.length; i++){
+    var tid = TOKENIZERS[i].id, cc = withDefaults(c);
+    cc.tid = tid;
+    var ce = census(cc), dp = depthTable(cc), pt = policyTable(cc), cell = {};
+    for (j = 0; j < pt.length; j++) cell[pt[j].id] = pt[j];
+    // the lemma: tok(prefix) is a prefix of tok(whole) exactly when the cut is a boundary
+    var lemma = 0, viol = 0, spaceOff = 0, spaceN = 0;
+    var cuts = cutsFor(c.fam);
+    for (j = 0; j < cuts.length; j++){
+      var T = TARGETS[cuts[j].ti].t, p = cuts[j].p;
+      var tp = toks(tid, T.slice(0, p)), tt = toks(tid, T), k, pre = tp.length <= tt.length;
+      if (pre) for (k = 0; k < tp.length; k++) if (tp[k] !== tt[k]){ pre = false; break; }
+      var bnd = isBoundary(tid, T, p);
+      lemma++;
+      if (pre !== bnd) viol++;
+      if (cutClass(T, p) === "space"){ spaceN++; if (!bnd) spaceOff++; }
+    }
+    rows.push({ id: tid, label: TOKENIZERS[i].label, vocab: TOKENIZERS[i].vocab,
+                seg: TOKENIZERS[i].seg, offRate: ce.offRate, meanD: ce.meanD, maxD: dp.maxD,
+                h1: dp.trieShare, prefixFix: 1 - dp.h1resShare, extt: dp.exttShare,
+                word: dp.wordShare, block: dp.extBlock, lemma: lemma, viol: viol,
+                spaceOff: spaceN ? spaceOff / spaceN : 0,
+                delNone: cell.none.del, delHeal: cell.heal1.del,
+                delExtt: cell.healextt.del, stripDel: cell.strip.del,
+                modeGap: dp.trieShare - (1 - dp.h1resShare) });
+  }
+  return rows;
+}
+
+// WHAT IT COSTS - healing is a prompt-side edit, so the bill is the prompt's token count
+function costTable(c){
+  var cuts = cutsFor(c.fam), out = [], i, j;
+  for (j = 0; j < POLICIES.length; j++){
+    var pol = POLICIES[j].id, before = 0, after = 0, n = 0, wsum = 0, wn = 0;
+    for (i = 0; i < cuts.length; i++){
+      var T = TARGETS[cuts[i].ti].t, p = cuts[i].p;
+      var pl = plan(c.tid, T, p, pol);
+      before += nTok(c.tid, T.slice(0, p));
+      after += nTok(c.tid, T.slice(0, pl.pos0));
+      n++;
+      if (pl.R && pl.R.length){ wsum += extSet(tkOf(c.tid).vocab, pl.R).length; wn++; }
+    }
+    out.push({ id: pol, label: POLICIES[j].label, before: before / n, after: after / n,
+               delta: (after - before) / n, prefixSafe: after <= before,
+               width: wn ? wsum / wn : 0, constrained: wn / n });
+  }
+  return out;
+}
+
+// the seam's own arithmetic, isolated: for one cut, the whole walk written out
+function walkTrace(c, ti, p, pol){
+  var T = TARGETS[ti].t, pl = plan(c.tid, T, p, pol);
+  var r = evalCut(c.tid, ti, p, pol);
+  return { T: T, p: p, pos0: pl.pos0, R: pl.R, mode: pl.mode, path: r.path, d: r.d,
+           unreachable: r.unreachable, del: deliver(r, c.recover, c.horizon),
+           promptToks: toks(c.tid, T.slice(0, p)), healedToks: toks(c.tid, T.slice(0, pl.pos0)) };
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- view
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function lit(s){
+  if (s === "") return '<span class="dim">&mdash;</span>';
+  return '<code class="tok">' + esc(JSON.stringify(s).slice(1, -1)) + "</code>";
+}
+function seamlit(s){
+  if (s === "") return '<span class="dim">&mdash;</span>';
+  return '<code class="seam">' + esc(JSON.stringify(s).slice(1, -1)) + "</code>";
+}
+function lits(a){
+  var out = [], i;
+  for (i = 0; i < a.length; i++) out.push(lit(a[i]));
+  return out.length ? out.join(" ") : '<span class="dim">none</span>';
+}
+function pc(x){ return (100 * x).toFixed(2) + "%"; }
+function n1(x){ return x.toFixed(1); }
+function n2(x){ return x.toFixed(2); }
+function n3(x){ return x.toFixed(3); }
+function cm(x){ return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function G(t){ return '<span class="ok">' + t + "</span>"; }
+function B(t){ return '<span class="bad">' + t + "</span>"; }
+function W(t){ return '<span class="warn">' + t + "</span>"; }
+function D(t){ return '<span class="dim">' + t + "</span>"; }
+// a delivery share: green when high, red at zero
+function dl(x){ return x < 1e-12 ? B(pc(x)) : (x > 0.999 ? G(pc(x)) : (x < 0.5 ? W(pc(x)) : pc(x))); }
+// a damage share: green at zero, red when high
+function dm(x){ return x < 1e-12 ? G(pc(x)) : (x > 0.5 ? B(pc(x)) : W(pc(x))); }
+function dep(n){ return n === 0 ? G("0") : (n >= 3 ? B(String(n)) : W(String(n))); }
+// a step count is meaningless once the intended text cannot be spelled at all
+function depu(n, unre){ return unre ? B("unreachable") : dep(n); }
+function yn(b){ return b ? G("yes") : B("no"); }
+function ny(b){ return b ? B("yes") : G("no"); }
+function head(cells){
+  var s = "<tr>", i;
+  for (i = 0; i < cells.length; i++) s += "<th>" + cells[i] + "</th>";
+  return s + "</tr>";
+}
+function row(cells, klass){
+  var s = "<tr" + (klass ? ' class="' + klass + '"' : "") + ">", i;
+  for (i = 0; i < cells.length; i++) s += "<td>" + cells[i] + "</td>";
+  return s + "</tr>";
+}
+function bar(x, w){ return '<span class="bar" style="width:' + Math.max(1, Math.round(x * w)) + 'px"></span>'; }
+
+var CLASS_LABEL = { letter: "a letter", space: "a space", punct: "punctuation",
+                    digit: "a digit", newline: "a newline" };
+var POL_SHORT = {
+  none: "nothing (the control)", force: "rewind 1, force the token back",
+  strip: "strip trailing whitespace", heal1: "rewind 1, must extend",
+  heal1t: "rewind 1, walk the trie", healext: "rewind while extendable, must extend",
+  healextt: "rewind while extendable, trie", healword: "rewind to the current word",
+  oracle: "rewind to the true boundary"
+};
+
+function cfgUI(){
+  return { recover: (+$("sRec").value) / 100, horizon: +$("sHor").value,
+           tid: $("selTok").value, fam: $("selFam").value, pol: $("selPol").value };
+}
+
+var FIRST = true;
+
+function draw(){
+  var c = withDefaults(cfgUI());
+  var i, j, r;
+  $("vRec").textContent = Math.round(100 * c.recover) + "%";
+  $("vHor").textContent = String(c.horizon);
+
+  // ---------------------------------------------------------------- probe 1
+  var P = probeUrl(c.tid);
+  var h = head(["prompt ends", "prompt tokens", "last token", "on a boundary", "seam",
+                "after heal1", "after the extendable rewind", "after the word rewind",
+                "extendable to", "what it must re-spell"]);
+  for (i = 0; i < P.rows.length; i++){
+    r = P.rows[i];
+    var cls = r.canon ? "hi" : (r.dHeal > r.dNone ? "mis" : "");
+    h += row([lit('..."' + r.prefix), String(r.nTok), lit(r.last), r.canon ? G("yes") : B("no"),
+              dep(r.dNone),
+              r.dHeal === r.dNone && r.dNone > 0 ? D(String(r.dHeal))
+                                                 : depu(r.dHeal, r.cell.heal1.unreachable),
+              depu(r.cell.healextt.d, r.cell.healextt.unreachable),
+              depu(r.cell.healword.d, r.cell.healword.unreachable),
+              String(r.ext), r.recovery ? lits(r.recovery.split("|")) : D("&mdash;")], cls);
+  }
+  $("p1Tbl").innerHTML = h;
+  var fixed = 0, worse = 0, nothing = 0, extFix = 0, wordFix = 0, broken = 0, extUn = 0, shortRow = null;
+  for (i = 0; i < P.rows.length; i++){
+    r = P.rows[i];
+    if (r.canon){ nothing++; continue; }
+    broken++;
+    if (r.dHeal === 0 && !r.cell.heal1.unreachable) fixed++;
+    else if (r.dHeal > r.dNone) worse++;
+    if (r.cell.healextt.d === 0 && !r.cell.healextt.unreachable) extFix++;
+    else shortRow = r;
+    if (r.cell.healword.d === 0 && !r.cell.healword.unreachable) wordFix++;
+    if (r.cell.healext.unreachable) extUn++;
+  }
+  $("p1Note").innerHTML =
+    "The token the intended text puts at that position is " + lit(P.canonToken) +
+    ", so only the last row is a boundary. The shipped rule " + G("fixes " + fixed) +
+    " of the five, makes " + B(String(worse)) + " strictly worse and the fifth needed nothing. " +
+    W("The two it damages are the two where rewinding one token rewinds one character") +
+    " &mdash; the truncated prompt has already shattered into singles, so the rewind lands inside " +
+    "the same broken token instead of in front of it. " +
+    W("And the deeper rewind does not rescue all of them") + ": rewinding while the text is still " +
+    "extendable clears " + G(String(extFix) + " of the " + broken) + " broken cuts and stops " +
+    B("one token short") + " on the other, because the characters it has accumulated (" +
+    lit(shortRow ? shortRow.cell.healextt.R : "") + ") begin no entry at all, so the rule believes " +
+    "it has finished. Only the word rewind clears " + G(String(wordFix) + " of " + broken) + ". " +
+    B("The strict version of the same idea is worse than either") + ": it demands one token " +
+    "beginning " + lit(shortRow ? shortRow.cell.healext.R : "") + ", there is none, and on " +
+    B(String(extUn) + " of these rows") + " the intended URL becomes unreachable rather than unlikely.";
+
+  // ---------------------------------------------------------------- probe 1b
+  var S = probeSpace("longest");
+  h = head(["text", "cut", "space attached: boundary", "seam", "space separate: boundary", "seam",
+            "the token that spans it", "strip fixes", "heal1 fixes"]);
+  for (i = 0; i < S.length; i++){
+    r = S[i];
+    h += row([lit(r.before), "after the space",
+              r.cell.attached.withCanon ? G("yes") : B("no"), dep(r.cell.attached.withD),
+              r.cell.separate.withCanon ? G("yes") : B("no"), dep(r.cell.separate.withD),
+              lit(r.cell.attached.tokenSpanning),
+              r.cell.attached.stripD === 0 ? G("yes") : B("no"),
+              r.cell.attached.healD === 0 ? G("yes") : B("no")], "mis");
+    h += row([D("&#8627; same text, one character shorter"), "before the space",
+              r.cell.attached.noCanon ? G("yes") : B("no"), dep(r.cell.attached.noD),
+              r.cell.separate.noCanon ? G("yes") : B("no"), dep(r.cell.separate.noD),
+              D("&mdash;"), D("&mdash;"), D("&mdash;")], "hi");
+  }
+  $("p1bTbl").innerHTML = h;
+  var TM = tokMatrix(c);
+  var att = null, sep = null;
+  for (i = 0; i < TM.length; i++){
+    if (TM[i].id === "attached-longest") att = TM[i];
+    if (TM[i].id === "separate-longest") sep = TM[i];
+  }
+  $("p1bNote").innerHTML =
+    "Every pair is the same string cut one character apart, and the shorter one is clean in all of " +
+    "them. Across the whole corpus a cut after a space is off-boundary " + B(pc(att.spaceOff)) +
+    " of the time when the vocabulary attaches the space to the word and " + G(pc(sep.spaceOff)) +
+    " when it does not &mdash; " + W((att.spaceOff / sep.spaceOff).toFixed(2) + "&times;") +
+    ", same corpus, same segmenter. The folklore is right and it is not about prompting: it is a " +
+    "statement about whether " + lit(" the") + " is one token or two.";
+
+  // ---------------------------------------------------------------- census
+  var CE = census(c);
+  h = head(["character before the cut", "cuts", "off a boundary", "share", "mean seam",
+            "seam=1", "seam=2", "seam&ge;3", "heal1 clears", "strip clears"]);
+  for (i = 0; i < CE.rows.length; i++){
+    r = CE.rows[i];
+    h += row([CLASS_LABEL[r.cls], String(r.n), String(r.off), dm(r.offRate), n2(r.meanD),
+              String(r.d1), String(r.d2), String(r.d3),
+              dl(r.healRate), r.stripRate < 1e-12 ? B(pc(r.stripRate)) : dl(r.stripRate)],
+             r.cls === "space" ? "hi" : "");
+  }
+  h += row([B("all cuts"), B(String(CE.tot.n)), B(String(CE.tot.off)), B(pc(CE.offRate)),
+            B(n2(CE.meanD)), B(String(CE.tot.d1)), B(String(CE.tot.d2)), B(String(CE.tot.d3)),
+            B(pc(CE.tot.off ? CE.tot.healed / CE.tot.off : 0)),
+            B(pc(CE.tot.off ? CE.tot.stripped / CE.tot.off : 0))]);
+  $("censusNote").innerHTML =
+    B(pc(CE.offRate)) + " of the places a prompt could end are not a boundary of what follows, and " +
+    "the two repairs are not competing for the same cuts: stripping whitespace clears " +
+    G(pc(CE.rows[1].stripRate)) + " of the space class and, structurally, " + B("0.00%") +
+    " of every other class &mdash; there is nothing for it to strip. The letter class is the one " +
+    "nobody thinks about and it is the biggest: " + B(pc(CE.rows[0].offRate)) + " off-boundary with " +
+    "a mean seam of " + n2(CE.rows[0].meanD) + ", and the shipped rule clears only " +
+    W(pc(CE.rows[0].healRate)) + " of it.";
+  $("censusTbl").innerHTML = h;
+
+  // ---------------------------------------------------------------- depth + need
+  var DP = depthTable(c);
+  h = head(["off-boundary steps", "cuts", "share", ""]);
+  for (i = 0; i < DP.rows.length; i++){
+    r = DP.rows[i];
+    h += row([String(r.d), String(r.n), pc(r.share), bar(r.share, 190)], r.d === 1 ? "hi" : "");
+  }
+  $("depthTbl").innerHTML = h;
+  $("depthNote").innerHTML =
+    "A seam is one step deep on only " + W(pc(DP.rows[0].share)) + " of off-boundary cuts and " +
+    "reaches " + B(String(DP.maxD)) + ". Mean " + n2(CE.meanD) + " steps.";
+
+  h = head(["prompt tokens the rewind needs", "cuts", "share", ""]);
+  for (i = 0; i < DP.need.length; i++){
+    r = DP.need[i];
+    h += row([String(r.k) + (r.k === 1 ? " &mdash; what every library removes" : ""),
+              String(r.n), pc(r.share), bar(r.share, 150)], r.k === 1 ? "hi" : "");
+  }
+  $("needTbl").innerHTML = h;
+  $("needNote").innerHTML =
+    "One token is the correct depth on " + W(pc(DP.need[0].share)) + " of them. Rewinding while the " +
+    "removed text is still a proper prefix of some entry lifts the clean share from " +
+    W(pc(DP.trieShare)) + " to " + G(pc(DP.exttShare)) + ", and rewinding to the start of the " +
+    "current word to " + G(pc(DP.wordShare)) + ".";
+
+  // ---------------------------------------------------------------- scoreboard
+  var PT = policyTable(c), by = {};
+  for (i = 0; i < PT.length; i++) by[PT[i].id] = PT[i];
+  h = head(["rule", "", "clean", "delivered", "unreachable", "declined", "hurt", "helped",
+            "tokens rewound", "allowed first tokens"]);
+  for (i = 0; i < PT.length; i++){
+    r = PT[i];
+    var pill = r.paid ? '<span class="pill p-paid">vocab</span>' : '<span class="pill p-free">free</span>';
+    if (r.id === "oracle") pill = '<span class="pill p-key">oracle</span>';
+    h += row([POL_SHORT[r.id], pill, dl(r.canon), dl(r.del),
+              r.unre ? B(cm(r.unre)) : G("0"),
+              r.decl ? String(r.decl) : G("0"),
+              r.id === "none" ? D("&mdash;") : dm(r.hurtShare),
+              r.id === "none" ? D("&mdash;") : (r.helpShare > 0.5 ? G(pc(r.helpShare)) : pc(r.helpShare)),
+              n2(r.drop), r.width ? n1(r.width) : D("&mdash;")],
+             r.id === "none" ? "hi" : (r.id === "healext" ? "mis" : ""));
+  }
+  $("polTbl").innerHTML = h;
+  $("polNote").innerHTML =
+    "Read the control first: doing nothing delivers " + pc(by.none.del) + ", and rewinding a token " +
+    "only to force the same token back delivers " + pc(by.force.del) + " &mdash; " +
+    G("bit-identical") + ", asserted on every cut, because the constrained set contains the token " +
+    "that was already there. The shipped rule is worth " +
+    G("+" + (100 * (by.heal1.del - by.none.del)).toFixed(2) + " points") + " and gets there by " +
+    "helping " + pc(by.heal1.helpShare) + " of off-boundary cuts while " + B("hurting " +
+    pc(by.heal1.hurtShare)) + " of them. " + B("The worst row is the obvious generalisation") +
+    ": rewind further and keep demanding a single token that extends all of it, and the constraint " +
+    "set is " + B("empty on " + cm(DP.emptySet) + " of " + cm(DP.off)) + " off-boundary cuts (" +
+    pc(DP.emptyShare) + ") &mdash; the harness asks for a vocabulary entry that does not exist, so " +
+    "the intended text is unreachable and the row lands " +
+    B((100 * (by.none.del - by.healext.del)).toFixed(2) + " points below doing nothing") + ". " +
+    G("The winner is not the feature") + ": rewinding to the start of the current word delivers " +
+    G(pc(by.healword.del)) + " and hurts " + G(pc(by.healword.hurtShare)) + ".";
+
+  // ---------------------------------------------------------------- width
+  var WT = widthTable(c);
+  h = head(["entries beginning with the removed token", "cuts", "share", ""]);
+  for (i = 0; i < WT.rows.length; i++){
+    r = WT.rows[i];
+    h += row([r.w + (r.w === "1" ? " &mdash; only the token itself" : ""), String(r.n),
+              pc(r.share), bar(r.share, 150)], r.w === "1" ? "mis" : "");
+  }
+  $("widthTbl").innerHTML = h;
+  $("widthNote").innerHTML =
+    "The removed token is in its own extension set on " + G(cm(WT.contains) + " of " + cm(WT.off)) +
+    " cuts &mdash; all of them &mdash; so healing is always feasible and never fails for want of a " +
+    "candidate. On " + B(pc(WT.onlyShare)) + " of off-boundary cuts it is the " + B("only") +
+    " member, the constraint permits exactly the token that was already there, every rule declines, " +
+    "and the outcome is the control: " + G(String(WT.onlyFixed)) + " of those " + cm(WT.only) +
+    " cuts are cleared by any depth-one rule. A feature that reports \"healing applied\" and a " +
+    "feature that reports nothing are the same feature here.";
+
+  // ---------------------------------------------------------------- family
+  var FT = familyTable(c);
+  h = head(["asked for", "cuts", "off a boundary", "mean seam", "control", "strip", "heal1",
+            "rewind while extendable", "current word", "strip is worth"]);
+  for (i = 0; i < FT.length; i++){
+    r = FT[i];
+    h += row([r.fam, String(r.n), dm(r.offRate), n2(r.meanD), pc(r.none), pc(r.strip),
+              pc(r.heal1), pc(r.extt), G(pc(r.word)),
+              r.free < 0 ? B((100 * r.free).toFixed(2)) : G("+" + (100 * r.free).toFixed(2))],
+             r.free < 0 ? "mis" : "");
+  }
+  $("famTbl").innerHTML = h;
+  var worstFree = FT[0], bestFree = FT[0];
+  for (i = 1; i < FT.length; i++){
+    if (FT[i].free < worstFree.free) worstFree = FT[i];
+    if (FT[i].free > bestFree.free) bestFree = FT[i];
+  }
+  var negFams = 0;
+  for (i = 0; i < FT.length; i++) if (FT[i].free < 0) negFams++;
+  $("famNote").innerHTML =
+    "\"Strip the trailing whitespace\" is worth " + G("+" + (100 * bestFree.free).toFixed(2)) +
+    " points on " + bestFree.fam + " and " + B((100 * worstFree.free).toFixed(2)) + " on " +
+    worstFree.fam + " &mdash; " + B("negative on " + negFams + " of " + FT.length + " families") +
+    ", because in a keyed format the space after the colon belongs to a framing token and removing " +
+    "it moves the cut from one non-boundary to a deeper one. The word rewind is the only column " +
+    "that is above 85% everywhere.";
+
+  // ---------------------------------------------------------------- prefills
+  var PR = prefillTable(c);
+  h = head(["prefill", "prompt tokens", "on a boundary", "seam", "rule acted", "after heal1",
+            "after the extendable rewind", "after strip", "rewind needed", "delivered: none &rarr; heal1"]);
+  for (i = 0; i < PR.length; i++){
+    r = PR[i];
+    var kl = r.canon ? "hi" : (r.dHeal > r.dNone ? "mis" : "");
+    h += row([lit(r.label), String(r.nTok), r.canon ? G("yes") : B("no"), dep(r.dNone),
+              r.acted ? "yes" : D("declined"),
+              r.dHeal === r.dNone && r.dNone > 0 ? D(String(r.dHeal))
+                                                 : depu(r.dHeal, r.healBlocked),
+              depu(r.dExt, r.extBlocked), depu(r.dStrip, r.stripBlocked), String(r.need),
+              pc(r.delNone) + " &rarr; " +
+                (r.delHeal > r.delNone ? G(pc(r.delHeal)) :
+                 (r.delHeal < r.delNone ? B(pc(r.delHeal)) : D(pc(r.delHeal))))], kl);
+  }
+  $("preTbl").innerHTML = h;
+  $("preNote").innerHTML =
+    "The two prose rows are the same prefill one character apart: " + lit("The invoice is") +
+    " is a boundary and costs nothing, and " + lit("The invoice is ") + " has a seam " +
+    B(String(PR[10].dNone) + " steps deep") + " because the model must spell the next word out one " +
+    "letter at a time before it reaches a token it recognises. " +
+    W("The JSON row is the uncomfortable one") + ": on " + lit('{"customer": ') +
+    " &mdash; a prefill people write by hand every day &mdash; the seam is " + String(PR[1].dNone) +
+    " step and both universal repairs make it " + B(String(PR[1].dHeal)) +
+    ", because the rewind depth it needs is " + B(String(PR[1].need)) + ". Six of the sixteen are " +
+    "already boundaries and need nothing at all, which is the other half of the advice nobody gives: " +
+    "ending a prefill on a punctuation token is usually already right.";
+
+  // ---------------------------------------------------------------- the two dials
+  var RL = recoverLadder(c);
+  h = head(["recover", "control", "strip", "heal1", "rewind while extendable", "current word",
+            "must-extend, multi-token", "oracle", "heal1 &minus; control"]);
+  for (i = 0; i < RL.length; i++){
+    r = RL[i];
+    h += row([n2(r.recover), pc(r.cell.none), pc(r.cell.strip), pc(r.cell.heal1),
+              pc(r.cell.healextt), pc(r.cell.healword),
+              r.recover >= 1 ? B(pc(r.cell.healext)) : pc(r.cell.healext),
+              G(pc(r.cell.oracle)),
+              r.gap < 1e-12 ? G("+0.00") : "+" + (100 * r.gap).toFixed(2)],
+             r.recover >= 1 ? "hi" : "");
+  }
+  $("recTbl").innerHTML = h;
+  $("recNote").innerHTML =
+    "At " + lit("recover = 0") + " the control is " + pc(RL[0].cell.none) +
+    ", which is not a probability at all &mdash; it is the share of cuts that were already " +
+    "boundaries. At " + lit("recover = 1") + " every row is " + G("exactly 100.00%") +
+    " except one: the must-extend multi-token rewind stays at " + B(pc(RL[4].cell.healext)) +
+    ", because unreachable is not unlikely.";
+
+  var HL = horizonLadder(c);
+  h = head(["horizon", "control", "heal1", "extendable", "current word", "oracle",
+            "heal1 gain", "heal1 hurts", "word hurts"]);
+  for (i = 0; i < HL.length; i++){
+    r = HL[i];
+    h += row([String(r.horizon), pc(r.cell.none), pc(r.cell.heal1), pc(r.cell.healextt),
+              pc(r.cell.healword), G(pc(r.cell.oracle)),
+              r.gap < 1e-12 ? G("+0.00") : "+" + (100 * r.gap).toFixed(2),
+              dm(r.hurt.heal1), dm(r.hurt.healword)], r.horizon === 0 ? "hi" : "");
+  }
+  $("horTbl").innerHTML = h;
+  $("horNote").innerHTML =
+    "At " + lit("horizon = 0") + " eight of the nine policies come back " +
+    G("bit-identical at 100.00%") + " &mdash; if a seam costs nothing, no repair for it is worth " +
+    "anything, and that is where this page says what it assumes. " + B("The ninth is not") +
+    ", at " + B(pc(HL[0].cell.healext)) + ", and that is the in-page assertion of mine that failed: " +
+    "I wrote \"all nine\", and a text that no permitted token can spell does not become spellable " +
+    "because the seam was declared free. It is exactly one minus its unreachable share. " + W("One finding depends on this dial and here it is") +
+    ": the shipped rule hurts " + G("0.00%") + " of cuts at horizon 1 and " +
+    B(pc(HL[4].hurt.heal1)) + " at horizon 4, while its net gain only moves from +" +
+    (100 * HL[1].gap).toFixed(2) + " to +" + (100 * HL[4].gap).toFixed(2) +
+    ". The word rewind stays under " + G(pc(HL[4].hurt.healword)) + " at every setting.";
+
+  // ---------------------------------------------------------------- tokenizer control
+  h = head(["vocabulary &middot; segmenter", "off a boundary", "mean seam", "deepest",
+            "after a space", "heal1 clears", "must-extend vs trie", "extendable clears",
+            "current word clears", "unreachable", "lemma violations"]);
+  for (i = 0; i < TM.length; i++){
+    r = TM[i];
+    h += row([r.label, dm(r.offRate), n2(r.meanD), String(r.maxD),
+              r.vocab === "attached" ? B(pc(r.spaceOff)) : G(pc(r.spaceOff)),
+              pc(r.h1), Math.abs(r.modeGap) < 1e-12 ? G("0.00") : (100 * r.modeGap).toFixed(2),
+              pc(r.extt), G(pc(r.word)), B(cm(r.block)),
+              r.viol ? B(String(r.viol)) : G("0") + D(" / " + cm(r.lemma))],
+             r.id === c.tid ? "hi" : "");
+  }
+  $("tokTbl").innerHTML = h;
+  var totLemma = 0, totViol = 0;
+  for (i = 0; i < TM.length; i++){ totLemma += TM[i].lemma; totViol += TM[i].viol; }
+  $("tokNote").innerHTML =
+    "The lemma holds on " + G(cm(totLemma) + " of " + cm(totLemma)) + " cut-and-tokenizer pairs, " +
+    totViol + " violations, under both segmenters &mdash; so \"the prompt is off-distribution\" is " +
+    "a decidable test on two strings and not a judgement call. " +
+    W("The constraint mode is the page's flattest number") + ": must-extend against walk-the-trie is " +
+    G("0.00 points") + " on all four tokenizers at depth one, because at depth one the removed text " +
+    "is a whole token and the tokenizer's own next choice is never shorter than it. The mode only " +
+    "starts to matter once the rewind is deeper than one token, which is exactly where the " +
+    "must-extend version stops being able to name a token at all.";
+
+  // ---------------------------------------------------------------- one cut written out
+  var ti = +$("selTgt").value, T = TARGETS[ti].t;
+  var pos = Math.min(+$("sPos").value, T.length - 1);
+  $("vPos").textContent = String(pos);
+  var TR = walkTrace(c, ti, pos, c.pol);
+  var pl = plan(c.tid, T, pos, c.pol);
+  var baseR = evalCut(c.tid, ti, pos, "none");
+  var lines = [];
+  lines.push("intended text   " + JSON.stringify(T));
+  lines.push("its tokens      " + toks(c.tid, T).map(function(t){ return JSON.stringify(t); }).join(" "));
+  lines.push("prompt          " + JSON.stringify(T.slice(0, pos)) + "   (" + pos + " chars)");
+  lines.push("prompt tokens   " + TR.promptToks.map(function(t){ return JSON.stringify(t); }).join(" "));
+  lines.push("on a boundary   " + (isBoundary(c.tid, T, pos) ? "yes - the prompt's tokens ARE a prefix of the text's"
+                                                             : "NO  - this token list cannot occur in front of this text"));
+  lines.push("");
+  lines.push("policy          " + POL_SHORT[c.pol]);
+  lines.push("acted           " + (pl.acted ? "yes" : "no - the rule looked and declined"));
+  lines.push("rewind to       " + pl.pos0 + "   (" + (pos - pl.pos0) + " chars, " +
+             (TR.promptToks.length - TR.healedToks.length) + " tokens)");
+  lines.push("removed text    " + (pl.R ? JSON.stringify(pl.R) : "-"));
+  lines.push("constraint      " + (pl.mode === "none" ? "none" :
+             pl.mode === "prefix" ? "the first token must have the removed text as a prefix"
+                                  : "the first token may extend it OR be a prefix of it"));
+  lines.push("allowed tokens  " + (pl.R ? extSet(tkOf(c.tid).vocab, pl.R).length + "  " +
+             extSet(tkOf(c.tid).vocab, pl.R).slice(0, 8).map(function(t){ return JSON.stringify(t); }).join(" ")
+             : "-"));
+  lines.push("");
+  lines.push("steps taken     " + (TR.path.length ? TR.path.map(function(t){ return JSON.stringify(t); }).join(" ")
+                                                  : "none - already resynchronised"));
+  lines.push("off-boundary    " + TR.d + " step(s)   (control: " + baseR.d + ")");
+  lines.push("unreachable     " + (TR.unreachable ? "YES - no permitted token matches the intended text" : "no"));
+  lines.push("delivered       " + pc(TR.del) + "   = recover^min(" + TR.d + ", " + c.horizon + ")");
+  $("traceOut").textContent = lines.join("\n");
+  $("traceNote").innerHTML =
+    "Move the cut slider one notch and watch the step list change shape. " +
+    (TR.d === 0 ? G("This cut is clean.")
+                : (TR.d > baseR.d ? B("This policy made this cut worse than doing nothing.")
+                                  : (TR.d < baseR.d ? G("This policy improved this cut.")
+                                                    : D("This policy changed nothing here.")))) +
+    " Nothing in this panel is a model: the reader always writes the intended text, and what is " +
+    "counted is how many of its tokens land in a position the text's own tokenization does not have.";
+
+  // ---------------------------------------------------------------- cost
+  var CT = costTable(c);
+  h = head(["rule", "prompt tokens sent", "after the rewind", "change", "still a prefix",
+            "calls constrained", "allowed first tokens"]);
+  for (i = 0; i < CT.length; i++){
+    r = CT[i];
+    h += row([POL_SHORT[r.id], n2(r.before), n2(r.after),
+              Math.abs(r.delta) < 1e-12 ? G("0.000") : n3(r.delta),
+              r.prefixSafe ? G("yes") : B("no"), pc(r.constrained),
+              r.width ? n1(r.width) : D("&mdash;")], r.id === "healword" ? "hi" : "");
+  }
+  $("costTbl").innerHTML = h;
+  $("costNote").innerHTML =
+    "Every rule sends " + G("fewer") + " prompt tokens than the unhealed prompt, so healing is not " +
+    "a cost question &mdash; and because a rewind only ever truncates, the healed prompt is still a " +
+    G("prefix") + " of the one you would have sent, on " + G("100.00%") + " of cuts. A prefix cache " +
+    "cannot be invalidated by any of this. The one that wins on delivery also rewinds the most, " +
+    n2(by.healword.drop) + " tokens against the oracle's " + n2(by.oracle.drop) +
+    ", which is the whole price of the best row on the page.";
+
+  var bundle = { P: P, S: S, CE: CE, DP: DP, PT: PT, by: by, WT: WT, FT: FT, PR: PR,
+                 RL: RL, HL: HL, TM: TM, CT: CT };
+  // let the tables paint before the assertion sweep takes the main thread
+  setTimeout(function(){ selftest(c, bundle); }, 0);
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selftest(c, R){
+  var pass = 0, fail = 0, lines = [], i, j, k, t, r;
+  function ok(cond, label){ if (cond) pass++; else { fail++; if (fail <= 25) lines.push("  FAIL  " + label); } }
+
+  // 1. the parameter-free probes
+  {
+    ok(R.P.rows.length === 5, "probe 1 lost a row");
+    ok(R.P.canonToken === "https", "the intended text no longer puts one token at that position");
+    var nf = 0, nw = 0;
+    for (i = 0; i < R.P.rows.length; i++){
+      var pr = R.P.rows[i];
+      ok(pr.canon === (pr.dNone === 0), "probe-1 row " + i + ": boundary and seam disagree");
+      if (!pr.canon && pr.dHeal === 0) nf++;
+      if (!pr.canon && pr.dHeal > pr.dNone) nw++;
+    }
+    ok(nf === 2 && nw === 2, "probe 1 no longer splits 2 fixed / 2 damaged");
+    ok(R.P.rows[4].canon, "the full token is not a boundary");
+    ok(R.P.rows[3].last === "http" && R.P.rows[0].last === "h", "the shattering changed");
+    for (i = 0; i < R.S.length; i++){
+      ok(R.S[i].cell.attached.noCanon, "the cut before the space stopped being a boundary");
+      ok(!R.S[i].cell.attached.withCanon, "the cut after the space stopped being off-boundary");
+      ok(R.S[i].cell.separate.withCanon, "the separated vocabulary lost its clean space cut");
+      ok(R.S[i].cell.attached.tokenSpanning.charAt(0) === " ",
+         "the token spanning the space no longer starts with one");
+    }
+  }
+
+  // 2. the lemma, the identities and the per-policy invariants, on every cut of every tokenizer
+  {
+    var viol = 0, lemChecks = 0, forceSame = 0, oracleClean = 0, extHas = 0;
+    for (k = 0; k < TOKENIZER_IDS.length; k++){
+      var tid = TOKENIZER_IDS[k];
+      for (i = 0; i < CUTS_ALL.length; i++){
+        var ti = CUTS_ALL[i].ti, p = CUTS_ALL[i].p, T = TARGETS[ti].t;
+        var tp = toks(tid, T.slice(0, p)), tt = toks(tid, T);
+        // the lemma, from first principles rather than from isBoundary
+        var pre = tp.length <= tt.length;
+        if (pre) for (j = 0; j < tp.length; j++) if (tp[j] !== tt[j]){ pre = false; break; }
+        var bnd = isBoundary(tid, T, p);
+        lemChecks++;
+        if (pre !== bnd) viol++;
+        ok(pre === bnd, "the prefix lemma failed at " + tid + " " + ti + ":" + p);
+        ok(tp.join("") === T.slice(0, p), "the tokenizer is not lossless on a prefix");
+        var last = tp[tp.length - 1], e = extSet(tkOf(tid).vocab, last);
+        var has = false;
+        for (j = 0; j < e.length; j++) if (e[j] === last) has = true;
+        ok(has, "the extension set lost the token it was built from");
+        if (has) extHas++;
+        var none = evalCut(tid, ti, p, "none"), forc = evalCut(tid, ti, p, "force");
+        ok(none.d === forc.d && none.unreachable === forc.unreachable,
+           "forcing the token back is not identical to doing nothing");
+        if (none.d === forc.d) forceSame++;
+        var orc = evalCut(tid, ti, p, "oracle");
+        ok(orc.d === 0 && !orc.unreachable, "the oracle left a seam");
+        if (orc.d === 0) oracleClean++;
+        if (bnd){
+          var hb = evalCut(tid, ti, p, "heal1");
+          ok(hb.d === 0 && !hb.unreachable, "healing a clean cut broke it");
+        }
+        for (j = 0; j < POLICY_IDS.length; j++){
+          var pol = POLICY_IDS[j], res = evalCut(tid, ti, p, pol);
+          ok(res.pos0 <= p, pol + " rewound past the cut");
+          ok(res.pos0 >= 0, pol + " rewound past the start");
+          ok(res.d >= 0 && res.d <= 96, pol + " produced an impossible step count");
+          if (res.mode !== "none") ok(res.R === T.slice(res.pos0, p), pol + " lost the removed text");
+          else ok(res.R === "", pol + " kept a constraint it does not have");
+          var dv = deliver(res, c.recover, c.horizon);
+          ok(dv >= 0 && dv <= 1, pol + " delivered outside [0,1]");
+          ok(deliver(res, 1, c.horizon) === (res.unreachable ? 0 : 1),
+             pol + " is not exactly 1 at recover = 1");
+          ok(deliver(res, c.recover, 0) === (res.unreachable ? 0 : 1),
+             pol + " is not exactly 1 at horizon 0");
+          if (!res.acted) ok(res.d === evalCut(tid, ti, p, "none").d,
+                             pol + " changed something after declining to act");
+        }
+      }
+    }
+    ok(viol === 0, "the lemma has " + viol + " violations");
+    ok(lemChecks === CUTS_ALL.length * TOKENIZER_IDS.length, "the lemma sweep lost cuts");
+    ok(forceSame === lemChecks && oracleClean === lemChecks && extHas === lemChecks,
+       "one of the three identities does not hold everywhere");
+  }
+
+  // 3. the aggregates, re-derived from the per-cut values
+  {
+    var cuts = cutsFor(c.fam);
+    for (j = 0; j < R.PT.length; j++){
+      var pol2 = R.PT[j].id, s = 0, cl = 0, un = 0;
+      for (i = 0; i < cuts.length; i++){
+        var res2 = evalCut(c.tid, cuts[i].ti, cuts[i].p, pol2);
+        s += deliver(res2, c.recover, c.horizon);
+        if (res2.d === 0 && !res2.unreachable) cl++;
+        if (res2.unreachable) un++;
+      }
+      ok(Math.abs(s / cuts.length - R.PT[j].del) < 1e-12, pol2 + "'s delivered is not the mean");
+      ok(Math.abs(cl / cuts.length - R.PT[j].canon) < 1e-12, pol2 + "'s clean share is not the count");
+      ok(un === R.PT[j].unre, pol2 + "'s unreachable count moved");
+      // monotone in both declared numbers
+      var lo = 0, hi = 0;
+      for (i = 0; i < cuts.length; i++){
+        var res3 = evalCut(c.tid, cuts[i].ti, cuts[i].p, pol2);
+        lo += deliver(res3, 0.25, c.horizon);
+        hi += deliver(res3, 0.75, c.horizon);
+      }
+      ok(hi >= lo - 1e-12, pol2 + " is not monotone in recover");
+    }
+    ok(Math.abs(R.by.none.del - R.by.force.del) < 1e-15, "the control and the forced rewind diverged");
+    ok(R.by.oracle.canon === 1, "the oracle is not clean everywhere");
+    ok(R.by.healext.unre > 0, "the must-extend multi-token rewind stopped being unreachable anywhere");
+    var sum = 0;
+    for (i = 0; i < R.CE.rows.length; i++) sum += R.CE.rows[i].n;
+    ok(sum === R.CE.tot.n, "the census classes do not sum to the corpus");
+    var dsum = 0;
+    for (i = 0; i < R.DP.rows.length; i++) dsum += R.DP.rows[i].n;
+    ok(dsum === R.DP.off, "the depth histogram does not sum to the off-boundary cuts");
+    var nsum = 0;
+    for (i = 0; i < R.DP.need.length; i++) nsum += R.DP.need[i].n;
+    ok(nsum === R.DP.off, "the rewind-depth histogram does not sum to the off-boundary cuts");
+    var wsum = 0;
+    for (i = 0; i < R.WT.rows.length; i++) wsum += R.WT.rows[i].n;
+    ok(wsum === R.WT.off, "the constraint-width histogram does not sum");
+    ok(R.WT.onlyFixed === 0, "a cut with a one-member constraint set was cleared by a depth-one rule");
+    // this started as "all nine are exactly 1 at horizon 0" and FAILED: a text that no permitted
+    // token can spell does not become spellable when the seam is declared free, so the unreachable
+    // row is exempt and its value is asserted exactly instead
+    for (i = 0; i < R.HL.length; i++) if (R.HL[i].horizon === 0){
+      for (j = 0; j < POLICY_IDS.length; j++)
+        ok(POLICY_IDS[j] === "healext" || R.HL[i].cell[POLICY_IDS[j]] === 1,
+           POLICY_IDS[j] + " is not exactly 1 at horizon 0");
+      ok(Math.abs(R.HL[i].cell.healext - (1 - R.by.healext.unre / cuts.length)) < 1e-12,
+         "the unreachable row at horizon 0 is not exactly one minus its unreachable share");
+    }
+    for (i = 0; i < R.RL.length; i++) if (R.RL[i].recover === 1)
+      for (j = 0; j < POLICY_IDS.length; j++)
+        ok(POLICY_IDS[j] === "healext" || R.RL[i].cell[POLICY_IDS[j]] === 1,
+           POLICY_IDS[j] + " is not exactly 1 at recover 1");
+    for (i = 0; i < R.TM.length; i++)
+      ok(Math.abs(R.TM[i].modeGap) < 1e-12, "the constraint mode stopped being a null at " + R.TM[i].id);
+    for (i = 0; i < R.CT.length; i++){
+      ok(R.CT[i].prefixSafe, R.CT[i].id + " sends a prompt that is not a prefix of the original");
+      ok(R.CT[i].delta <= 1e-12, R.CT[i].id + " added prompt tokens");
+    }
+    for (i = 0; i < R.PR.length; i++) ok(R.PR[i].okPrefix, "a prefill is not a prefix of its target");
+  }
+
+  // 4. the vocabularies and the segmenters
+  {
+    var V = VOCABS[tkOf(c.tid).vocab];
+    for (i = 0; i < TARGETS.length; i++) for (k = 0; k < TOKENIZER_IDS.length; k++){
+      var tt2 = toks(TOKENIZER_IDS[k], TARGETS[i].t);
+      ok(tt2.join("") === TARGETS[i].t, "a tokenizer is not lossless on a target");
+      var b = bounds(tt2);
+      ok(b[0] && b[TARGETS[i].t.length], "the boundary set lost an endpoint");
+      for (j = 0; j < tt2.length; j++) ok(VOCABS[tkOf(TOKENIZER_IDS[k]).vocab].set[tt2[j]],
+                                          "a tokenizer emitted a token outside its vocabulary");
+    }
+    // the fewest-token segmenter never uses more tokens than longest match, by construction
+    for (i = 0; i < TARGETS.length; i++){
+      ok(segFewest(VOCABS.attached, TARGETS[i].t).length <=
+         segLongest(VOCABS.attached, TARGETS[i].t).length, "fewest-tokens used more tokens");
+      ok(segFewest(VOCABS.separate, TARGETS[i].t).length <=
+         segLongest(VOCABS.separate, TARGETS[i].t).length, "fewest-tokens used more tokens");
+    }
+    ok(MERGES_SEPARATE.length <= MERGES_ATTACHED.length, "the derived vocabulary grew");
+    for (i = 0; i < MERGES_SEPARATE.length; i++)
+      ok(MERGES_SEPARATE[i].length === 1 || MERGES_SEPARATE[i].charAt(0) !== " " ||
+         MERGES_SEPARATE[i] === " & ", "the derived vocabulary kept a leading space");
+  }
+
+  var wf = null;
+  for (i = 0; i < R.FT.length; i++) if (!wf || R.FT[i].free < wf.free) wf = R.FT[i];
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + cm(pass) + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  lemma             : tok(prompt) is a prefix of tok(text) exactly when the cut is a boundary --",
+    "                      " + cm(CUTS_ALL.length * TOKENIZER_IDS.length) +
+      " cut-and-tokenizer pairs, 0 violations, both segmenters",
+    "  probe 1 (free)    : five cuts inside one token -- 2 fixed by the shipped rule, 2 made WORSE,",
+    "                      1 needed nothing; no parameter reaches the panel",
+    "  probe 1b (free)   : a cut after a space is off-boundary " + pc(R.TM[0].spaceOff) +
+      " with the space attached",
+    "                      and " + pc(R.TM[2].spaceOff) + " without it -- same corpus, same segmenter",
+    "  depth             : the rewind the text needs is 1 token on " + pc(R.DP.need[0].share) +
+      " of off-boundary cuts,",
+    "                      and reaches " + R.DP.maxNeed + "; every library removes exactly 1",
+    "  identity          : rewind-then-force-it-back is bit-identical to doing nothing, on every cut",
+    "  declines          : " + pc(R.WT.onlyShare) + " of off-boundary cuts have a last token no entry" +
+      " extends;",
+    "                      every rule declines and clears " + R.WT.onlyFixed + " of them",
+    "  refuted           : the shipped rule helps " + pc(R.by.heal1.helpShare) + " of off-boundary cuts" +
+      " and HURTS " + pc(R.by.heal1.hurtShare),
+    "  refuted           : rewinding further with the same constraint asks for a token that does not" +
+      " exist --",
+    "                      empty set on " + cm(R.DP.emptySet) + " of " + cm(R.DP.off) + " (" +
+      pc(R.DP.emptyShare) + "), text unreachable, " + pc(R.by.healext.del) + " delivered",
+    "  free vs paid      : stripping trailing whitespace is worth " +
+      (100 * wf.free).toFixed(2) + " points on " + wf.fam + " -- the sign changes by format",
+    "  winner            : rewind to the start of the current word -- " + pc(R.by.healword.del) +
+      " delivered, " + pc(R.by.healword.hurtShare) + " hurt,",
+    "                      against the shipped rule's " + pc(R.by.heal1.del) + " / " +
+      pc(R.by.heal1.hurtShare) + " and the control's " + pc(R.by.none.del),
+    "  null              : must-extend vs walk-the-trie at depth one is worth 0.00 points on all 4" +
+      " tokenizers",
+    "  null              : at horizon 0 eight of the " + POLICY_IDS.length +
+      " policies are bit-identical at 100.00% -- the ninth",
+    "                      is the unreachable one, which is the assertion of mine that FAILED and was" +
+      " replaced",
+    "  free fact         : every rewind truncates, so the healed prompt is still a PREFIX -- no" +
+      " cache is invalidated"
+  ])).join("\n");
+  FIRST = false;
+}
+
+// ---------------------------------------------------------------- wiring
+(function(){
+  var a = $("selTok"), b = $("selFam"), d = $("selTgt"), e = $("selPol"), i;
+  for (i = 0; i < TOKENIZERS.length; i++)
+    a.insertAdjacentHTML("beforeend", '<option value="' + TOKENIZERS[i].id + '"' +
+      (TOKENIZERS[i].id === DEFAULTS.tid ? " selected" : "") + ">" + esc(TOKENIZERS[i].label) + "</option>");
+  for (i = 0; i < FAMILIES.length; i++)
+    b.insertAdjacentHTML("beforeend", '<option value="' + FAMILIES[i] + '"' +
+      (FAMILIES[i] === DEFAULTS.fam ? " selected" : "") + ">" +
+      (FAMILIES[i] === "all" ? "everything" : esc(FAMILIES[i])) + "</option>");
+  for (i = 0; i < TARGETS.length; i++)
+    d.insertAdjacentHTML("beforeend", '<option value="' + i + '"' + (i === 6 ? " selected" : "") +
+      ">" + esc(TARGETS[i].id) + "</option>");
+  for (i = 0; i < POLICIES.length; i++)
+    e.insertAdjacentHTML("beforeend", '<option value="' + POLICIES[i].id + '"' +
+      (POLICIES[i].id === DEFAULTS.pol ? " selected" : "") + ">" + esc(POL_SHORT[POLICIES[i].id]) + "</option>");
+})();
+function syncPos(){
+  var ti = +$("selTgt").value;
+  $("sPos").max = String(TARGETS[ti].t.length - 1);
+  if (+$("sPos").value > TARGETS[ti].t.length - 1) $("sPos").value = String(TARGETS[ti].t.length - 1);
+}
+["sRec", "sHor", "sPos"].forEach(function(id){ $(id).addEventListener("input", schedule); });
+["selTok", "selFam", "selPol"].forEach(function(id){ $(id).addEventListener("change", schedule); });
+$("selTgt").addEventListener("change", function(){ syncPos(); schedule(); });
+var pending = null;
+function schedule(){ clearTimeout(pending); pending = setTimeout(draw, 180); }
+syncPos();
+draw();
+</script>
+</body>
+</html>

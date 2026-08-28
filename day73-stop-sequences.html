@@ -1,0 +1,2216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero · Day 73 — Stop sequences</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .teal { color:#0f766e; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#0d9488; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f0fdfa; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#e0e7ff; color:#3730a3; }
+  .cell-ok { background:#dcfce7; color:#166534; font-weight:800; }
+  .cell-sil { background:#fee2e2; color:#991b1b; font-weight:800; }
+  .cell-loud { background:#fef3c7; color:#92400e; font-weight:800; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw teal mb2">PROMPTFROMZERO &middot; DAY 73</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      &#9986;&#65039; Stop sequences &mdash; seventy-two days of this series changed what goes
+      <em>into</em> the prompt. This one is about where the reply gets <strong>cut</strong>, and by
+      whom: not the model, but the four lines of harness between the model and your parser. Nothing
+      here simulates language ability &mdash; the generation is <em>data</em>, a record in one of five
+      output formats with the producer's states enumerated, so every rate is an exact expectation
+      over <strong>448</strong> records &times; <strong>8</strong> states and never a sample. The
+      centrepiece needs no parameters: on JSON output the stop sequence <code class="tok">}</code>
+      matches the reply's text <strong>100.00%</strong> of the time and matches its <em>tokens</em> on
+      <strong>14.29%</strong> &mdash; and <strong>100.00%</strong> of those token-level fires are
+      early cuts inside the model's own data. It fires on exactly the replies it must not touch and
+      misses every one it was installed for, decided by the type of the last field:
+      <code class="tok">"120.00"}</code> ends in one token <code class="tok">"}</code>, and
+      <code class="tok">120.00}</code> ends in <code class="tok">}</code>.
+      &#128308; Then the universal advice dies. "Set the stop to your format's closing token" delivers
+      <strong>0.00%</strong> on all three terminated formats, because the commonest return convention
+      removes the matched string &mdash; which is precisely the character the parser was waiting for.
+      Putting back the string the call already told you it matched costs <strong>zero tokens</strong>
+      and is worth <strong>85.71</strong> points. &#128308; The second death is my own repair: you
+      cannot fix token alignment by editing the stop string. <strong>7 of the 9</strong> repaired
+      cells sit at <strong>0.00%</strong> aligned, because a newline merges with whichever neighbour
+      you put it beside. The edit that <em>does</em> win, wins for another reason entirely &mdash;
+      <code class="tok">}\n</code> instead of <code class="tok">}</code> delivers
+      <strong>100.00%</strong> against 85.71%, one character, fewer tokens, and no reachable data
+      collision, because prose never puts a newline directly after a brace.
+      &#128308; A stop set is a <em>minimum</em>, not a vote: <strong>12 of the 16</strong> ways to
+      fill four stop slots deliver <strong>0.00%</strong>, the 16 subsets collapse to
+      <strong>8</strong> behaviours, and a sequence containing another member can never fire at all
+      &mdash; three sets measured at exactly 0.00%, plus a fourth zero my own containment test does
+      <em>not</em> predict, where the format's own OPENING tag cuts the reply at character eight.
+      &#128308; And two bugs cancel: the streaming loop every example ships shows the stop sequence to
+      the user on <strong>100.00%</strong> of calls, <strong>9.2</strong> characters of it, and
+      thereby repairs the convention's damage &mdash; so the broken emitter parses
+      <strong>85.71%</strong> where the correct one parses <strong>0.00%</strong>. Fix the leak with
+      hold-back and forget the final flush and you delete <strong>9.0</strong> characters on
+      <strong>75.00%</strong> of calls, exactly the calls where the model stopped on its own. The
+      control is the honest baseline: no stop sequence at all delivers 85.71% for
+      <strong>3.14%</strong> to <strong>26.37%</strong> more output tokens, and <strong>five of the
+      ten</strong> configurations of the feature deliver less than not using it &mdash; while on a
+      format with no closing token to use as a stop, a blank line <em>raises</em> delivery from
+      75.00% to <strong>78.86%</strong> and converts silent corruption into loud failure, so the
+      formats that most need the feature are the ones that cannot spell it. &#128308; And the 85.71%
+      ceiling is not the feature's: <strong>14.29%</strong> of these records are unparseable rendered
+      <em>undamaged</em>, with nothing configured at all, which is what an in-page assertion of mine
+      claimed was impossible before it failed on exactly those records and was replaced by the
+      predicate. 173,090 in-page assertions, the tokenizer's prefix lemma checked on
+      <strong>141,440</strong> prefixes and the whole harness re-run character by character beside
+      its closed form &mdash; plus <strong>3,875,931</strong> in an independent Node verifier that
+      rebuilds the tokenizer as one anchored regex, the hold as a KMP automaton and every parser from
+      scratch (<code class="tok">JSON.parse</code> included), and which caught the engine counting a
+      hold at the one boundary where the emitter is not holding anything. Pure vanilla JavaScript,
+      one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">&#128300; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">how often the model keeps writing after the answer
+            <span id="vRun" class="b" style="float:right">25%</span>
+            <input id="sRun" type="range" min="0" max="100" step="5" value="25"></label>
+          <label class="sl">how often it opens with a greeting
+            <span id="vPre" class="b" style="float:right">8%</span>
+            <input id="sPre" type="range" min="0" max="60" step="2" value="8"></label>
+          <label class="sl">max_tokens, as a fraction of what it wrote
+            <span id="vCap" class="b" style="float:right">off</span>
+            <input id="sCap" type="range" min="0" max="100" step="5" value="0"></label>
+        </div>
+        <div class="flex g4 wrapf mt3">
+          <label class="xs mut">output format <select id="selFmt"></select></label>
+          <label class="xs mut">stop sequences <select id="selStops"></select></label>
+          <label class="xs mut">what the call returns <select id="selConv">
+            <option value="exclude" selected>text up to the match &mdash; string removed</option>
+            <option value="include">text through the match &mdash; string kept</option></select></label>
+          <label class="xs mut">ties broken by <select id="selTie">
+            <option value="first" selected>declaration order</option>
+            <option value="shortest">the shorter one</option>
+            <option value="longest">the longer one</option></select></label>
+        </div>
+        <p class="note mt3">
+          Three things on this page are <em>declared</em> rather than derived, and each is labelled
+          where it is used. The first is the <strong>tokenizer's merge list</strong>: it is
+          hand-written, and its only claim is the one every real BPE vocabulary satisfies &mdash; that
+          some entries glue punctuation to a neighbour. <em>Which</em> stop sequences misalign is
+          therefore a property of a merge list rather than of any particular model; that some do is
+          structural. The second is the <strong>producer's eight states</strong> &mdash; a greeting,
+          three shapes of run-on, and nothing &mdash; whose probabilities are the two sliders above;
+          the states themselves are enumerated, so a rate is a weighted sum and not a draw. The third
+          is the <strong>return convention</strong> and the <strong>tie rule</strong>, which differ
+          between APIs and are spelled out by none of them, so both settings of each are measured
+          rather than assumed. Everything else &mdash; every match position, every token count, every
+          parse &mdash; is a real string operation, so a <span class="ok">0.00%</span> here means zero
+          and not "none seen".
+        </p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 1 &middot; ONE REPLY, ONE CHARACTER &mdash; parameter-free</p>
+          <p class="sm mut2 mb3">One record, rendered once, ending in
+            <code class="tok">&lt;/answer&gt;</code>. Only the character that <em>follows</em> the
+            closing tag changes. No slider reaches this panel, and the model wrote byte-identical
+            text up to the stop in all four rows.</p>
+          <div class="scroll"><table class="num" id="p1Tbl"></table></div>
+          <p class="sm mt3" id="p1Note"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 1b &middot; THE JSON BRACE &mdash; parameter-free</p>
+          <p class="sm mut2 mb3">The same question asked of the most-used stop sequence there is.
+            Four one-line replies, hand-written, no traffic and no weights. What decides is the
+            <em>type of the last field</em>.</p>
+          <div class="scroll"><table class="num" id="p1bTbl"></table></div>
+          <p class="sm mt3" id="p1bNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 2 &middot; THE CONTAINMENT LAW &mdash; structural, then measured anyway</p>
+        <p class="sm mut2 mb3">The cut is the <em>earliest</em> end over the whole set. So if one
+          member occurs strictly inside another, the longer one can never complete first and can
+          never fire &mdash; for any text, on any model, forever. <span class="b">dead</span> is that
+          prediction, made from the two strings alone; <span class="b">fired</span> is the measured
+          share of calls each member actually won. Read the last two rows for where the prediction is
+          <em>incomplete</em>.</p>
+        <div class="scroll"><table class="num" id="lawTbl"></table></div>
+        <p class="sm mt3" id="lawNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE ALIGNMENT GAP &mdash; and which replies fall into it</p>
+        <p class="sm mut2 mb3">Every format's own closing token against every generation, matched two
+          ways: on the decoded <span class="b">text</span>, and only where it occupies whole
+          <span class="b">tokens</span>. <span class="b">early</span> is a cut landing before the
+          answer finished, which is the column that costs data rather than money.</p>
+        <div class="scroll"><table class="num" id="alignTbl"></table></div>
+        <p class="sm mt3" id="alignNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THREE ATTEMPTS TO REPAIR IT BY EDITING THE STRING</p>
+        <p class="sm mut2 mb3">The obvious fix for a misaligned stop sequence is to pad it so it lands
+          on a boundary. This panel was built to show that working. It does not:
+          <span class="b">aligned</span> goes <em>down</em>, because the newline you add merges with
+          whichever neighbour you put it beside. Read <span class="b">delivered</span> last &mdash;
+          one of these rows is the best number on the page, and it earns it by a different mechanism
+          entirely.</p>
+        <div class="scroll"><table class="num" id="fixTbl"></table></div>
+        <p class="sm mt3" id="fixNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE TWO RETURN CONVENTIONS &mdash; and a one-line repair</p>
+        <p class="sm mut2 mb3">The stop sequence is the format's own closing token, the advice every
+          guide gives. Then whether the call hands back the text <em>up to</em> the match or
+          <em>through</em> it is not a detail. <span class="b">repair</span> is the exclude convention
+          plus one line: re-append the string the call already reported.</p>
+        <div class="scroll"><table class="num" id="convTbl"></table></div>
+        <p class="sm mt3" id="convNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE SCOREBOARD &mdash; eleven harnesses on the same traffic</p>
+        <p class="sm mut2 mb3">Same model output, same records, same bill arithmetic: a loud failure
+          gets exactly one retry, a silent one gets none, which is the whole problem.
+          <span class="b">tok</span> is output tokens billed per call and
+          <span class="b">per ok</span> is tokens per correctly delivered record, retries included.
+          The control is the first row.</p>
+        <div class="scroll"><table class="num" id="mainTbl"></table></div>
+        <p class="sm mt3" id="mainNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">WHAT THE CONTROL COSTS</p>
+          <p class="sm mut2 mb3">Cutting client-side cannot mis-fire, and it pays for every token the
+            model wrote after the answer. So the question is never which is safer &mdash; it is what
+            the safety costs at each run-on rate.</p>
+          <div class="scroll"><table class="num" id="ctlTbl"></table></div>
+          <p class="note mt2" id="ctlNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">ALL 16 WAYS TO FILL FOUR SLOTS</p>
+          <p class="sm mut2 mb3">The API gives you four. Enumerate every subset of a realistic four:
+            the cut is a minimum, so the ladder can only go down, and subsets sharing an antichain
+            have to come back <em>bit-identical</em>.</p>
+          <div class="scroll"><table class="num" id="subTbl"></table></div>
+          <p class="note mt2" id="subNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">STREAMING &mdash; three emitters, one bill</p>
+        <p class="sm mut2 mb3">A stop sequence has to be detected in text the client is already being
+          shown. <span class="b">leaked</span> is the emitter that forwards each delta as it arrives
+          and therefore cannot un-send. <span class="b">held</span> is the correct one and its price
+          is delay. <span class="b">no flush</span> is the correct one missing its last line. All
+          three are billed identically, and the third is the one that looks fine in testing.</p>
+        <div class="scroll"><table class="num" id="strTbl"></table></div>
+        <p class="sm mt3" id="strNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE TIE RULE NOBODY WRITES DOWN</p>
+          <p class="sm mut2 mb3">Two stop sequences that end at the same index have to be resolved
+            somehow, and no documentation says how. This panel asks what changing the rule actually
+            moves.</p>
+          <div class="scroll"><table class="num" id="tieTbl"></table></div>
+          <p class="note mt2" id="tieNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE DATA COLLISION, AND ITS CENSUS</p>
+          <p class="sm mut2 mb3">A stop sequence is a string and a field value is a string. Split the
+            traffic by whether the record contains the framing at all: the halves are different
+            products, and the census is one grep you can run on your own values.</p>
+          <div class="scroll"><table class="num" id="colTbl"></table></div>
+          <div class="scroll mt3"><table class="num" id="cenTbl"></table></div>
+          <p class="note mt2" id="colNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHEN NOTHING FIRES &mdash; the cap, and where it cuts</p>
+        <p class="sm mut2 mb3">A stop sequence that never matches hands the job to
+          <code class="tok">max_tokens</code>, which cuts at a token boundary &mdash; a place your
+          format has no meaning. Whether that is loud or silent is a property of the format and not of
+          the cap, and the columns of zeros are the point.</p>
+        <div class="scroll"><table class="mtx" id="capTbl"></table></div>
+        <p class="sm mt3" id="capNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">The model does not decide where the reply ends</h2>
+      <p>A stop sequence is the smallest feature in any inference API. It is a list of strings; when
+        the generation produces one, generation halts. There is no model behaviour to argue about and
+        nothing probabilistic in it, which is why this page can prove things rather than observe them.
+        It is also, for exactly that reason, the part of a prompting stack where a defect is
+        completely invisible: the call returns HTTP 200, the token count goes down, and the reply
+        looks like a reply.</p>
+      <p>What is actually happening is a small pipeline with four independent decisions in it, and
+        every one of them is a place where a correct implementation and a broken one produce output
+        that looks the same. <em>Where</em> does the match get looked for &mdash; in the decoded text
+        or in the token stream? <em>What</em> comes back &mdash; the text up to the match or through
+        it? <em>Which</em> member of the set wins when two of them end in the same place? And what
+        does a streaming emitter do with characters it has already sent by the time it realises they
+        were the beginning of a stop sequence? Nothing in your prompt affects any of those four. They
+        are the harness.</p>
+
+      <h3 class="lg b">The parameter-free part: a stop sequence is text, and tokens are not</h3>
+      <p>Take a reply ending in <code class="tok">&lt;/answer&gt;</code> and ask a token-level matcher
+        to find that string. It has to find it occupying whole tokens, because tokens are all it can
+        see. When the reply ends right there, the final <code class="tok">&gt;</code> is its own token
+        and the match is clean. When the model then writes a newline &mdash; because it is about to add
+        "Let me know if you need anything else" &mdash; the <code class="tok">&gt;</code> and the
+        newline merge into a single token, the last character of your stop sequence is now inside a
+        token that also holds a character that is not yours, and the match is gone. The stop sequence
+        did not change. The prompt did not change. A character <em>after</em> the stop sequence
+        changed, and it decided whether the stop sequence exists.</p>
+      <p>The JSON version is worse, and worse in a way that inverts the feature. A compact object ends
+        <code class="tok">"120.00"}</code>, and a quote followed by a brace is one of the most common
+        merges in any vocabulary. So the brace is never on a boundary &mdash; unless the last value is
+        a number, or there is a space before the brace, or the brace is <em>inside a string</em>,
+        which is the one case where you did not want a match. On the traffic here the token-level
+        matcher fires on 14.29% of replies and every single one of those fires is an early cut inside
+        the model's own data. It misses 85.71% of the cuts it was installed to make and lands 100% of
+        the ones that corrupt a record. A test suite with one clean example in it passes.</p>
+
+      <h3 class="lg b">The law that makes most stop sets smaller than they look</h3>
+      <p>The cut is the earliest end over the set. That one sentence has consequences nobody writes
+        down. It means a set of stop sequences is a <strong>minimum</strong> and not a vote: adding
+        one can only move the cut earlier, never later, so every addition is a risk and never a
+        safeguard. It means that if one member occurs strictly inside another, the longer one can
+        never fire &mdash; <code class="tok">\n\n</code> beside <code class="tok">\n</code> is dead,
+        <code class="tok">###</code> beside <code class="tok">#</code> is dead,
+        <code class="tok">```</code> beside a backtick is dead. Not rare, not usually: dead, at
+        exactly 0.00%, for every possible generation, and visible from the two strings without running
+        anything.</p>
+      <p>And it means the containment test just described is <em>incomplete</em>, which is the
+        interesting part. Put <code class="tok">&lt;/answer&gt;</code> and <code class="tok">&gt;</code>
+        in the same set and containment says nothing is dead &mdash; the <code class="tok">&gt;</code>
+        sits at the very end of the longer string, so they tie rather than one preceding the other.
+        Measure it and <code class="tok">&lt;/answer&gt;</code> fires 0.00% of the time anyway, because
+        the format's own <em>opening</em> tag <code class="tok">&lt;answer&gt;</code> carries a
+        <code class="tok">&gt;</code> at character eight. The reply is cut before it has said
+        anything, for about four tokens a call. The structural test predicts three of the four zeros
+        on that panel; the fourth comes from a string that is not in the stop set at all.</p>
+
+      <h3 class="lg b">The advice every guide gives, priced</h3>
+      <p>"Set your stop sequence to the closing token of your format." It is in every tutorial, and
+        under the commonest return convention it delivers <strong>0.00%</strong> &mdash; on tags, on
+        JSON, on fenced blocks. The reason is one sentence of arithmetic: the convention hands back
+        the text <em>up to</em> the match, the match is your closing token, and a keyed format with no
+        closing token is exactly the thing Day 70 measured as unparseable. The feature deletes the one
+        character that made the format safe, and it does it on 100% of successful calls. The saving
+        grace is that the resulting failure is 100% <em>loud</em>, so you find out immediately, which
+        is the only reason this is an embarrassing afternoon rather than a data-loss incident.</p>
+      <p>The fix is one line and costs nothing: the response tells you which stop sequence matched, so
+        put it back. That is worth 85.71 points here, and in general it is worth exactly as much as
+        the closing token is load-bearing in your format &mdash; which you can look up rather than
+        guess.</p>
+
+      <h3 class="lg b">The repair that does not work, and the one that does</h3>
+      <p>If misalignment is the problem, pad the stop sequence so it lands on a boundary: put a
+        newline in front of it. This page was built around that panel and the panel refutes it. Seven
+        of the nine repaired cells are at 0.00% aligned, and the mechanism is symmetric &mdash;
+        whichever end you extend, the character you add merges with the neighbour on that side. A
+        newline in front of <code class="tok">&lt;/answer&gt;</code> merges backwards with the
+        <code class="tok">&gt;</code> of the previous line's closing tag. You cannot align a stop
+        sequence by editing the stop sequence, because alignment is not a property of the string.</p>
+      <p>What <em>does</em> win is on the same panel and wins for an unrelated reason.
+        <code class="tok">}\n</code> in place of <code class="tok">}</code> delivers 100.00% against
+        85.71%, and not because it aligned &mdash; it is 0.00% aligned. It wins because the model's
+        prose never puts a newline immediately after a brace, so the data collision that cost the
+        plain brace its last 14.29 points is now <em>unreachable</em>. One character, no instruction
+        tokens, fewer output tokens, and it changes which failures are possible rather than how often
+        they happen. That is the difference between a mitigation and a fix, and it only surfaced
+        because the panel measured delivery instead of measuring alignment.</p>
+
+      <h3 class="lg b">Streaming, where two bugs cancel</h3>
+      <p>A stop sequence has to be found in text the user is already watching arrive. The loop in
+        every streaming example forwards each delta the moment it lands, so by the time the match
+        completes the stop sequence is on the screen: 100.00% of calls, an average of 9.2 characters
+        of <code class="tok">&lt;/answer&gt;</code> visible in the chat. The correct emitter buffers,
+        withholds any suffix that is a live prefix of a stop sequence, and flushes at end of stream.
+        Its price is delay &mdash; up to 8 characters withheld, about half a character per token
+        averaged over the stream &mdash; and it is a real price only for a long stop sequence, because
+        a one-character stop can never be a proper prefix of itself and therefore holds nothing.</p>
+      <p>Two things about that pair are worth more than the pair. First, the broken emitter
+        <em>parses better</em>: under the exclude convention it scores 85.71% where the correct
+        emitter scores 0.00%, because leaking the stop sequence puts back exactly what the convention
+        removed. Two defects, opposite signs, one clean-looking log. Second, the fix introduces a
+        failure the leak did not have. Forget the final flush and you delete whatever is still held
+        &mdash; 9.0 characters on 75.00% of calls with a <code class="tok">&lt;/answer&gt;\n</code>
+        stop, and those are precisely the calls where the model behaved perfectly and stopped on its
+        own. The well-behaved reply is the one that breaks.</p>
+
+      <h3 class="lg b">What to do with the null results</h3>
+      <p>Two numbers here are worth reporting because they are zero. The tie rule &mdash; which of two
+        stop sequences ending at the same index wins &mdash; moves the reported identity and the
+        delivered text on 85.71% of calls, by exactly one character, and moves the verdict on
+        <strong>0.00%</strong> of them. Both spellings are already broken, so an undocumented rule
+        turns out not to matter for the parse while mattering completely for any code that branches on
+        <em>which</em> stop matched. And the sixteen subsets of four stop slots collapse to eight
+        distinct behaviours, four of them bit-identical, because once <code class="tok">\n</code> is in
+        the set nothing else in the set is ever consulted.</p>
+      <p>The honest summary of the page is the control row. Not using stop sequences at all delivers
+        85.71% and costs between 3.14% and 26.37% more output tokens depending on how talkative the
+        model is. That is what the feature is worth. Five of the ten ways to configure it deliver
+        <em>less</em> than that, none of the ten on the default format deliver more, and the one
+        configuration that beats it &mdash; <code class="tok">}\n</code> on JSON, at 100.00% &mdash;
+        differs from the standard advice by one character.</p>
+
+      <h3 class="lg b">What this is not</h3>
+      <p>This is not a claim about any specific API. The return convention and the tie rule differ
+        between providers and are spelled out by neither, so both settings of each are on a dropdown
+        and both are measured. It is not a claim about any specific tokenizer either: the merge list
+        here is hand-written, and the only property it borrows from real vocabularies is that
+        punctuation merges with its neighbours. Change the merge list and <em>which</em> stop
+        sequences misalign changes; that some do is structural.</p>
+      <p>It is also not Day 70 and not Day 41. Day 70 chose the output format and parsed it, taking
+        the whole reply as given. Day 41 delivered tokens as they arrived. Day 59 seeded the start of
+        the reply and mentioned pairing a prefill with a stop sequence in one clause. This page is
+        about the other end &mdash; the four decisions between the last token and your parser, none of
+        which appear in a prompt and all of which change what your prompt was worth.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">&#128296; How it is built</h2>
+      <p>Every number on the MEASURE tab comes from the block between
+        <code class="tok">ENGINE:BEGIN</code> and <code class="tok">ENGINE:END</code> in this file's
+        source. An independent Node verifier re-implements each load-bearing structure a second way
+        &mdash; a regex tokenizer instead of a vocabulary walk, a brute-force index scan instead of
+        <code class="tok">indexOf</code>, a character-by-character emitter instead of the closed-form
+        one &mdash; and compares them set for set.</p>
+
+      <h3 class="lg b">1. The generation is data, and its states are enumerated</h3>
+      <p>There is no model. A generation is a record rendered in a format, optionally preceded by a
+        greeting and optionally followed by one of three run-ons. Four customers &times; four amounts
+        &times; four statuses &times; seven notes is 448 records, and two greetings &times; four
+        continuations is 8 states, so one format's traffic is 3,584 strings and a rate is a weighted
+        sum over all of them. The sliders move the <em>weights</em>, never a sample count, which is
+        why a 0.00% on this page is a zero rather than a small number.</p>
+
+      <h3 class="lg b">2. The tokenizer is the only declared component, and it is declared loudly</h3>
+      <p>Greedy longest match over an explicit merge list, with every single character in the
+        vocabulary so the tokenizer is total. The list holds entries like
+        <code class="tok">&gt;\n</code>, <code class="tok">"}</code>, <code class="tok">\n\n</code>
+        and <code class="tok">```</code> &mdash; punctuation glued to a neighbour &mdash; because that
+        is the property real vocabularies have and it is the only property the alignment results
+        depend on. The page says which results are downstream of it.</p>
+
+      <h3 class="lg b">3. The loop is closed form, and the lemma is checked rather than assumed</h3>
+      <p>Running the harness character by character over every generation is quadratic and too slow to
+        render. It is rewritten to find the match once in the whole string and then binary-search the
+        token index that covers it, which is only legal because of a small lemma: the greedy choice at
+        a position depends solely on the characters from that position forward, and the harness only
+        ever appends whole tokens, so the tokenization of any prefix it can hold is exactly the prefix
+        of the tokenization of the whole string. Boundaries therefore never move under truncation. The
+        in-page assertions verify the lemma directly on every generation, and the verifier re-runs the
+        whole harness the slow way and compares.</p>
+
+      <h3 class="lg b">4. Two matchers, three emitters, two conventions, three tie rules</h3>
+      <p>The matchers differ only in whether a hit must occupy whole tokens. The emitters are the
+        delta-forwarding loop, the buffered one, and the buffered one with its flush removed. The hold
+        amount is the longest suffix of what has been produced that is a proper prefix of some stop
+        sequence, computed directly rather than through an automaton &mdash; so the verifier can build
+        the automaton and check it against this.</p>
+
+      <h3 class="lg b">5. Real parsers, and the three-way verdict</h3>
+      <p>A tag scanner, a real <code class="tok">JSON.parse</code>, a fence stripper, a
+        <code class="tok">### heading</code> splitter and a line splitter. Each returns the fields it
+        believes it read, or <code class="tok">null</code> when it can tell it failed, and the verdict
+        is delivered / silently wrong / loudly failed &mdash; Day 70's taxonomy, deliberately, because
+        the point here is that a different mechanism fills the same three columns.</p>
+
+      <h3 class="lg b">6. The containment predicate is a prediction, and it is scored</h3>
+      <p><code class="tok">deadIn</code> looks only at the strings: a member is dead when another
+        member occurs inside it ending before its end. It is printed <em>beside</em> the measured fire
+        rate rather than instead of it, which is how that panel reports its own incompleteness &mdash;
+        three of the four zeros are predicted and the fourth is not.</p>
+
+      <h3 class="lg b">7. The bill is arithmetic, and the retry policy is stated</h3>
+      <p>Output tokens billed per call are the tokens needed to cover the cut. A loud failure gets
+        exactly one retry drawn from the same distribution; a silent one gets none. Tokens per
+        correctly delivered record is the only column that compares a cheap wrong answer with an
+        expensive right one, and it is where the control stops looking free.</p>
+
+      <h3 class="lg b">8. The configuration space is enumerated, not argued</h3>
+      <p>Four stop slots is sixteen subsets, so the whole space is enumerated and printed along with
+        the behaviour class each subset lands in. Monotonicity &mdash; that adding a member cannot
+        move the cut later &mdash; is asserted over every pair rather than stated as a property of
+        minima.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Stop sequences: where a generation is actually cut, and by whom. Nothing here simulates language
+// ability - there is no model, no sampling, and no guess about what an assistant would say. What is
+// simulated is the HARNESS: a hand-written tokenizer whose merge list glues punctuation to its
+// neighbours the way every real BPE vocabulary does, two stop MATCHERS that people ship, two return
+// CONVENTIONS, three streaming emitters, a token cap, and a real parser per output format. The
+// generation itself is DATA: a record rendered in one of five formats, with the producer's states
+// (a greeting, a run-on tail, a field value that contains the framing) ENUMERATED, so every rate
+// here is an exact expectation over 448 records x 8 producer states, never a sample. The two
+// sliders move declared PROBABILITIES; nothing on this page is estimated from draws.
+
+// ---------------------------------------------------------------- 1. tokenizer
+// Greedy longest-match over an explicit vocabulary. Every single character is in the vocabulary, so
+// the tokenizer is total. The only property that matters downstream is that some entries STRADDLE a
+// closing token - ">\n", '"}', "\n\n", "```" - which is what makes a stop sequence's token
+// alignment depend on the character that comes AFTER it.
+var MERGES = [
+  "\n\n", "\n ", "  ", "</", "/>", ">\n", "\n}", "\n{", '",', '":', '"}', '":"', '",\n',
+  "```", "###", "##", "\n#", ": ", ", ", ". ", " -", "0.", ".0", "00", "12", "34", "56", "78", "90",
+  "answer", "Answer", "customer", "amount", "status", "note", "total", "due", "invoice",
+  "Sure", "Here", "are", "the", "fields", "you", "asked", "for", "Let", "me", "know", "if",
+  "need", "anything", "else", "Hope", "this", "helps", "Thanks", "see", "attached", "urgent",
+  "review", "late", "payment", "please", "under", "open", "paid", "hold", "refund", "set", "to",
+  "use", "tag", "in", "reply", "and", "Sons", "Ltd", "Inc", "Co", "Smith", "Jones", "Patel",
+  "Nguyen", "Rivera"
+];
+var VMAP = {};
+(function(){
+  for (var i = 0; i < MERGES.length; i++){
+    var c = MERGES[i].charAt(0);
+    if (!VMAP[c]) VMAP[c] = [];
+    VMAP[c].push(MERGES[i]);
+  }
+  for (var k in VMAP) VMAP[k].sort(function(a, b){ return b.length - a.length; });
+})();
+var TCACHE = {};
+function toks(s){
+  if (TCACHE[s]) return TCACHE[s];
+  var out = [], i = 0;
+  while (i < s.length){
+    var cand = VMAP[s.charAt(i)], hit = null;
+    if (cand) for (var j = 0; j < cand.length; j++){
+      if (s.substr(i, cand[j].length) === cand[j]){ hit = cand[j]; break; }
+    }
+    if (!hit) hit = s.charAt(i);
+    out.push(hit);
+    i += hit.length;
+  }
+  TCACHE[s] = out;
+  return out;
+}
+function nTok(s){ return toks(s).length; }
+// the character offsets at which a token starts, plus s.length: the only places a cap can cut and
+// the only places a token-level matcher can see
+var BCACHE = {};
+function bounds(s){
+  if (BCACHE[s]) return BCACHE[s];
+  var t = toks(s), b = { 0: 1 }, p = 0;
+  for (var i = 0; i < t.length; i++){ p += t[i].length; b[p] = 1; }
+  BCACHE[s] = b;
+  return b;
+}
+function isBoundary(s, at){ return !!bounds(s)[at]; }
+
+// ---------------------------------------------------------------- 2. records and formats
+var CUSTOMERS = ["Smith Ltd", "Jones and Sons", "Patel Co", "Nguyen Inc"];
+var AMOUNTS   = ["120.00", "78.50", "1200.00", "0.00"];
+var STATUSES  = ["open", "paid", "hold", "refund"];
+// Four ordinary notes and three that contain framing characters. Which of them is a HAZARD depends
+// on the stop sequence in force, so the field carries no such label - it is measured per stop.
+var NOTES = [
+  "see attached invoice",
+  "urgent",
+  "amount is under review",
+  "please reply",
+  "late payment\n\nplease review",
+  "use tag </answer> in reply",
+  "set status to } open"
+];
+var NOTE_CLEAN = 4;
+var RECORDS = [];
+(function(){
+  for (var a = 0; a < CUSTOMERS.length; a++)
+    for (var b = 0; b < AMOUNTS.length; b++)
+      for (var c = 0; c < STATUSES.length; c++)
+        for (var d = 0; d < NOTES.length; d++)
+          RECORDS.push({ customer: CUSTOMERS[a], amount: AMOUNTS[b], status: STATUSES[c],
+                         note: NOTES[d], noteIx: d, framed: d >= NOTE_CLEAN });
+})();
+var NREC = RECORDS.length;
+var KEYS = ["customer", "amount", "status", "note"];
+
+var FORMATS = ["tag", "json", "fence", "head", "line"];
+var FORMAT_LABEL = {
+  tag:   "<answer> ... </answer>",
+  json:  '{"customer": " ... "}',
+  fence: "```json ... ```",
+  head:  "### customer",
+  line:  "one field per line"
+};
+// the closing token of each format - the string a developer reaches for as a stop sequence
+var CLOSER = { tag: "</answer>", json: "}", fence: "```", head: "", line: "" };
+
+function render(rec, fmt){
+  var i;
+  if (fmt === "tag"){
+    var s = "<answer>\n";
+    for (i = 0; i < KEYS.length; i++) s += "<" + KEYS[i] + ">" + rec[KEYS[i]] + "</" + KEYS[i] + ">\n";
+    return s + "</answer>";
+  }
+  if (fmt === "json" || fmt === "fence"){
+    var j = "{";
+    for (i = 0; i < KEYS.length; i++)
+      j += (i ? ", " : "") + '"' + KEYS[i] + '": "' + rec[KEYS[i]].split("\n").join("\\n") + '"';
+    j += "}";
+    return fmt === "json" ? j : "```json\n" + j + "\n```";
+  }
+  if (fmt === "head"){
+    var h = "";
+    for (i = 0; i < KEYS.length; i++) h += "### " + KEYS[i] + "\n" + rec[KEYS[i]] + (i < KEYS.length - 1 ? "\n" : "");
+    return h;
+  }
+  var l = [];
+  for (i = 0; i < KEYS.length; i++) l.push(rec[KEYS[i]]);
+  return l.join("\n");
+}
+
+// ---------------------------------------------------------------- 3. the producer, enumerated
+// Two greetings x four continuations = eight states, each with a declared weight built from the two
+// sliders. A rate is then a weighted sum over every state of every record: exact, so a 0.00% means
+// zero and not "none seen".
+var PREAMBLE = ["", "Sure! Here are the fields you asked for:\n\n"];
+var TAILS = [
+  "",
+  "\n\nLet me know if you need anything else.",
+  "\n\nHope this helps.\nThanks",
+  "\n\n<answer>\n<customer>Rivera Ltd</customer>\n</answer>"
+];
+var TAIL_LABEL = ["stopped on its own", "sign-off", "two-line sign-off", "started a second answer"];
+var NSTATE = 8;
+function stateWeights(pre, run){
+  var w = [], tw = [1 - run, run * 0.45, run * 0.30, run * 0.25];
+  for (var p = 0; p < 2; p++) for (var t = 0; t < 4; t++) w.push((p ? pre : 1 - pre) * tw[t]);
+  return w;
+}
+function stateText(rec, fmt, st){ return PREAMBLE[st >> 2] + render(rec, fmt) + TAILS[st & 3]; }
+function payloadEnd(rec, fmt, st){ return PREAMBLE[st >> 2].length + render(rec, fmt).length; }
+
+// ---------------------------------------------------------------- 4. stop matching
+var STOPSETS = {
+  closer: { label: "the format's own closing token", of: function(fmt){ return CLOSER[fmt] ? [CLOSER[fmt]] : []; } },
+  blank:  { label: 'a blank line  "\\n\\n"',          of: function(){ return ["\n\n"]; } },
+  nl:     { label: 'a single newline  "\\n"',         of: function(){ return ["\n"]; } },
+  both:   { label: 'the closing token AND ">"',      of: function(fmt){ var c = CLOSER[fmt]; return (c ? [c] : []).concat([">"]); } },
+  four:   { label: "four, spread to be safe",        of: function(fmt){ var c = CLOSER[fmt]; return (c ? [c] : []).concat(["\n\n", "\n", ">"]); } },
+  none:   { label: "none - cut it client-side",      of: function(){ return []; } }
+};
+var STOPSET_IDS = ["closer", "blank", "nl", "both", "four", "none"];
+
+function tieWins(S, i, cur, tie){
+  if (cur < 0) return true;
+  if (tie === "longest") return S[i].length > S[cur].length;
+  if (tie === "shortest") return S[i].length < S[cur].length;
+  return i < cur;                                    // "first" - declaration order
+}
+// earliest END index over the set. A set is therefore a MINIMUM, not a vote: adding a member can
+// only move the cut earlier, never later.
+function matchText(g, S, tie){
+  var best = -1, who = -1, bi = -1;
+  for (var i = 0; i < S.length; i++){
+    if (!S[i]) continue;
+    var at = g.indexOf(S[i]);
+    if (at < 0) continue;
+    var end = at + S[i].length;
+    if (best < 0 || end < best || (end === best && tieWins(S, i, who, tie))){ best = end; who = i; bi = at; }
+  }
+  return { end: best, who: who, at: bi };
+}
+// the same search, but a match only counts when it occupies WHOLE tokens - which is what a stop
+// implemented at the token level does
+function matchAligned(g, S, tie){
+  var b = bounds(g), best = -1, who = -1, bi = -1;
+  for (var i = 0; i < S.length; i++){
+    if (!S[i]) continue;
+    var from = 0;
+    while (true){
+      var at = g.indexOf(S[i], from);
+      if (at < 0) break;
+      if (b[at] && b[at + S[i].length]){
+        var end = at + S[i].length;
+        if (best < 0 || end < best || (end === best && tieWins(S, i, who, tie))){ best = end; who = i; bi = at; }
+        break;
+      }
+      from = at + 1;
+    }
+  }
+  return { end: best, who: who, at: bi };
+}
+function matchWith(g, S, mode, tie){
+  if (mode === "none") return { end: -1, who: -1, at: -1 };
+  return mode === "aligned" ? matchAligned(g, S, tie) : matchText(g, S, tie);
+}
+// how much must be withheld right now: the longest suffix of what has been produced that is a
+// proper prefix of some stop sequence
+function holdLen(text, S){
+  var best = 0;
+  for (var i = 0; i < S.length; i++){
+    var s = S[i];
+    if (!s) continue;
+    var lim = Math.min(s.length - 1, text.length);
+    for (var L = lim; L > best; L--)
+      if (text.substr(text.length - L) === s.substr(0, L)){ best = L; break; }
+  }
+  return best;
+}
+
+// ---------------------------------------------------------------- 5. one call
+// Returns what the CLIENT ends up holding and what the call was billed. Three emitters:
+//   "delta"    - forwards every token the instant it arrives, so it cannot un-send  (the SSE loop
+//                every example ships)
+//   "hold"     - buffers, withholds the live match prefix, flushes at end of stream  (correct)
+//   "noflush"  - buffers, withholds, and forgets to flush                            (the fix, once)
+// The loop is written in closed form rather than character by character, and that rewrite is only
+// legal because of a small lemma: since the greedy choice at a position depends solely on the
+// characters from that position forward, and the harness only ever appends WHOLE tokens, the
+// tokenization of any prefix the harness can hold is exactly the prefix of the tokenization of the
+// whole generation. So boundaries never move under truncation, and the earliest match in the full
+// string is the earliest match in every prefix that contains it. The in-page assertions check the
+// lemma directly rather than assuming it.
+var LCACHE = {};
+function cumLens(g){
+  if (LCACHE[g]) return LCACHE[g];
+  var t = toks(g), c = [0], p = 0;
+  for (var i = 0; i < t.length; i++){ p += t[i].length; c.push(p); }
+  LCACHE[g] = c;
+  return c;
+}
+function tokensToCover(cum, ch){
+  var lo = 0, hi = cum.length - 1;
+  while (lo < hi){ var mid = (lo + hi) >> 1; if (cum[mid] >= ch) hi = mid; else lo = mid + 1; }
+  return lo;
+}
+function runCall(g, S, mode, tie, conv, emit, cap, stats){
+  var cum = cumLens(g), nt = cum.length - 1,
+      limTok = (cap > 0 && cap < nt) ? cap : nt, limCh = cum[limTok],
+      m = matchWith(g, S, mode, tie),
+      fired = m.end >= 0 && m.end <= limCh,
+      billed, seen, leak = 0, withheld = 0, maxHold = 0, sumHold = 0, acc;
+  if (fired){
+    billed = tokensToCover(cum, m.end);
+    acc = g.substr(0, cum[billed]);
+    if (emit === "delta"){ seen = acc; leak = acc.length - m.at; }
+    else seen = g.substr(0, conv === "include" ? m.end : m.at);
+  } else {
+    billed = limTok;
+    acc = g.substr(0, limCh);
+    if (emit === "noflush"){ withheld = holdLen(acc, S); seen = acc.substr(0, acc.length - withheld); }
+    else seen = acc;
+  }
+  if (stats && emit !== "delta"){
+    // the boundary the cut happens at is NOT a hold: the emitter is not withholding anything there,
+    // it is finished. An independent rebuild of this loop caught the original counting it.
+    for (var i = 1; i <= billed; i++){
+      if (fired && i === billed) break;
+      var h = holdLen(g.substr(0, cum[i]), S);
+      if (h > maxHold) maxHold = h;
+      sumHold += h;
+    }
+  }
+  return { text: seen, billed: billed, fired: fired, who: m.who, at: m.at, end: m.end, leak: leak,
+           maxHold: maxHold, sumHold: sumHold, withheld: withheld,
+           capped: !fired && cap > 0 && cap < nt };
+}
+
+// ---------------------------------------------------------------- 6. real parsers
+function parse(text, fmt){
+  var i, out = {};
+  if (fmt === "tag"){
+    var open = text.indexOf("<answer>"), close = text.indexOf("</answer>");
+    if (open < 0 || close < 0) return null;
+    var body = text.substring(open + 8, close);
+    for (i = 0; i < KEYS.length; i++){
+      var k = KEYS[i], a = body.indexOf("<" + k + ">"), b = body.indexOf("</" + k + ">");
+      if (a < 0 || b < 0 || b < a) return null;
+      out[k] = body.substring(a + k.length + 2, b);
+    }
+    return out;
+  }
+  if (fmt === "json" || fmt === "fence"){
+    var s = text, o2;
+    if (fmt === "fence"){
+      var f1 = s.indexOf("```");
+      if (f1 < 0) return null;
+      var nlp = s.indexOf("\n", f1);
+      if (nlp < 0) return null;
+      var f2 = s.indexOf("```", nlp);
+      if (f2 < 0) return null;
+      s = s.substring(nlp + 1, f2);
+    } else {
+      var o = s.indexOf("{");
+      if (o < 0) return null;
+      s = s.substring(o);
+    }
+    try { o2 = JSON.parse(s); } catch (e){ return null; }
+    if (!o2 || typeof o2 !== "object") return null;
+    for (i = 0; i < KEYS.length; i++){
+      if (typeof o2[KEYS[i]] !== "string") return null;
+      out[KEYS[i]] = o2[KEYS[i]];
+    }
+    return out;
+  }
+  if (fmt === "head"){
+    var parts = text.split(/^### /m), seen = {};
+    for (i = 1; i < parts.length; i++){
+      var p = parts[i], nl = p.indexOf("\n");
+      if (nl < 0) return null;
+      var key = p.substring(0, nl), val = p.substring(nl + 1);
+      if (i < parts.length - 1) val = val.substr(0, val.length - 1);
+      seen[key] = val;
+    }
+    for (i = 0; i < KEYS.length; i++){
+      if (!(KEYS[i] in seen)) return null;
+      out[KEYS[i]] = seen[KEYS[i]];
+    }
+    return out;
+  }
+  var lines = text.split("\n");
+  if (lines.length !== KEYS.length) return null;
+  for (i = 0; i < KEYS.length; i++) out[KEYS[i]] = lines[i];
+  return out;
+}
+function sameRec(got, rec){
+  if (!got) return false;
+  for (var i = 0; i < KEYS.length; i++) if (got[KEYS[i]] !== rec[KEYS[i]]) return false;
+  return true;
+}
+// delivered / silently wrong / loudly failed
+function verdict(text, fmt, rec){
+  var got = parse(text, fmt);
+  if (got === null) return "loud";
+  return sameRec(got, rec) ? "ok" : "silent";
+}
+
+// ---------------------------------------------------------------- 7. defaults
+var DEFAULTS = { pre: 0.08, run: 0.25, capFrac: 0, fmt: "tag", stops: "closer", conv: "exclude",
+                 tie: "first", emit: "hold" };
+function withDefaults(o){
+  var c = {}, k;
+  for (k in DEFAULTS) c[k] = DEFAULTS[k];
+  for (k in (o || {})) c[k] = o[k];
+  return c;
+}
+function capFor(g, frac){ return frac > 0 ? Math.max(1, Math.round(nTok(g) * frac)) : 0; }
+
+// ---------------------------------------------------------------- 8. probe 1 - the alignment step
+// One reply. One character changed - the one AFTER the closing tag. Nothing else moves, no dial
+// reaches this panel, and the token-level matcher changes its mind.
+function alignProbe(){
+  var rec = RECORDS[0], body = render(rec, "tag"), rows = [],
+      after = [["nothing follows", ""], ["a space follows", " "], ["a newline follows", "\n"],
+               ["a sign-off follows", TAILS[1]]];
+  for (var i = 0; i < after.length; i++){
+    var g = body + after[i][1], S = ["</answer>"],
+        mt = matchText(g, S, "first"), ma = matchAligned(g, S, "first"),
+        t = toks(g), tokAt = "", p = 0;
+    for (var j = 0; j < t.length; j++){
+      if (p <= body.length - 1 && p + t[j].length > body.length - 1) tokAt = t[j];
+      p += t[j].length;
+    }
+    rows.push({ label: after[i][0], suffix: after[i][1], textEnd: mt.end, alignEnd: ma.end,
+                fires: ma.end >= 0, lastTok: tokAt, wrote: nTok(g),
+                billed: ma.end >= 0 ? nTok(g.substr(0, ma.end)) : nTok(g) });
+  }
+  var fired = 0;
+  for (i = 0; i < rows.length; i++) if (rows[i].fires) fired++;
+  return { rows: rows, body: body, fired: fired, n: rows.length };
+}
+// probe 1b, also parameter-free: the json brace. Its alignment is decided by the type of the LAST
+// field, and the replies where the token matcher does fire are exactly the wrong ones.
+function braceProbe(){
+  var rows = [], cases = [
+    ["last value is a string", '{"amount": "120.00"}'],
+    ["last value is a number", '{"amount": 120.00}'],
+    ["a space before the brace", '{"amount": "120.00" }'],
+    ["the value contains a brace", '{"note": "set status to } open"}']
+  ];
+  for (var i = 0; i < cases.length; i++){
+    var g = cases[i][1], S = ["}"], mt = matchText(g, S, "first"), ma = matchAligned(g, S, "first");
+    rows.push({ label: cases[i][0], text: g, textEnd: mt.end, alignEnd: ma.end,
+                fires: ma.end >= 0, early: ma.end >= 0 && ma.end < g.length,
+                toks: toks(g).length, lastTok: toks(g)[toks(g).length - 1] });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 9. probe 2 - the containment law
+// A stop sequence that CONTAINS another member of the set can never fire: the shorter one always
+// completes at a strictly earlier index. Structural, parameter-free, then measured anyway.
+function occurrences(hay, needle){
+  var out = [], from = 0;
+  while (true){ var at = hay.indexOf(needle, from); if (at < 0) break; out.push(at); from = at + 1; }
+  return out;
+}
+function deadIn(S){
+  var out = [];
+  for (var i = 0; i < S.length; i++){
+    var dead = false, tie = false, by = "";
+    for (var j = 0; j < S.length; j++){
+      if (i === j || !S[j] || S[j] === S[i]) continue;
+      var occ = occurrences(S[i], S[j]);
+      for (var k = 0; k < occ.length; k++){
+        if (occ[k] + S[j].length < S[i].length){ dead = true; if (!by) by = S[j]; }
+        else if (occ[k] + S[j].length === S[i].length && occ[k] > 0){ tie = true; if (!by) by = S[j]; }
+      }
+    }
+    out.push({ stop: S[i], dead: dead, tie: tie, by: by });
+  }
+  return out;
+}
+function antichain(S){
+  var d = deadIn(S), out = [];
+  for (var i = 0; i < S.length; i++) if (!d[i].dead) out.push(S[i]);
+  return out;
+}
+// Each set is measured on the format whose text actually contains its members, so a 0.00% is the
+// law and not an absence.
+var LAW_SETS = [
+  ['"\\n\\n"  and  "\\n"',        ["\n\n", "\n"],   "head"],
+  ['"###"  and  "#"',           ["###", "#"],     "head"],
+  ['"```"  and  "`"',           ["```", "`"],     "fence"],
+  ['\'"}\'  and  "}"',          ['"}', "}"],      "json"],
+  ['"</answer>"  and  ">"',     ["</answer>", ">"], "tag"],
+  ['"</answer>"  and  "\\n\\n"',  ["</answer>", "\n\n"], "tag"]
+];
+function containmentLaw(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  for (var s = 0; s < LAW_SETS.length; s++){
+    var S = LAW_SETS[s][1], fmt = LAW_SETS[s][2], hit = [], i, tot = 0;
+    for (i = 0; i < S.length; i++) hit.push(0);
+    for (var r = 0; r < NREC; r++)
+      for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], fmt, st), m = matchText(g, S, c.tie);
+        tot += w[st];
+        if (m.who >= 0) hit[m.who] += w[st];
+      }
+    var d = deadIn(S), dead = [], tie = [], fired = [];
+    for (i = 0; i < S.length; i++){ dead.push(d[i].dead); tie.push(d[i].tie); fired.push(hit[i] / tot); }
+    rows.push({ label: LAW_SETS[s][0], stops: S, fmt: fmt, dead: dead, tie: tie, fired: fired,
+                anti: antichain(S), by: d.map(function(x){ return x.by; }) });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 9b. the tie rule
+// Two stop sequences ending at the same index have to be resolved somehow, and which one wins is
+// not written down anywhere. It is one character of the delivered text, and one character is the
+// whole parse.
+var TIE_RULES = ["first", "shortest", "longest"];
+var TIE_SETS = [
+  ['\'"}\' and "}"',            ['"}', "}"],           "json"],
+  ['"</answer>" and ">"',       ["</answer>", ">"],    "tag"],
+  ['"\\n\\n" and "\\n"',          ["\n\n", "\n"],        "head"]
+];
+function tiePanel(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  for (var s = 0; s < TIE_SETS.length; s++){
+    var S = TIE_SETS[s][1], fmt = TIE_SETS[s][2], row = { label: TIE_SETS[s][0], stops: S, fmt: fmt, cols: {} };
+    for (var t = 0; t < TIE_RULES.length; t++){
+      var tie = TIE_RULES[t], ok = 0, lo = 0, sil = 0, tw = 0, cutPos = 0, winner = [];
+      for (var i = 0; i < S.length; i++) winner.push(0);
+      for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], fmt, st),
+            run = runCall(g, S, "text", tie, "exclude", "hold", capFor(g, c.capFrac)),
+            txt = run.fired ? run.text + S[run.who] : run.text,
+            vv = verdict(txt, fmt, RECORDS[r]);
+        tw += w[st];
+        cutPos += w[st] * (run.fired ? run.at + S[run.who].length : g.length);
+        if (run.who >= 0) winner[run.who] += w[st];
+        if (vv === "ok") ok += w[st]; else if (vv === "silent") sil += w[st]; else lo += w[st];
+      }
+      row.cols[tie] = { ok: ok / tw, silent: sil / tw, loud: lo / tw, cut: cutPos / tw,
+                        share: winner.map(function(x){ return x / tw; }) };
+    }
+    // and the comparison the table exists for: what does changing the rule actually move?
+    var endSame = 0, atSame = 0, whoSame = 0, vSame = 0, txtSame = 0, tw2 = 0;
+    for (var r2 = 0; r2 < NREC; r2++) for (var s2 = 0; s2 < NSTATE; s2++){
+      var g2 = stateText(RECORDS[r2], fmt, s2), cap2 = capFor(g2, c.capFrac), ends = [], ats = [], whos = [], vs = [], txs = [];
+      for (var t2 = 0; t2 < TIE_RULES.length; t2++){
+        var rn = runCall(g2, S, "text", TIE_RULES[t2], "exclude", "hold", cap2);
+        ends.push(rn.fired ? rn.at + S[rn.who].length : -1);
+        ats.push(rn.at); whos.push(rn.who); txs.push(rn.text);
+        vs.push(verdict(rn.fired ? rn.text + S[rn.who] : rn.text, fmt, RECORDS[r2]));
+      }
+      tw2 += w[s2];
+      if (ends[0] === ends[1] && ends[1] === ends[2]) endSame += w[s2];
+      if (ats[0] === ats[1] && ats[1] === ats[2]) atSame += w[s2];
+      if (whos[0] === whos[1] && whos[1] === whos[2]) whoSame += w[s2];
+      if (vs[0] === vs[1] && vs[1] === vs[2]) vSame += w[s2];
+      if (txs[0] === txs[1] && txs[1] === txs[2]) txtSame += w[s2];
+    }
+    row.endSame = endSame / tw2; row.atSame = atSame / tw2; row.whoSame = whoSame / tw2;
+    row.vSame = vSame / tw2; row.txtSame = txtSame / tw2;
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 10. the alignment sweep
+// Every format's own closing token against every generation, both matchers. The gap is the story,
+// and so is WHICH replies fall in it.
+function alignSweep(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  for (var f = 0; f < FORMATS.length; f++){
+    var fmt = FORMATS[f], S = STOPSETS.closer.of(fmt);
+    if (!S.length){ rows.push({ fmt: fmt, none: true }); continue; }
+    var tw = 0, txt = 0, ali = 0, miss = 0, aliEarly = 0, aliLate = 0, framedFire = 0, framedW = 0;
+    for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+      var g = stateText(RECORDS[r], fmt, st), pe = payloadEnd(RECORDS[r], fmt, st),
+          mt = matchText(g, S, c.tie), ma = matchAligned(g, S, c.tie);
+      tw += w[st];
+      if (mt.end >= 0) txt += w[st];
+      if (ma.end >= 0){
+        ali += w[st];
+        if (ma.end < pe) aliEarly += w[st];
+        if (ma.end > pe) aliLate += w[st];
+        if (RECORDS[r].framed) framedFire += w[st];
+      } else if (mt.end >= 0) miss += w[st];
+      if (RECORDS[r].framed) framedW += w[st];
+    }
+    rows.push({ fmt: fmt, stop: S[0], text: txt / tw, align: ali / tw, miss: miss / tw,
+                early: aliEarly / tw, late: aliLate / tw,
+                earlyShare: ali > 0 ? aliEarly / ali : 0, none: false });
+  }
+  return rows;
+}
+// three attempts to repair the alignment by editing the stop STRING, per format
+var FIX_VARIANTS = [["as written", ""], ["a newline in front", "pre"], ["a newline behind", "post"],
+                    ["both", "both"]];
+function fixStop(base, kind){
+  if (kind === "pre") return "\n" + base;
+  if (kind === "post") return base + "\n";
+  if (kind === "both") return "\n" + base + "\n";
+  return base;
+}
+function alignFix(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  for (var v = 0; v < FIX_VARIANTS.length; v++){
+    var row = { label: FIX_VARIANTS[v][0], cols: {} };
+    for (var f = 0; f < FORMATS.length; f++){
+      var fmt = FORMATS[f], base = CLOSER[fmt];
+      if (!base) continue;
+      var S = [fixStop(base, FIX_VARIANTS[v][1])], tw = 0, txt = 0, ali = 0, early = 0, ok = 0;
+      for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], fmt, st), pe = payloadEnd(RECORDS[r], fmt, st),
+            mt = matchText(g, S, c.tie);
+        tw += w[st];
+        if (mt.end >= 0){
+          txt += w[st];
+          if (mt.end < pe) early += w[st];
+        }
+        if (matchAligned(g, S, c.tie).end >= 0) ali += w[st];
+        var run = runCall(g, S, "text", c.tie, "exclude", "hold", capFor(g, c.capFrac));
+        if (verdict(run.fired ? run.text + S[run.who] : run.text, fmt, RECORDS[r]) === "ok") ok += w[st];
+      }
+      row.cols[fmt] = { stop: S[0], text: txt / tw, align: ali / tw, early: early / tw, ok: ok / tw };
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 11. streaming
+// Three emitters over the same stream with identical bills. The first cannot un-send; the second is
+// correct; the third is the second with one line missing.
+var STREAM_CASES = [
+  ["the closing token",            function(fmt){ return CLOSER[fmt] ? [CLOSER[fmt]] : []; }],
+  ["the closing token + newline",  function(fmt){ return CLOSER[fmt] ? [CLOSER[fmt] + "\n"] : []; }],
+  ['"\\n\\n"',                      function(){ return ["\n\n"]; }],
+  ['"\\n"',                         function(){ return ["\n"]; }],
+  ["four, spread to be safe",      function(fmt){ return STOPSETS.four.of(fmt); }]
+];
+function streamSweep(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  for (var k = 0; k < STREAM_CASES.length; k++){
+    var S = STREAM_CASES[k][1](c.fmt);
+    if (!S.length){ rows.push({ label: STREAM_CASES[k][0], none: true }); continue; }
+    var tw = 0, leakCh = 0, leakN = 0, mh = 0, sumH = 0, nT = 0, heldEver = 0,
+        withheldN = 0, withheldCh = 0, okF = 0, okN = 0, loudN = 0, silN = 0, fired = 0;
+    for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+      var g = stateText(RECORDS[r], c.fmt, st), cap = capFor(g, c.capFrac);
+      var a = runCall(g, S, "text", c.tie, "include", "delta", cap, false);
+      var b = runCall(g, S, "text", c.tie, "include", "hold", cap, true);
+      var d = runCall(g, S, "text", c.tie, "include", "noflush", cap, false);
+      tw += w[st];
+      leakCh += w[st] * a.leak;
+      if (a.leak > 0) leakN += w[st];
+      if (b.maxHold > mh) mh = b.maxHold;
+      sumH += w[st] * b.sumHold; nT += w[st] * b.billed;
+      if (b.sumHold > 0) heldEver += w[st];
+      if (b.fired) fired += w[st];
+      if (d.withheld > 0){ withheldN += w[st]; withheldCh += w[st] * d.withheld; }
+      if (verdict(b.text, c.fmt, RECORDS[r]) === "ok") okF += w[st];
+      var vd = verdict(d.text, c.fmt, RECORDS[r]);
+      if (vd === "ok") okN += w[st]; else if (vd === "loud") loudN += w[st]; else silN += w[st];
+    }
+    rows.push({ label: STREAM_CASES[k][0], stops: S, fired: fired / tw,
+                leakRate: leakN / tw, leakChars: leakN > 0 ? leakCh / leakN : 0,
+                maxHold: mh, holdPerTok: sumH / nT, heldEver: heldEver / tw,
+                withheldRate: withheldN / tw, withheldChars: withheldN > 0 ? withheldCh / withheldN : 0,
+                okFlush: okF / tw, okNoFlush: okN / tw, loudNoFlush: loudN / tw,
+                silentNoFlush: silN / tw, none: false });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 12. the convention table
+// The stop is the format's own closing token. Then which convention the API follows is not a
+// detail: one of them deletes the character the parser was waiting for.
+function conventionTable(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), rows = [];
+  var VARIANTS = ["exclude", "include", "repair"];
+  for (var f = 0; f < FORMATS.length; f++){
+    var fmt = FORMATS[f], S = STOPSETS.closer.of(fmt),
+        row = { fmt: fmt, stop: S.length ? S[0] : "", none: !S.length, cols: {} };
+    if (S.length) for (var v = 0; v < VARIANTS.length; v++){
+      var mode = VARIANTS[v], conv = mode === "include" ? "include" : "exclude",
+          ok = 0, sil = 0, lo = 0, tw = 0, early = 0;
+      for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], fmt, st), cap = capFor(g, c.capFrac),
+            run = runCall(g, S, "text", c.tie, conv, c.emit, cap),
+            txt = (mode === "repair" && run.fired) ? run.text + S[run.who] : run.text,
+            vv = verdict(txt, fmt, RECORDS[r]);
+        tw += w[st];
+        if (run.fired && run.at + S[run.who].length < payloadEnd(RECORDS[r], fmt, st)) early += w[st];
+        if (vv === "ok") ok += w[st]; else if (vv === "silent") sil += w[st]; else lo += w[st];
+      }
+      row.cols[mode] = { ok: ok / tw, silent: sil / tw, loud: lo / tw, early: early / tw };
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 13. the scoreboard
+var CONFIGS = [
+  { id: "none",     name: "no stop sequence, cut client-side",       mode: "none",    stops: "none",   emit: "hold",    conv: "exclude", paid: false },
+  { id: "closer",   name: "stop = closing token, excluded",          mode: "text",    stops: "closer", emit: "hold",    conv: "exclude", paid: true },
+  { id: "closerInc",name: "stop = closing token, included",          mode: "text",    stops: "closer", emit: "hold",    conv: "include", paid: true },
+  { id: "repair",   name: "stop = closing token, re-appended",       mode: "text",    stops: "closer", emit: "hold",    conv: "repair",  paid: true },
+  { id: "blank",    name: "stop = a blank line",                     mode: "text",    stops: "blank",  emit: "hold",    conv: "exclude", paid: true },
+  { id: "nl",       name: "stop = a single newline",                 mode: "text",    stops: "nl",     emit: "hold",    conv: "exclude", paid: true },
+  { id: "both",     name: "closing token AND \">\"",                 mode: "text",    stops: "both",   emit: "hold",    conv: "repair",  paid: true },
+  { id: "four",     name: "four stops, spread to be safe",           mode: "text",    stops: "four",   emit: "hold",    conv: "repair",  paid: true },
+  { id: "tokAlign", name: "closing token, matched on tokens",        mode: "aligned", stops: "closer", emit: "hold",    conv: "repair",  paid: true },
+  { id: "delta",    name: "closing token, emitter cannot un-send",   mode: "text",    stops: "closer", emit: "delta",   conv: "exclude", paid: true },
+  { id: "noflush",  name: "closing token, hold-back never flushed",  mode: "text",    stops: "closer", emit: "noflush", conv: "include", paid: true }
+];
+function runConfig(cf, c){
+  var S = STOPSETS[cf.stops].of(c.fmt), w = stateWeights(c.pre, c.run),
+      conv = cf.conv === "repair" ? "exclude" : cf.conv,
+      ok = 0, sil = 0, lo = 0, tw = 0, bill = 0, leak = 0, cut = 0, early = 0;
+  for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+    var g = stateText(RECORDS[r], c.fmt, st), cap = capFor(g, c.capFrac),
+        run = runCall(g, S, cf.mode, c.tie, conv, cf.emit, cap),
+        txt = (cf.conv === "repair" && run.fired) ? run.text + S[run.who] : run.text,
+        vv = verdict(txt, c.fmt, RECORDS[r]);
+    tw += w[st]; bill += w[st] * run.billed;
+    if (run.leak > 0) leak += w[st];
+    if (run.fired){
+      cut += w[st];
+      if (run.at + S[run.who].length < payloadEnd(RECORDS[r], c.fmt, st)) early += w[st];
+    }
+    if (vv === "ok") ok += w[st]; else if (vv === "silent") sil += w[st]; else lo += w[st];
+  }
+  ok /= tw; sil /= tw; lo /= tw; bill /= tw; leak /= tw; cut /= tw; early /= tw;
+  var delivered = ok + lo * ok, tokens = bill * (1 + lo);
+  return { id: cf.id, name: cf.name, stops: S, paid: cf.paid, ok: ok, silent: sil, loud: lo,
+           cut: cut, early: early, leak: leak, tokens: bill, delivered: delivered,
+           perCorrect: delivered > 0 ? tokens / delivered : Infinity, retry: bill * lo };
+}
+function scoreboard(cfg){
+  var c = withDefaults(cfg), rows = [];
+  for (var i = 0; i < CONFIGS.length; i++) rows.push(runConfig(CONFIGS[i], c));
+  return rows;
+}
+function byId(rows){
+  var m = {};
+  for (var i = 0; i < rows.length; i++) m[rows[i].id] = rows[i];
+  return m;
+}
+
+// ---------------------------------------------------------------- 14. the control's price
+// Cutting client-side cannot mis-fire and pays for every token written after the answer. So the
+// question is never "which is safer", it is what the safety costs at each run-on rate.
+function controlLadder(cfg){
+  var c = withDefaults(cfg), rows = [], runs = [0, 0.1, 0.25, 0.5, 0.75, 1];
+  for (var i = 0; i < runs.length; i++){
+    var cc = withDefaults({ pre: c.pre, run: runs[i], fmt: c.fmt, capFrac: c.capFrac, tie: c.tie }),
+        a = runConfig(CONFIGS[0], cc), b = runConfig(CONFIGS[1], cc), d = runConfig(CONFIGS[3], cc);
+    rows.push({ run: runs[i], noneTok: a.tokens, noneOk: a.ok, nonePer: a.perCorrect,
+                excTok: b.tokens, excOk: b.ok, excPer: b.perCorrect,
+                repTok: d.tokens, repOk: d.ok, repPer: d.perCorrect,
+                saved: a.tokens - d.tokens, savedPct: (a.tokens - d.tokens) / a.tokens });
+  }
+  return rows;
+}
+
+// ---------------------------------------------------------------- 15. all 16 subsets
+// The API gives four slots. Enumerate every subset of a realistic four: the cut is a minimum, so
+// the ladder can only go down, and subsets sharing an antichain have to be bit-identical.
+function subsetLadder(cfg){
+  var c = withDefaults(cfg), base = STOPSETS.four.of(c.fmt), rows = [];
+  for (var mask = 0; mask < 16; mask++){
+    var S = [], i;
+    for (i = 0; i < 4; i++) if (mask & (1 << i)) S.push(base[i]);
+    var A = antichain(S), cf = { id: "m" + mask, name: "", mode: "text", stops: "x", emit: "hold",
+                                conv: "repair", paid: true };
+    // inline run so the subset can be used directly
+    var w = stateWeights(c.pre, c.run), ok = 0, tw = 0, bill = 0, cut = 0, meanCut = 0;
+    for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+      var g = stateText(RECORDS[r], c.fmt, st), cap = capFor(g, c.capFrac),
+          run = runCall(g, S, S.length ? "text" : "none", c.tie, "exclude", "hold", cap),
+          txt = run.fired ? run.text + S[run.who] : run.text;
+      tw += w[st]; bill += w[st] * run.billed;
+      if (run.fired) cut += w[st];
+      meanCut += w[st] * (run.fired ? run.at + S[run.who].length : g.length);
+      if (verdict(txt, c.fmt, RECORDS[r]) === "ok") ok += w[st];
+    }
+    rows.push({ mask: mask, k: S.length, stops: S, anti: A, dead: S.length - A.length,
+                ok: ok / tw, tokens: bill / tw, cut: cut / tw, meanCut: meanCut / tw,
+                key: A.slice().sort().join("") });
+  }
+  var classes = {}, n = 0;
+  for (var j = 0; j < rows.length; j++){
+    var sig = rows[j].ok.toFixed(12) + "|" + rows[j].tokens.toFixed(12) + "|" + rows[j].meanCut.toFixed(9);
+    if (!classes[sig]){ classes[sig] = ++n; }
+    rows[j].cls = classes[sig];
+  }
+  return { rows: rows, classes: n, base: base };
+}
+
+// ---------------------------------------------------------------- 16. the cap
+// When nothing fires, the cap cuts at a TOKEN boundary, which is not a place your format has a
+// meaning. Whether that is loud or silent is a property of the format, not of the cap.
+function capSweep(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), fracs = [0.6, 0.75, 0.9, 1], rows = [];
+  for (var f = 0; f < FORMATS.length; f++){
+    var fmt = FORMATS[f], row = { fmt: fmt, cols: {} };
+    for (var q = 0; q < fracs.length; q++){
+      var ok = 0, sil = 0, lo = 0, tw = 0, cut = 0;
+      for (var r = 0; r < NREC; r++) for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], fmt, st), cap = Math.max(1, Math.round(nTok(g) * fracs[q])),
+            run = runCall(g, [], "none", c.tie, "exclude", "hold", cap),
+            vv = verdict(run.text, fmt, RECORDS[r]);
+        tw += w[st];
+        if (run.capped) cut += w[st];
+        if (vv === "ok") ok += w[st]; else if (vv === "silent") sil += w[st]; else lo += w[st];
+      }
+      row.cols[fracs[q]] = { ok: ok / tw, silent: sil / tw, loud: lo / tw, cut: cut / tw };
+    }
+    rows.push(row);
+  }
+  return { rows: rows, fracs: fracs };
+}
+
+// ---------------------------------------------------------------- 17. the data collision
+// A stop sequence is a string and a field value is a string. Split the traffic by whether the
+// record contains the framing at all: the two halves are different products.
+function collisionSplit(cfg){
+  var c = withDefaults(cfg), w = stateWeights(c.pre, c.run), out = { rows: [] };
+  var S = STOPSETS[c.stops].of(c.fmt), groups = [["no framing in the data", false], ["framing in the data", true]];
+  for (var gi = 0; gi < groups.length; gi++){
+    var ok = 0, sil = 0, lo = 0, tw = 0, early = 0, n = 0;
+    for (var r = 0; r < NREC; r++){
+      if (RECORDS[r].framed !== groups[gi][1]) continue;
+      n++;
+      for (var st = 0; st < NSTATE; st++){
+        var g = stateText(RECORDS[r], c.fmt, st), cap = capFor(g, c.capFrac),
+            run = runCall(g, S, "text", c.tie, "exclude", c.emit, cap),
+            txt = run.fired ? run.text + S[run.who] : run.text,
+            vv = verdict(txt, c.fmt, RECORDS[r]);
+        tw += w[st];
+        if (run.fired && run.at + S[run.who].length < payloadEnd(RECORDS[r], c.fmt, st)) early += w[st];
+        if (vv === "ok") ok += w[st]; else if (vv === "silent") sil += w[st]; else lo += w[st];
+      }
+    }
+    out.rows.push({ label: groups[gi][0], n: n, ok: ok / tw, silent: sil / tw, loud: lo / tw,
+                    early: early / tw });
+  }
+  // and the census, per stop string, over the 7 note values
+  out.census = [];
+  var probes = ["</answer>", "}", "\n\n", "\n", "```", ">"];
+  for (var p = 0; p < probes.length; p++){
+    var hits = 0;
+    for (var i = 0; i < NOTES.length; i++) if (NOTES[i].indexOf(probes[p]) >= 0) hits++;
+    out.census.push({ stop: probes[p], notes: hits, of: NOTES.length, rate: hits / NOTES.length });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 18. the format's own floor
+// Before any stop sequence exists, some records make their own rendering ambiguous: a note holding
+// "</answer>" in a tag format, a note holding a newline in a line format. That is Day 70's territory
+// and it is a CEILING on every column here, so it is measured and subtracted rather than blamed on
+// the cut. An in-page assertion of mine claimed this floor was zero and failed on exactly these
+// records; the predicate replaced the claim.
+function formatFloor(){
+  var out = {};
+  for (var f = 0; f < FORMATS.length; f++){
+    var fmt = FORMATS[f], bad = 0;
+    for (var r = 0; r < NREC; r++)
+      if (verdict(render(RECORDS[r], fmt), fmt, RECORDS[r]) !== "ok") bad++;
+    out[fmt] = bad / NREC;
+  }
+  return out;
+}
+
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- view
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function lit(s){
+  if (s === "") return '<span class="dim">&mdash;</span>';
+  return '<code class="tok">' + esc(JSON.stringify(s).slice(1, -1)) + "</code>";
+}
+function lits(a){
+  var out = [];
+  for (var i = 0; i < a.length; i++) out.push(lit(a[i]));
+  return out.length ? out.join(" ") : '<span class="dim">none</span>';
+}
+function pc(x){ return (100 * x).toFixed(2) + "%"; }
+function n1(x){ return x === Infinity ? "&infin;" : x.toFixed(1); }
+function n2(x){ return x.toFixed(2); }
+function n0(x){ return x.toFixed(0); }
+function cm(x){ return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function G(t){ return '<span class="ok">' + t + "</span>"; }
+function B(t){ return '<span class="bad">' + t + "</span>"; }
+function W(t){ return '<span class="warn">' + t + "</span>"; }
+function D(t){ return '<span class="dim">' + t + "</span>"; }
+// a delivery percentage: green when high, red at zero
+function dl(x){ return x < 1e-12 ? B(pc(x)) : (x > 0.999 ? G(pc(x)) : (x < 0.5 ? W(pc(x)) : pc(x))); }
+// a damage percentage: green at zero, red when high
+function dm(x){ return x < 1e-12 ? G(pc(x)) : (x > 0.5 ? B(pc(x)) : W(pc(x))); }
+function yn(b){ return b ? B("yes") : G("no"); }
+function head(cells){
+  var s = "<tr>";
+  for (var i = 0; i < cells.length; i++) s += "<th>" + cells[i] + "</th>";
+  return s + "</tr>";
+}
+function row(cells, klass){
+  var s = "<tr" + (klass ? ' class="' + klass + '"' : "") + ">";
+  for (var i = 0; i < cells.length; i++) s += "<td>" + cells[i] + "</td>";
+  return s + "</tr>";
+}
+
+var FMT_SHORT = { tag: "tag output", json: "JSON output", fence: "a fenced block",
+                  head: "### headings", line: "one field per line" };
+
+function cfgUI(){
+  return { run: (+$("sRun").value) / 100, pre: (+$("sPre").value) / 100,
+           capFrac: (+$("sCap").value) / 100, fmt: $("selFmt").value,
+           stops: $("selStops").value, conv: $("selConv").value, tie: $("selTie").value };
+}
+
+function draw(){
+  var c = withDefaults(cfgUI());
+  var FL = formatFloor();
+  $("vRun").textContent = Math.round(100 * c.run) + "%";
+  $("vPre").textContent = Math.round(100 * c.pre) + "%";
+  $("vCap").textContent = c.capFrac > 0 ? Math.round(100 * c.capFrac) + "%" : "off";
+
+  // ---- probe 1
+  var P = alignProbe();
+  var h = head(["the reply ends &hellip;", "cut by text", "cut by tokens", "fires?",
+                "token holding the final &gt;", "billed"]);
+  for (var i = 0; i < P.rows.length; i++){
+    var r = P.rows[i];
+    h += row([r.label, String(r.textEnd), r.alignEnd < 0 ? B("no match") : String(r.alignEnd),
+              r.fires ? G("yes") : B("no"), lit(r.lastTok), r.billed + " / " + r.wrote],
+             r.fires ? "hi" : "mis");
+  }
+  $("p1Tbl").innerHTML = h;
+  $("p1Note").innerHTML =
+    "The text matcher finds the stop at character <b>" + P.rows[0].textEnd +
+    "</b> in <b>all four</b> rows &mdash; the reply is byte-identical up to there. The token matcher " +
+    "finds it in <b>" + P.fired + " of " + P.n + "</b>, and the two it misses are the two where the " +
+    "model wrote a newline next, so " + lit(">\n") + " is one token carrying the last character of " +
+    "your stop sequence and the first character of its sign-off. " + B("Nothing about the stop " +
+    "sequence changed. A character after it did.");
+
+  // ---- probe 1b
+  var Q = braceProbe();
+  h = head(["a one-line reply", "text", "tokens", "fires?", "cuts early?", "last token"]);
+  for (i = 0; i < Q.length; i++){
+    h += row([lit(Q[i].text), String(Q[i].textEnd), Q[i].alignEnd < 0 ? B("no match") : String(Q[i].alignEnd),
+              Q[i].fires ? (Q[i].early ? B("yes") : G("yes")) : B("no"),
+              Q[i].early ? B("yes") : G("no"), lit(Q[i].lastTok)],
+             Q[i].early ? "mis" : (Q[i].fires ? "hi" : "amb"));
+  }
+  $("p1bTbl").innerHTML = h;
+  var qFire = 0, qEarly = 0;
+  for (i = 0; i < Q.length; i++){ if (Q[i].fires) qFire++; if (Q[i].early) qEarly++; }
+  $("p1bNote").innerHTML =
+    "A quote followed by a brace is one token, so on the shape JSON actually has &mdash; a string in " +
+    "the last field &mdash; the brace is <b>never on a boundary</b>. It becomes one the moment the " +
+    "value is a number, or a space slips in, or " + B("the brace is inside a string") + ", which is " +
+    "the single case where a match is the wrong answer. " + qFire + " of " + Q.length +
+    " fire and " + qEarly + " of those cut the record short.";
+
+  // ---- containment law
+  var L = containmentLaw(c);
+  h = head(["the set", "measured on", "dead by containment", "ties at the same index", "share of cuts won", "what is left"]);
+  for (i = 0; i < L.length; i++){
+    var s = L[i], dcells = [], tcells = [], fcells = [];
+    for (var j = 0; j < s.stops.length; j++){
+      dcells.push(lit(s.stops[j]) + " " + (s.dead[j] ? B("dead") : G("live")));
+      tcells.push(s.tie[j] ? W("yes") : D("no"));
+      fcells.push(s.fired[j] < 1e-12 ? B(pc(s.fired[j])) : pc(s.fired[j]));
+    }
+    h += row([s.label, FORMAT_LABEL[s.fmt], dcells.join("<br>"), tcells.join("<br>"),
+              fcells.join("<br>"), lits(s.anti)],
+             s.dead[0] || s.fired[0] < 1e-12 ? "mis" : "");
+  }
+  $("lawTbl").innerHTML = h;
+  var predZ = 0, measZ = 0, unpred = 0;
+  for (i = 0; i < L.length; i++) for (j = 0; j < L[i].stops.length; j++){
+    if (L[i].dead[j]) predZ++;
+    if (L[i].fired[j] < 1e-12){ measZ++; if (!L[i].dead[j]) unpred++; }
+  }
+  $("lawNote").innerHTML =
+    "Three of these sets contain a member that occurs strictly inside another, and those three fire " +
+    "at exactly " + B("0.00%") + " &mdash; provable from the two strings, no traffic needed. " +
+    "The containment test predicts <b>" + predZ + "</b> zeros; the measurement finds <b>" + measZ +
+    "</b>. " + B("So my predicate is incomplete, and the row it misses is the interesting one:") +
+    " " + lit("</answer>") + " beside " + lit(">") + " is not contained-dead &mdash; the " + lit(">") +
+    " is only a suffix, so they tie &mdash; and it still fires 0.00%, because the format's own " +
+    "<em>opening</em> tag " + lit("<answer>") + " carries a " + lit(">") + " at character eight. " +
+    "The reply is cut before it has said anything. The killing string is not even in the set twice.";
+
+  // ---- alignment sweep
+  var A = alignSweep(c);
+  h = head(["format", "closing token", "matched on text", "matched on tokens", "text finds it, tokens do not",
+            "cuts early", "cuts late", "share of token fires that are early"]);
+  for (i = 0; i < A.length; i++){
+    var a = A[i];
+    if (a.none){ h += row([FORMAT_LABEL[a.fmt], D("no closing token"), D("&mdash;"), D("&mdash;"),
+                           D("&mdash;"), D("&mdash;"), D("&mdash;"), D("&mdash;")], "amb"); continue; }
+    h += row([FORMAT_LABEL[a.fmt], lit(a.stop), pc(a.text), a.align < 1e-12 ? B(pc(a.align)) : pc(a.align),
+              dm(a.miss), dm(a.early), a.late < 1e-12 ? G(pc(a.late)) : W(pc(a.late)),
+              a.earlyShare > 0.999 ? B(pc(a.earlyShare)) : pc(a.earlyShare)],
+             a.earlyShare > 0.999 ? "mis" : "");
+  }
+  $("alignTbl").innerHTML = h;
+  var jr = null, fr = null;
+  for (i = 0; i < A.length; i++){ if (A[i].fmt === "json") jr = A[i]; if (A[i].fmt === "fence") fr = A[i]; }
+  $("alignNote").innerHTML =
+    "The JSON row is the whole page in one line: text " + pc(jr.text) + ", tokens " + B(pc(jr.align)) +
+    ", and " + B(pc(jr.earlyShare)) + " of the token-level fires are early cuts inside the model's " +
+    "own data. " + B("The matcher fires on exactly the replies it must not touch and misses every " +
+    "one it was installed for.") + " The fenced row fails a different way and fails completely: " +
+    "its closing token is also its <em>opening</em> token, so the stop matches at " + pc(fr.align) +
+    " and " + B(pc(fr.early)) + " of those are early &mdash; there is no configuration further down " +
+    "this page that repairs it, because the string is genuinely ambiguous.";
+
+  // ---- the repair attempts
+  var F = alignFix(c), fkeys = ["tag", "json", "fence"];
+  h = head(["the stop sequence", "format", "as written", "text", "tokens", "cuts early", "delivered"]);
+  var zeroAligned = 0, bestCell = null;
+  for (i = 0; i < F.length; i++){
+    for (j = 0; j < fkeys.length; j++){
+      var cc = F[i].cols[fkeys[j]];
+      if (i > 0 && cc.align < 1e-12) zeroAligned++;
+      if (!bestCell || cc.ok > bestCell.ok) bestCell = { ok: cc.ok, stop: cc.stop, fmt: fkeys[j], v: F[i].label, align: cc.align };
+      h += row([j === 0 ? F[i].label : "", FORMAT_LABEL[fkeys[j]], lit(cc.stop), pc(cc.text),
+                cc.align < 1e-12 ? B(pc(cc.align)) : pc(cc.align), dm(cc.early), dl(cc.ok)],
+               cc.ok > 0.999 ? "hi" : (cc.align < 1e-12 && i > 0 ? "mis" : ""));
+    }
+  }
+  $("fixTbl").innerHTML = h;
+  $("fixNote").innerHTML =
+    B("The repair does not repair anything: " + zeroAligned + " of the 9 padded cells are at 0.00% " +
+      "aligned.") + " The mechanism is symmetric &mdash; whichever end you extend, the newline you " +
+    "add merges with the neighbour on that side, so " + lit("\n</answer>") + " glues backwards onto " +
+    "the previous line's " + lit(">") + " exactly as " + lit("</answer>") + " glued forwards onto the " +
+    "next line's. You cannot align a stop sequence by editing the stop sequence, because alignment " +
+    "is not a property of the string. " + G("And then the best number on the page is here anyway:") +
+    " " + lit(bestCell.stop) + " on " + FMT_SHORT[bestCell.fmt] + " delivers " + G(pc(bestCell.ok)) +
+    " while being " + pc(bestCell.align) + " aligned &mdash; it wins because prose never puts a " +
+    "newline directly after a brace, so the data collision is <em>unreachable</em> rather than rare. " +
+    "One character, no instruction tokens, and it changes which failures exist instead of how often " +
+    "they happen.";
+
+  // ---- conventions
+  var V = conventionTable(c);
+  h = head(["format", "stop", "excluded &mdash; delivered", "silent", "loud",
+            "included &mdash; delivered", "loud", "one-line repair &mdash; delivered", "loud"]);
+  for (i = 0; i < V.length; i++){
+    var v = V[i];
+    if (v.none){ h += row([FORMAT_LABEL[v.fmt], D("no closing token"), D("&mdash;"), D("&mdash;"), D("&mdash;"),
+                           D("&mdash;"), D("&mdash;"), D("&mdash;"), D("&mdash;")], "amb"); continue; }
+    h += row([FORMAT_LABEL[v.fmt], lit(v.stop),
+              dl(v.cols.exclude.ok), dm(v.cols.exclude.silent), dm(v.cols.exclude.loud),
+              dl(v.cols.include.ok), dm(v.cols.include.loud),
+              dl(v.cols.repair.ok), dm(v.cols.repair.loud)],
+             v.cols.exclude.ok < 1e-12 ? "mis" : "");
+  }
+  $("convTbl").innerHTML = h;
+  var nZero = 0, gain = 0, nTerm = 0;
+  for (i = 0; i < V.length; i++) if (!V[i].none){
+    nTerm++;
+    if (V[i].cols.exclude.ok < 1e-12) nZero++;
+    gain = Math.max(gain, V[i].cols.repair.ok - V[i].cols.exclude.ok);
+  }
+  $("convNote").innerHTML =
+    B("The advice every guide gives delivers 0.00% on " + nZero + " of the " + nTerm +
+      " terminated formats.") + " Not because the stop misfired &mdash; it fired perfectly, on " +
+    "100% of calls, at the right character &mdash; but because the convention hands back the text " +
+    "<em>up to</em> the match, and the match was the one character the parser was waiting for. " +
+    G("The response already tells you which stop sequence matched, so the fix is to concatenate it " +
+      "back: zero tokens, one line, worth " + (100 * gain).toFixed(2) + " points.") +
+    " The failure is at least 100% <em>loud</em>, which is the only reason this is an embarrassing " +
+    "afternoon rather than a data-loss incident.";
+
+  // ---- scoreboard
+  var M = scoreboard(c), by = byId(M), ctlOk = by.none.ok, worse = 0, better = 0;
+  h = head(["the harness", "stop set", "delivered", "silent", "loud", "cut fired", "cut early",
+            "stop shown to the user", "tok", "per ok"]);
+  for (i = 0; i < M.length; i++){
+    var m = M[i], kl = m.id === "none" ? "amb" : (m.ok < 1e-12 ? "mis" : (m.ok >= ctlOk - 1e-12 ? "hi" : ""));
+    if (m.id !== "none"){ if (m.ok < ctlOk - 1e-12) worse++; if (m.ok > ctlOk + 1e-12) better++; }
+    h += row([(m.id === "none" ? '<span class="pill p-free">control</span> ' : "") + m.name,
+              lits(m.stops), dl(m.ok), dm(m.silent), dm(m.loud), pc(m.cut), dm(m.early),
+              dm(m.leak), n1(m.tokens), m.perCorrect === Infinity ? B("&infin;") : n1(m.perCorrect)], kl);
+  }
+  $("mainTbl").innerHTML = h;
+  $("mainNote").innerHTML =
+    "Read the control row first and then count: <b>" + worse + " of the " + (M.length - 1) +
+    "</b> ways to configure the feature deliver <em>less</em> than not using it, and <b>" + better +
+    "</b> deliver more. " + B("The cheapest row on the board is also the emptiest") +
+    " &mdash; a single newline as a stop bills " + n1(by.nl.tokens) + " tokens against the control's " +
+    n1(by.none.tokens) + ", a " + (100 * (1 - by.nl.tokens / by.none.tokens)).toFixed(1) +
+    "% saving, and delivers " + B(pc(by.nl.ok)) + " &mdash; so a cost dashboard would show it as the " +
+    "winning change. " + W("And the two broken rows at the bottom score identically to the correct " +
+    "one:") + " an emitter that cannot un-send leaks the stop to the user on " + B(pc(by.delta.leak)) +
+    " of calls and <em>thereby</em> puts back what the exclude convention removed, so it parses " +
+    pc(by.delta.ok) + " where the correct emitter parses " + B(pc(by.closer.ok)) +
+    ". Two defects, opposite signs, one clean-looking log.";
+
+  // ---- control ladder
+  var CL = controlLadder(c);
+  h = head(["run-on rate", "no stop &mdash; tok", "delivered", "per ok",
+            "closing token &mdash; tok", "delivered", "repaired &mdash; tok", "delivered", "tokens saved"]);
+  for (i = 0; i < CL.length; i++){
+    var q = CL[i];
+    h += row([pc(q.run), n1(q.noneTok), dl(q.noneOk), n1(q.nonePer), n1(q.excTok), dl(q.excOk),
+              n1(q.repTok), dl(q.repOk), pc(q.savedPct)], i === 2 ? "hi" : "");
+  }
+  $("ctlTbl").innerHTML = h;
+  $("ctlNote").innerHTML =
+    "This is what the feature is worth, and it is a real number: <b>" + pc(CL[0].savedPct) +
+    "</b> of the output bill when the model always stops on its own, rising to <b>" +
+    pc(CL[CL.length - 1].savedPct) + "</b> when it never does, at " + G("identical delivery") +
+    ". The correct configuration is strictly better than the control here. " +
+    B("The default one is strictly worse than both, at 0.00% for the same price.");
+
+  // ---- 16 subsets
+  var SB = subsetLadder(c),
+      hcfg = withDefaults({ pre: c.pre, run: c.run, fmt: "head", capFrac: c.capFrac, tie: c.tie }),
+      hNone = runConfig(CONFIGS[0], hcfg), hBlank = runConfig(CONFIGS[4], hcfg);
+  h = head(["k", "the set", "dead members", "behaviour class", "mean cut position", "tok", "delivered"]);
+  var zeros = 0;
+  for (i = 0; i < SB.rows.length; i++){
+    var b = SB.rows[i];
+    if (b.ok < 1e-12) zeros++;
+    h += row([String(b.k), b.k ? lits(b.stops) : D("none &mdash; the control"),
+              b.dead ? B(String(b.dead)) : G("0"), "#" + b.cls, n2(b.meanCut), n1(b.tokens), dl(b.ok)],
+             b.ok < 1e-12 ? "mis" : (b.ok > 0.8 ? "hi" : ""));
+  }
+  $("subTbl").innerHTML = h;
+  $("subNote").innerHTML =
+    B(zeros + " of the 16") + " ways to fill four stop slots deliver nothing at all, and the 16 " +
+    "configurations collapse to <b>" + SB.classes + "</b> distinct behaviours &mdash; four of them " +
+    "bit-identical, because once " + lit("\n") + " is in the set nothing else in the set is ever " +
+    "consulted. The mean cut position is monotone non-increasing down every one of the 32 " +
+    "add-a-member edges, which is not a measurement but a property of a minimum. " +
+    W("Delivery is not monotone, though") + " &mdash; on an unterminated format adding a stop " +
+    "<em>raises</em> it, " + pc(hNone.ok) + " to " + G(pc(hBlank.ok)) + " with " +
+    pc(hNone.silent) + " of silent corruption falling to " + pc(hBlank.silent) +
+    ", because the run-on it cuts off was being absorbed into the last field. " +
+    "The formats that most need a stop sequence are the ones with no closing token to use as one.";
+
+  // ---- streaming
+  var ST = streamSweep(c);
+  h = head(["stop sequence", "fires", "leaked to the user", "chars leaked", "max held",
+            "chars held per token", "no flush &mdash; withheld at end", "chars", "delivered with flush", "without"]);
+  for (i = 0; i < ST.length; i++){
+    var t = ST[i];
+    if (t.none){ h += row([t.label, D("&mdash;"), D("&mdash;"), D("&mdash;"), D("&mdash;"), D("&mdash;"),
+                           D("&mdash;"), D("&mdash;"), D("&mdash;"), D("&mdash;")], "amb"); continue; }
+    h += row([lits(t.stops), pc(t.fired), dm(t.leakRate), n1(t.leakChars), String(t.maxHold),
+              t.holdPerTok.toFixed(3), dm(t.withheldRate), n1(t.withheldChars),
+              dl(t.okFlush), dl(t.okNoFlush)],
+             t.okFlush - t.okNoFlush > 0.01 ? "mis" : "");
+  }
+  $("strTbl").innerHTML = h;
+  var worstFlush = ST[0];
+  for (i = 0; i < ST.length; i++) if (!ST[i].none && ST[i].okFlush - ST[i].okNoFlush > worstFlush.okFlush - worstFlush.okNoFlush) worstFlush = ST[i];
+  $("strNote").innerHTML =
+    "The delta-forwarding loop is the one in every streaming example, and it puts the stop sequence " +
+    "on the user's screen. Hold-back fixes that and its price is delay, which is zero for a " +
+    "one-character stop &mdash; " + lit("\n") + " holds nothing, ever, because a string cannot be a " +
+    "proper prefix of itself. " + B("And then the fix has a failure the leak did not:") + " with " +
+    lits(worstFlush.stops) + " the buffered emitter is still holding " + n1(worstFlush.withheldChars) +
+    " characters on " + pc(worstFlush.withheldRate) + " of calls when the stream ends, and dropping " +
+    "them takes delivery from " + dl(worstFlush.okFlush) + " to " + dl(worstFlush.okNoFlush) +
+    ". Those are the calls where the model " + B("stopped on its own") + " &mdash; the well-behaved " +
+    "reply is the one that breaks, and every one of these rows bills the same.";
+
+  // ---- tie rules
+  var TP = tiePanel(c);
+  h = head(["the set", "on", "cut end identical", "cut start identical", "reported stop identical",
+            "delivered text identical", "verdict identical"]);
+  for (i = 0; i < TP.length; i++){
+    var tp = TP[i];
+    h += row([tp.label, FORMAT_LABEL[tp.fmt], pc(tp.endSame), tp.atSame < 0.999 ? B(pc(tp.atSame)) : G(pc(tp.atSame)),
+              tp.whoSame < 0.999 ? B(pc(tp.whoSame)) : G(pc(tp.whoSame)),
+              tp.txtSame < 0.999 ? B(pc(tp.txtSame)) : G(pc(tp.txtSame)),
+              tp.vSame > 0.999 ? G(pc(tp.vSame)) : B(pc(tp.vSame))],
+             tp.whoSame < 0.999 ? "mis" : "");
+  }
+  $("tieTbl").innerHTML = h;
+  var moved = TP[0];
+  for (i = 0; i < TP.length; i++) if (TP[i].whoSame < moved.whoSame) moved = TP[i];
+  $("tieNote").innerHTML =
+    "A tie is only reachable when one stop sequence is a proper <em>suffix</em> of another, which is " +
+    "one of these three sets. In that set the undocumented rule changes the reported stop and the " +
+    "delivered text on " + B(pc(1 - moved.whoSame)) + " of calls, by exactly one character, and " +
+    "changes the verdict on " + G("0.00%") + " of them &mdash; both spellings were already broken. " +
+    "So the rule is irrelevant to the parse and decisive for any code that branches on <em>which</em> " +
+    "stop matched.";
+
+  // ---- collision + census
+  var CS2 = collisionSplit(c);
+  h = head(["the traffic", "records", "delivered", "silent", "loud", "cut before the answer ended"]);
+  for (i = 0; i < CS2.rows.length; i++){
+    var g2 = CS2.rows[i];
+    h += row([g2.label, cm(g2.n), dl(g2.ok), dm(g2.silent), dm(g2.loud), dm(g2.early)],
+             g2.early > 0 ? "mis" : "hi");
+  }
+  $("colTbl").innerHTML = h;
+  h = head(["candidate stop", "notes containing it", "share of records"]);
+  for (i = 0; i < CS2.census.length; i++){
+    var ce = CS2.census[i];
+    h += row([lit(ce.stop), ce.notes + " of " + ce.of, ce.rate < 1e-12 ? G(pc(ce.rate)) : W(pc(ce.rate))]);
+  }
+  $("cenTbl").innerHTML = h;
+  $("colNote").innerHTML =
+    "The framed half is where every early cut lives, and the split is a census rather than a " +
+    "behaviour: five of the six candidate stop sequences appear in exactly one of the seven note " +
+    "values. " + W("That is the number to measure on your own field values before choosing a stop " +
+    "sequence") + " &mdash; and it is the argument for " + lit("}\n") + " over " + lit("}") +
+    ", which does not lower the collision rate but removes the collision. " +
+    B("And part of this is not the stop sequence's fault at all:") + " " + pc(FL.tag) +
+    " of tag records and " + pc(FL.line) + " of line records are unparseable when rendered " +
+    "<em>undamaged</em>, with no stop sequence configured, which is why the ceiling on this page is " +
+    pc(1 - FL[c.fmt]) + " rather than 100% &mdash; an in-page assertion of mine claimed that floor " +
+    "was zero and failed on exactly those records. JSON and the fenced block have escaping, so " +
+    "their floor is " + G(pc(FL.json)) + ".";
+
+  // ---- cap
+  var CP = capSweep(c);
+  h = "<tr><th>max_tokens as a fraction of what was written</th>";
+  for (i = 0; i < CP.fracs.length; i++) h += "<th colspan=3>" + pc(CP.fracs[i]) + "</th>";
+  h += "</tr><tr><th></th>";
+  for (i = 0; i < CP.fracs.length; i++) h += "<th>ok</th><th>silent</th><th>loud</th>";
+  h += "</tr>";
+  for (i = 0; i < CP.rows.length; i++){
+    var cp = CP.rows[i], cells = ["<b>" + FORMAT_LABEL[cp.fmt] + "</b>"];
+    for (j = 0; j < CP.fracs.length; j++){
+      var e = cp.cols[CP.fracs[j]];
+      cells.push('<span class="' + (e.ok > 0.5 ? "cell-ok" : "") + '">' + pc(e.ok) + "</span>");
+      cells.push('<span class="' + (e.silent > 1e-12 ? "cell-sil" : "cell-ok") + '">' + pc(e.silent) + "</span>");
+      cells.push('<span class="' + (e.loud > 1e-12 ? "cell-loud" : "cell-ok") + '">' + pc(e.loud) + "</span>");
+    }
+    h += row(cells);
+  }
+  $("capTbl").innerHTML = h;
+  var maxSil = 0, termSil = 0;
+  for (i = 0; i < CP.rows.length; i++) for (j = 0; j < CP.fracs.length; j++){
+    var sv = CP.rows[i].cols[CP.fracs[j]].silent;
+    if (sv > maxSil) maxSil = sv;
+    if (CLOSER[CP.rows[i].fmt]) termSil = Math.max(termSil, sv);
+  }
+  $("capNote").innerHTML =
+    "Truncation is " + G(pc(termSil)) + " silent in all three formats with a closing token and up to " +
+    B(pc(maxSil)) + " silent in the two without one &mdash; the same theorem the convention panel " +
+    "runs into, arrived at from the opposite direction, because a cap cuts at a token boundary and a " +
+    "token boundary is not a place your format means anything. " + W("The columns are not monotone in " +
+    "the fraction") + " and that is arithmetic rather than noise: whether a cap lands before or after " +
+    "the payload ends depends on how long the run-on was, so a tighter cap can be luckier than a " +
+    "looser one.";
+
+  var bundle = { P: P, Q: Q, L: L, A: A, F: F, V: V, M: M, by: by, CL: CL, SB: SB, ST: ST,
+                 TP: TP, CS: CS2, CP: CP };
+  // let the tables paint before the assertion sweep takes the main thread
+  setTimeout(function(){ selftest(c, bundle); }, 0);
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selftest(c, R){
+  var pass = 0, fail = 0, lines = [], i, j, k, f, r, st;
+  function ok(cond, label){ if (cond) pass++; else { fail++; if (fail <= 25) lines.push("  FAIL  " + label); } }
+
+  // 1. the parameter-free probes
+  {
+    ok(R.P.rows.length === 4, "probe 1 lost a row");
+    var e0 = R.P.rows[0].textEnd;
+    for (i = 0; i < R.P.rows.length; i++) ok(R.P.rows[i].textEnd === e0, "the text cut moved between probe-1 rows");
+    ok(R.P.fired === 2, "probe 1 fired " + R.P.fired + " of 4, not 2");
+    ok(R.P.rows[0].fires && R.P.rows[1].fires, "the two rows that should fire do not");
+    ok(!R.P.rows[2].fires && !R.P.rows[3].fires, "the two rows that should miss do not");
+    ok(R.P.rows[2].lastTok === ">\n" && R.P.rows[0].lastTok === ">", "the straddling token is not the cause");
+    // and the alignment claim, from first principles rather than from the matcher
+    for (i = 0; i < R.P.rows.length; i++){
+      var g = R.P.body + R.P.rows[i].suffix, at = g.indexOf("</answer>");
+      var aligned = isBoundary(g, at) && isBoundary(g, at + 9);
+      ok(aligned === R.P.rows[i].fires, "probe-1 row " + i + " disagrees with the boundary test");
+    }
+    ok(R.Q.length === 4, "probe 1b lost a row");
+    ok(!R.Q[0].fires, "the string-valued brace aligned");
+    ok(R.Q[1].fires && !R.Q[1].early, "the number-valued brace did not align cleanly");
+    ok(R.Q[3].fires && R.Q[3].early, "the in-data brace did not cut early");
+    ok(R.Q[0].lastTok === '"}', "the quote-brace merge is gone");
+  }
+
+  // 2. the containment law, and the honesty of its predicate
+  {
+    for (i = 0; i < R.L.length; i++) for (j = 0; j < R.L[i].stops.length; j++)
+      ok(!R.L[i].dead[j] || R.L[i].fired[j] < 1e-12,
+         "a member predicted dead fired " + pc(R.L[i].fired[j]) + " in set " + i);
+    // the predicate re-derived from scratch: s is dead iff some other member ends strictly earlier
+    for (i = 0; i < R.L.length; i++){
+      var S = R.L[i].stops, d2 = [];
+      for (j = 0; j < S.length; j++){
+        var dead = false;
+        for (k = 0; k < S.length; k++){
+          if (k === j) continue;
+          var p = S[j].indexOf(S[k]);
+          while (p >= 0){
+            if (p + S[k].length < S[j].length) dead = true;
+            p = S[j].indexOf(S[k], p + 1);
+          }
+        }
+        d2.push(dead);
+        ok(d2[j] === R.L[i].dead[j], "the containment predicate disagrees with a rewrite on set " + i);
+      }
+      var an = antichain(S), live = 0;
+      for (j = 0; j < S.length; j++) if (!d2[j]) live++;
+      ok(an.length === live, "the antichain is the wrong size on set " + i);
+    }
+    // the shares sum to at most 1, and to exactly the fire rate
+    for (i = 0; i < R.L.length; i++){
+      var sum = 0;
+      for (j = 0; j < R.L[i].fired.length; j++) sum += R.L[i].fired[j];
+      ok(sum <= 1 + 1e-9, "the shares of set " + i + " sum above 1");
+    }
+  }
+
+  // 3. the prefix lemma - the closed-form loop is only legal if boundaries never move
+  {
+    var checked = 0, bad = 0;
+    for (f = 0; f < FORMATS.length; f++) for (r = 0; r < NREC; r += 7) for (st = 0; st < NSTATE; st++){
+      var g = stateText(RECORDS[r], FORMATS[f], st), t = toks(g), cum = cumLens(g);
+      for (i = 1; i <= t.length; i++){
+        var pre = g.substr(0, cum[i]), tp = toks(pre);
+        checked++;
+        if (tp.length !== i){ bad++; ok(false, "the prefix at token " + i + " retokenized to " + tp.length); }
+        else {
+          var same = true;
+          for (j = 0; j < i; j++) if (tp[j] !== t[j]) same = false;
+          ok(same, "the prefix at token " + i + " differs from the prefix of the tokenization");
+          if (!same) bad++;
+        }
+      }
+      // and the tokenization is lossless
+      ok(t.join("") === g, "the tokenizer is not lossless");
+    }
+    lines.push("  prefix lemma      : " + cm(checked) + " prefixes retokenized, " + bad + " disagreements");
+  }
+
+  // 4. matchText and holdLen against brute force
+  {
+    var SETS = [["</answer>"], ["}"], ["\n\n"], ["\n"], ["```"], ['"}', "}"], ["</answer>", ">"],
+                ["</answer>", "\n\n", "\n", ">"]], cases = 0;
+    for (f = 0; f < FORMATS.length; f++) for (r = 0; r < NREC; r += 23) for (st = 0; st < NSTATE; st += 3){
+      var g2 = stateText(RECORDS[r], FORMATS[f], st);
+      for (k = 0; k < SETS.length; k++){
+        var S2 = SETS[k], m = matchText(g2, S2, "first");
+        // brute force: scan every index, keep the earliest end
+        var bEnd = -1, bAt = -1, bWho = -1;
+        for (i = 0; i <= g2.length; i++) for (j = 0; j < S2.length; j++)
+          if (g2.substr(i, S2[j].length) === S2[j]){
+            var en = i + S2[j].length;
+            if (bEnd < 0 || en < bEnd || (en === bEnd && j < bWho)){ bEnd = en; bAt = i; bWho = j; }
+          }
+        cases++;
+        ok(m.end === bEnd, "matchText end " + m.end + " vs brute force " + bEnd);
+        ok(m.at === bAt, "matchText start " + m.at + " vs brute force " + bAt);
+        // holdLen against a full scan of suffix lengths
+        var hb = 0;
+        for (i = 1; i < g2.length; i++) for (j = 0; j < S2.length; j++)
+          if (i < S2[j].length && g2.substr(g2.length - i) === S2[j].substr(0, i) && i > hb) hb = i;
+        ok(holdLen(g2, S2) === hb, "holdLen " + holdLen(g2, S2) + " vs brute force " + hb);
+      }
+    }
+    lines.push("  matchers          : " + cm(cases) + " (generation, stop set) pairs vs a full index scan, 0 disagreements");
+  }
+
+  // 5. the closed-form harness against a character-by-character reference
+  {
+    function runSlow(g, S, mode, tie, conv, emit, cap){
+      var t = toks(g), acc = "", seen = "", fired = false, who = -1, at = -1, billed = 0, leak = 0;
+      for (var i = 0; i < t.length; i++){
+        if (cap > 0 && billed >= cap) break;
+        acc += t[i]; billed++;
+        var m = matchWith(acc, S, mode, tie);
+        if (m.end >= 0){
+          fired = true; who = m.who; at = m.at;
+          if (emit === "delta"){ seen = acc; leak = acc.length - m.at; }
+          else seen = acc.substr(0, conv === "include" ? m.end : m.at);
+          break;
+        }
+        seen = acc;
+      }
+      if (!fired){
+        if (emit === "noflush") seen = acc.substr(0, acc.length - holdLen(acc, S));
+        else seen = acc;
+      }
+      return { text: seen, billed: billed, fired: fired, who: who, at: at, leak: leak };
+    }
+    var n = 0, MODES = ["text", "aligned"], EMITS = ["hold", "delta", "noflush"];
+    for (f = 0; f < FORMATS.length; f++) for (r = 0; r < NREC; r += 29) for (st = 0; st < NSTATE; st++){
+      var g3 = stateText(RECORDS[r], FORMATS[f], st), S3 = STOPSETS.four.of(FORMATS[f]);
+      for (i = 0; i < MODES.length; i++) for (j = 0; j < EMITS.length; j++){
+        var cap = i === 0 && j === 0 ? Math.round(nTok(g3) * 0.8) : 0;
+        var fastR = runCall(g3, S3, MODES[i], "first", "exclude", EMITS[j], cap, false),
+            slowR = runSlow(g3, S3, MODES[i], "first", "exclude", EMITS[j], cap);
+        n++;
+        ok(fastR.text === slowR.text, "the closed-form text differs from the slow reference");
+        ok(fastR.billed === slowR.billed, "the closed-form bill differs: " + fastR.billed + " vs " + slowR.billed);
+        ok(fastR.fired === slowR.fired, "the closed-form fire flag differs");
+        ok(fastR.leak === slowR.leak, "the closed-form leak differs: " + fastR.leak + " vs " + slowR.leak);
+      }
+    }
+    lines.push("  harness           : " + cm(n) + " calls run twice - closed form and character by character - 0 differences");
+  }
+
+  // 6. exclude + the matched string is bit-identical to include
+  {
+    var n2c = 0, same = 0;
+    for (f = 0; f < FORMATS.length; f++){
+      var S4 = STOPSETS.closer.of(FORMATS[f]);
+      if (!S4.length) continue;
+      for (r = 0; r < NREC; r += 3) for (st = 0; st < NSTATE; st++){
+        var g4 = stateText(RECORDS[r], FORMATS[f], st),
+            a = runCall(g4, S4, "text", "first", "exclude", "hold", 0, false),
+            b = runCall(g4, S4, "text", "first", "include", "hold", 0, false);
+        n2c++;
+        var joined = a.fired ? a.text + S4[a.who] : a.text;
+        if (joined === b.text) same++;
+        ok(joined === b.text, "exclude plus the matched string is not include");
+      }
+    }
+    lines.push("  conventions       : " + cm(same) + "/" + cm(n2c) + " calls where exclude + the reported stop is byte-identical to include");
+  }
+
+  // 7. the parsers on UNDAMAGED input - and an assertion of mine that was wrong
+  // I asserted every undamaged rendering round-trips through its own parser. 128 of 2,240 do not,
+  // and the failures are not the parser's fault or the stop sequence's: they are the FORMAT's. A
+  // note containing "</answer>" makes the tag rendering ambiguous and a note containing a newline
+  // makes the line rendering ambiguous, before any stop sequence exists. So the assertion becomes
+  // the exact predicate, and the floor it names is subtracted from every claim on the page.
+  {
+    var n3 = 0, floor = {};
+    for (f = 0; f < FORMATS.length; f++){
+      var fm = FORMATS[f], bad3 = 0;
+      for (r = 0; r < NREC; r++){
+        var good3 = verdict(render(RECORDS[r], fm), fm, RECORDS[r]) === "ok";
+        // derived, not observed: the rendering is ambiguous exactly when a value carries the framing
+        var collides = fm === "tag" ? RECORDS[r].note.indexOf("</answer>") >= 0
+                     : fm === "line" ? RECORDS[r].note.indexOf(String.fromCharCode(10)) >= 0
+                     : false;
+        n3++;
+        ok(good3 === !collides,
+           "the " + fm + " round-trip disagrees with the collision predicate on record " + r);
+        if (!good3) bad3++;
+      }
+      floor[fm] = bad3 / NREC;
+    }
+    var fl2 = formatFloor();
+    for (f = 0; f < FORMATS.length; f++)
+      ok(Math.abs(fl2[FORMATS[f]] - floor[FORMATS[f]]) < 1e-12,
+         "the engine's formatFloor disagrees with the sweep on " + FORMATS[f]);
+    ok(Math.abs(floor.tag - 1 / NOTES.length) < 1e-12, "the tag format's floor is not exactly 1 of 7 notes");
+    ok(floor.json < 1e-12 && floor.fence < 1e-12 && floor.head < 1e-12,
+       "a format with escaping or keying has an ambiguity floor");
+    lines.push("  format floor      : " + cm(n3) + " undamaged renderings parsed; " +
+               pc(floor.tag) + " of tag and " + pc(floor.line) +
+               " of line records are ambiguous BEFORE any stop sequence -- my round-trip assertion" +
+               " was wrong, the predicate replaced it");
+  }
+
+  // 8. the convention result, and the repair
+  {
+    var zeroed = 0, terminated = 0;
+    for (i = 0; i < R.V.length; i++) if (!R.V[i].none){
+      terminated++;
+      if (R.V[i].cols.exclude.ok < 1e-12) zeroed++;
+      ok(R.V[i].cols.repair.ok >= R.V[i].cols.exclude.ok - 1e-12, "the repair lost ground on " + R.V[i].fmt);
+      ok(Math.abs(R.V[i].cols.repair.ok - R.V[i].cols.include.ok) < 1e-12,
+         "the repair does not reproduce the include convention on " + R.V[i].fmt);
+      var tot = R.V[i].cols.exclude.ok + R.V[i].cols.exclude.silent + R.V[i].cols.exclude.loud;
+      ok(Math.abs(tot - 1) < 1e-9, "the three verdicts do not sum to 1 on " + R.V[i].fmt);
+    }
+    ok(zeroed === terminated, "only " + zeroed + " of " + terminated + " terminated formats are zeroed by the exclude convention");
+    ok(R.V[2].cols.include.ok < 1e-12, "the fenced format survived its own opening token");
+  }
+
+  // 9. the alignment sweep
+  {
+    for (i = 0; i < R.A.length; i++) if (!R.A[i].none){
+      ok(R.A[i].align <= R.A[i].text + 1e-12, "the token matcher out-fired the text matcher on " + R.A[i].fmt);
+      ok(Math.abs(R.A[i].text - R.A[i].align - R.A[i].miss) < 1e-9, "the miss column is not the difference on " + R.A[i].fmt);
+      ok(R.A[i].earlyShare <= 1 + 1e-12, "an early share above 1 on " + R.A[i].fmt);
+    }
+    var jj = null;
+    for (i = 0; i < R.A.length; i++) if (R.A[i].fmt === "json") jj = R.A[i];
+    ok(jj.earlyShare > 0.999, "the json token matcher's fires are not all early: " + pc(jj.earlyShare));
+    ok(jj.align < 0.2, "the json brace aligns more often than expected: " + pc(jj.align));
+  }
+
+  // 10. the repair panel refutes itself
+  {
+    var z = 0, cells = 0;
+    for (i = 1; i < R.F.length; i++) for (j = 0; j < 3; j++){
+      var kk = ["tag", "json", "fence"][j], cell = R.F[i].cols[kk];
+      cells++;
+      if (cell.align < 1e-12) z++;
+      ok(cell.text >= cell.align - 1e-12, "a padded stop aligned more often than it matched");
+    }
+    ok(z >= 6, "only " + z + " of " + cells + " padded cells are unaligned, so the refutation is weaker than claimed");
+    // the row that wins does so at zero alignment - the point of the panel
+    var winner = null;
+    for (i = 0; i < R.F.length; i++) for (j = 0; j < 3; j++){
+      var c2 = R.F[i].cols[["tag", "json", "fence"][j]];
+      if (!winner || c2.ok > winner.ok) winner = c2;
+    }
+    ok(winner.ok > 0.99, "no configuration on the repair panel reaches 99%");
+    ok(winner.align < 1e-12, "the winning row won by aligning after all, which would refute the refutation");
+  }
+
+  // 11. the scoreboard and its bill
+  {
+    for (i = 0; i < R.M.length; i++){
+      var m2 = R.M[i], tot2 = m2.ok + m2.silent + m2.loud;
+      ok(Math.abs(tot2 - 1) < 1e-9, m2.id + " verdicts do not sum to 1");
+      ok(m2.tokens > 0, m2.id + " billed nothing");
+      ok(m2.early <= m2.cut + 1e-12, m2.id + " cut early more often than it cut at all");
+      ok(m2.id === "delta" || m2.leak < 1e-12, m2.id + " leaked without being the delta emitter");
+    }
+    ok(R.by.none.cut < 1e-12, "the control fired a stop sequence");
+    ok(R.by.none.leak < 1e-12, "the control leaked a stop sequence");
+    ok(R.by.delta.leak > 0.999, "the delta emitter did not leak on every call");
+    ok(Math.abs(R.by.delta.ok - R.by.closerInc.ok) < 1e-12,
+       "the leaking emitter does not reproduce the include convention");
+    ok(R.by.closer.ok < 1e-12, "the excluded closing token delivered something");
+    ok(R.by.repair.tokens <= R.by.none.tokens + 1e-9, "the stop sequence did not save output tokens");
+    ok(R.by.nl.tokens < R.by.none.tokens, "a single-newline stop did not bill less than the control");
+  }
+
+  // 12. the control ladder
+  {
+    for (i = 1; i < R.CL.length; i++){
+      ok(R.CL[i].noneTok >= R.CL[i - 1].noneTok - 1e-9, "the control got cheaper as the model got chattier");
+      ok(Math.abs(R.CL[i].repTok - R.CL[i - 1].repTok) < 1e-9, "the repaired bill moved with the run-on rate");
+      ok(R.CL[i].savedPct > R.CL[i - 1].savedPct, "the saving did not grow with the run-on rate");
+      ok(Math.abs(R.CL[i].repOk - R.CL[i - 1].repOk) < 1e-12, "the repaired delivery moved with the run-on rate");
+    }
+    ok(R.CL[0].savedPct > 0, "the stop sequence saved nothing even at a zero run-on rate");
+  }
+
+  // 13. all 16 subsets: the cut is a minimum
+  {
+    var rows = R.SB.rows, zeros2 = 0, byMask = {};
+    for (i = 0; i < rows.length; i++){ byMask[rows[i].mask] = rows[i]; if (rows[i].ok < 1e-12) zeros2++; }
+    var edges = 0, upDelivery = 0;
+    for (i = 0; i < 16; i++) for (j = 0; j < 4; j++){
+      if (i & (1 << j)) continue;
+      var a2 = byMask[i], b2 = byMask[i | (1 << j)];
+      edges++;
+      ok(b2.meanCut <= a2.meanCut + 1e-9, "adding a stop moved the cut later: mask " + i + " + bit " + j);
+      ok(b2.tokens <= a2.tokens + 1e-9, "adding a stop raised the bill");
+      ok(b2.cut >= a2.cut - 1e-9, "adding a stop lowered the fire rate");
+      if (b2.ok > a2.ok + 1e-12) upDelivery++;
+    }
+    ok(edges === 32, "the subset lattice has " + edges + " edges, not 32");
+    ok(R.SB.classes < 16, "all 16 subsets behave differently, so nothing collapsed");
+    ok(zeros2 >= 8, "only " + zeros2 + " of 16 subsets deliver nothing");
+    // subsets with the same antichain must be bit-identical
+    var groups = {};
+    for (i = 0; i < rows.length; i++){
+      var key = rows[i].key;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(rows[i]);
+    }
+    for (var gk in groups){
+      var grp = groups[gk];
+      for (i = 1; i < grp.length; i++){
+        ok(Math.abs(grp[i].ok - grp[0].ok) < 1e-12, "two subsets with the same antichain deliver differently");
+        ok(Math.abs(grp[i].meanCut - grp[0].meanCut) < 1e-9, "two subsets with the same antichain cut differently");
+        ok(Math.abs(grp[i].tokens - grp[0].tokens) < 1e-9, "two subsets with the same antichain bill differently");
+      }
+    }
+    R.upDelivery = upDelivery;
+    // the cut is monotone by construction; delivery is not, and the counter-example is measurable
+    var hc = withDefaults({ pre: c.pre, run: c.run, fmt: "head", capFrac: c.capFrac, tie: c.tie }),
+        hNone = runConfig(CONFIGS[0], hc), hBlank = runConfig(CONFIGS[4], hc);
+    ok(hBlank.ok > hNone.ok + 1e-9,
+       "adding a stop sequence to an unterminated format did not raise delivery: " +
+       pc(hNone.ok) + " -> " + pc(hBlank.ok));
+    ok(hBlank.silent < hNone.silent - 1e-9, "the stop did not convert silent corruption on an unterminated format");
+    lines.push("  subset lattice    : 16 subsets, " + R.SB.classes + " behaviours, " + edges +
+               " edges all monotone in the CUT, " + upDelivery +
+               " monotone in delivery at this format -- and on an unterminated one adding a stop RAISES it, " +
+               pc(hNone.ok) + " -> " + pc(hBlank.ok));
+  }
+
+  // 14. streaming
+  {
+    for (i = 0; i < R.ST.length; i++){
+      var t2 = R.ST[i];
+      if (t2.none) continue;
+      ok(t2.leakRate <= t2.fired + 1e-9, "the emitter leaked without a match");
+      ok(t2.okNoFlush <= t2.okFlush + 1e-12, "forgetting the flush improved delivery");
+      ok(t2.maxHold < Math.max.apply(null, t2.stops.map(function(s){ return s.length; })),
+         "the hold exceeded the longest stop sequence minus one");
+      ok(t2.holdPerTok >= 0, "a negative hold");
+    }
+    // a one-character stop can never be held: a string is not a proper prefix of itself
+    var one = null;
+    for (i = 0; i < R.ST.length; i++) if (!R.ST[i].none && R.ST[i].stops.length === 1 && R.ST[i].stops[0].length === 1) one = R.ST[i];
+    if (one) ok(one.maxHold === 0 && one.holdPerTok === 0, "a one-character stop held something back");
+    for (r = 0; r < NREC; r += 11) for (st = 0; st < NSTATE; st++)
+      ok(holdLen(stateText(RECORDS[r], c.fmt, st), ["\n"]) === 0, "a one-character stop produced a hold");
+  }
+
+  // 15. the tie rule
+  {
+    for (i = 0; i < R.TP.length; i++){
+      ok(R.TP[i].endSame > 0.999, "the tie rule moved the cut END, which it cannot");
+      ok(R.TP[i].vSame > 0.999, "the tie rule moved the verdict on set " + i);
+      ok(R.TP[i].atSame >= R.TP[i].whoSame - 1e-12, "the reported stop changed without the start moving");
+      var t3 = R.TP[i].cols;
+      for (var tk in t3){
+        var sh = 0;
+        for (j = 0; j < t3[tk].share.length; j++) sh += t3[tk].share[j];
+        ok(sh <= 1 + 1e-9, "the winner shares sum above 1");
+      }
+    }
+    var mv = 0;
+    for (i = 0; i < R.TP.length; i++) if (R.TP[i].whoSame < 0.999) mv++;
+    ok(mv === 1, mv + " of the three sets are tie-sensitive, not 1");
+  }
+
+  // 16. the cap
+  {
+    for (i = 0; i < R.CP.rows.length; i++){
+      var cpr = R.CP.rows[i], term = !!CLOSER[cpr.fmt];
+      for (j = 0; j < R.CP.fracs.length; j++){
+        var e2 = cpr.cols[R.CP.fracs[j]];
+        ok(Math.abs(e2.ok + e2.silent + e2.loud - 1) < 1e-9, "the cap verdicts do not sum to 1");
+        if (term) ok(e2.silent < 1e-12, "a terminated format was silently truncated: " + cpr.fmt + " at " + R.CP.fracs[j]);
+      }
+      if (!term) ok(cpr.cols[0.9].silent > 0.2, "an unterminated format was not silently truncated");
+    }
+  }
+
+  // 17. the collision census
+  {
+    var tot3 = 0;
+    for (i = 0; i < R.CS.rows.length; i++) tot3 += R.CS.rows[i].n;
+    ok(tot3 === NREC, "the collision split lost records: " + tot3 + " of " + NREC);
+    ok(R.CS.rows[0].early < 1e-12, "a record with no framing in it was cut early");
+    for (i = 0; i < R.CS.census.length; i++){
+      var ce2 = R.CS.census[i], cnt = 0;
+      for (j = 0; j < NOTES.length; j++) if (NOTES[j].indexOf(ce2.stop) >= 0) cnt++;
+      ok(cnt === ce2.notes, "the census miscounted " + ce2.stop);
+    }
+  }
+
+  var winner2 = null;
+  for (i = 0; i < R.F.length; i++) for (j = 0; j < 3; j++){
+    var w2 = R.F[i].cols[["tag", "json", "fence"][j]];
+    if (!winner2 || w2.ok > winner2.ok) winner2 = w2;
+  }
+  var jrow = null, unpred2 = 0, zeroSub = 0;
+  for (i = 0; i < R.A.length; i++) if (R.A[i].fmt === "json") jrow = R.A[i];
+  for (i = 0; i < R.L.length; i++) for (j = 0; j < R.L[i].stops.length; j++)
+    if (R.L[i].fired[j] < 1e-12 && !R.L[i].dead[j]) unpred2++;
+  for (i = 0; i < R.SB.rows.length; i++) if (R.SB.rows[i].ok < 1e-12) zeroSub++;
+  var flushRow = R.ST[1];
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + cm(pass) + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  probe 1 (free)    : one reply, one character AFTER the stop -- text cuts at " +
+      R.P.rows[0].textEnd + " in 4 of 4, tokens in " + R.P.fired + " of 4",
+    "  probe 1b (free)   : the json brace aligns only when the last value is NOT a string;" ,
+    "                      on live traffic it matches text " + pc(jrow.text) + " and tokens " +
+      pc(jrow.align) + ", and " + pc(jrow.earlyShare) + " of those fires cut inside the data",
+    "  law               : a stop containing another member fires 0.00% -- always, provably",
+    "  incomplete        : my containment predicate misses " + unpred2 +
+      " of the measured zeros (the opening tag, not the set)",
+    "  refuted           : 'set the stop to your closing token' delivers " + pc(R.V[0].cols.exclude.ok) +
+      " under the exclude convention",
+    "  free fix          : re-append the reported stop -- 0 tokens, " +
+      (100 * (R.V[0].cols.repair.ok - R.V[0].cols.exclude.ok)).toFixed(2) + " points",
+    "  refuted           : padding the stop string does NOT align it -- the winning row is " +
+      pc(winner2.align) + " aligned and delivers " + pc(winner2.ok),
+    "  minimum not vote  : " + zeroSub + " of 16 subsets deliver 0.00%; 16 collapse to " +
+      R.SB.classes + " behaviours",
+    "  two bugs cancel   : the leaking emitter parses " + pc(R.by.delta.ok) + " where the correct one parses " +
+      pc(R.by.closer.ok) + ", and shows the stop to the user on " + pc(R.by.delta.leak),
+    "  the fix's own bug : hold-back without a flush drops " + flushRow.withheldChars.toFixed(1) +
+      " chars on " + pc(flushRow.withheldRate) + " of calls -- " + pc(flushRow.okFlush) + " -> " +
+      pc(flushRow.okNoFlush),
+    "  null              : the undocumented tie rule moves the delivered text on " +
+      pc(1 - R.TP[0].txtSame) + " of calls and the verdict on " + pc(1 - R.TP[0].vSame),
+    "  control           : no stop sequence at all delivers " + pc(R.by.none.ok) + " for " +
+      pc(R.CL[0].savedPct) + " to " + pc(R.CL[R.CL.length - 1].savedPct) + " more output tokens"
+  ])).join("\n");
+  FIRST = false;
+}
+
+// ---------------------------------------------------------------- wiring
+(function(){
+  var f = $("selFmt"), s = $("selStops"), i;
+  for (i = 0; i < FORMATS.length; i++)
+    f.insertAdjacentHTML("beforeend", '<option value="' + FORMATS[i] + '"' +
+      (FORMATS[i] === DEFAULTS.fmt ? " selected" : "") + ">" + esc(FORMAT_LABEL[FORMATS[i]]) + "</option>");
+  for (i = 0; i < STOPSET_IDS.length; i++)
+    s.insertAdjacentHTML("beforeend", '<option value="' + STOPSET_IDS[i] + '"' +
+      (STOPSET_IDS[i] === DEFAULTS.stops ? " selected" : "") + ">" +
+      esc(STOPSETS[STOPSET_IDS[i]].label) + "</option>");
+})();
+["sRun", "sPre", "sCap"].forEach(function(id){ $(id).addEventListener("input", schedule); });
+["selFmt", "selStops", "selConv", "selTie"].forEach(function(id){ $(id).addEventListener("change", schedule); });
+var pending = null;
+function schedule(){ clearTimeout(pending); pending = setTimeout(draw, 180); }
+draw();
+</script>
+</body>
+</html>
