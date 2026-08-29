@@ -1,0 +1,2158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 75 &mdash; Edit formats</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .vio { color:#5b21b6; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#6d28d9; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre-wrap; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  code.seam { background:#ede9fe; color:#4c1d95; border-radius:4px; padding:1px 5px; font-size:11.5px;
+              font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:700; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f5f3ff; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#ede9fe; color:#4c1d95; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  .bar { display:inline-block; height:8px; background:#8b5cf6; border-radius:2px; vertical-align:middle; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw vio mb2">PROMPTFROMZERO &middot; DAY 75</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      &#9986;&#65039; Edit formats &mdash; when you ask a model to change a document rather than write
+      one, the prompt names a shape for the answer: the whole file back, a search block and its
+      replacement, a unified diff, a line range, an anchor line. That choice is usually argued about
+      as a token bill. It is not. It decides <em>which of your failures you are told about</em>.
+      Nothing here simulates language ability &mdash; nine documents are DATA, all
+      <strong>507</strong> edit sites are enumerated, and every reply is serialized by a real emitter,
+      put through a real string transformation and applied by a real applier, so an outcome is decided
+      by running the code and never by a formula. Exactly three numbers are declared, all three on
+      sliders and all three labelled where they are used.
+      The parameter-free centrepiece needs no dial at all: put three hunks in one call, enumerate
+      every one of the <strong>11,883</strong> disjoint triples in the corpus, and line ranges applied
+      top-down are wrong on <strong>93.14%</strong> of them and refuse
+      <strong>0.00%</strong> &mdash; while the same three edits as a unified diff are wrong on
+      <strong>0.00%</strong> and refuse <strong>95.16%</strong>. Same model, same call, same
+      information. The format did not change how often it went wrong; it changed whether anything
+      said so. &#128308; And the repair is free: sort the hunks by line number descending and line
+      ranges come back at exactly <strong>100.00%</strong>, which is an identity and not a
+      measurement.
+      &#128308; The defect is invisible to the test everyone writes: on all 507 <em>single</em>-hunk
+      edits with nothing else going wrong, line ranges score <strong>100.00%</strong> delivered and
+      <strong>0.00%</strong> silent. One hunk cannot express the bug.
+      &#128308; Two recommendations of mine died under measurement. The obvious cure for whitespace
+      drift &mdash; match the search block whitespace-insensitively &mdash; drops delivery from
+      <strong>97.11%</strong> to <strong>84.53%</strong>, because what it makes applicable is the
+      model's <em>re-indented copy</em>: in a search/replace block the surrounding lines are part of
+      the replacement, and in a diff they are only part of the locator, so a drifted context line can
+      land in your file in one format and can only fail to match in the other. And "add context lines
+      to be safe" has a ceiling that nobody quotes: search/replace peaks at
+      <strong>k&nbsp;=&nbsp;3</strong> &mdash; which happens to be the width every tool ships &mdash;
+      and loses <strong>2.56</strong> points by <strong>k&nbsp;=&nbsp;6</strong> while its bill rises
+      by half; a unified diff peaks at <strong>k&nbsp;=&nbsp;0</strong>, at <strong>99.83%</strong>
+      for <strong>57.4</strong> output tokens, so the best cell on the page is also the cheapest one
+      &mdash; a line number already locates the hunk and the removed lines already verify it, which
+      makes every context line one more line that can come back wrong and buys nothing.
+      &#128308; The whole-file rewrite, the format people fall back on when a patch misapplies, is the
+      worst row here at <strong>51.34%</strong> delivered &mdash; and it is the only row with
+      <strong>0.00%</strong> loud failures, which is the same fact twice: there is nothing to check it
+      against, so every defect it has is silent. Its damage is split on the page rather than lumped:
+      <strong>31.96%</strong> cosmetic against <strong>16.70%</strong> substantive.
+      &#128308; Two null results, located rather than claimed: fencing the reply is worth exactly
+      <strong>0.00</strong> on all ten harnesses, and patch fuzz is worth exactly <strong>0.00</strong>
+      on all 507 single-hunk edits at all six context widths &mdash; then worth
+      <strong>+69.38</strong> points on the triples, the same feature, unchanged. And the control:
+      confining a style change to one line instead of the whole re-typed block moves every one of the
+      ten rows by <strong>0.00</strong> and reorders nothing.
+      Free beats paid three times over: refusing a search block that matches twice costs
+      <strong>0</strong> output tokens and takes silent corruption to <strong>0.00%</strong>; a
+      size guard on a whole-file answer costs <strong>0</strong> output tokens and takes substantive
+      corruption from 16.70% to <strong>6.77%</strong> with <strong>0.00%</strong> false refusals; and
+      the unified diff beats search/replace on <em>both</em> axes at once &mdash; <strong>97.56%</strong>
+      against 97.11% for <strong>0.683&times;</strong> the bill.
+      <strong>223,377</strong> in-page assertions plus
+      <strong>1,167,169</strong> in an independent Node verifier that rebuilds the matcher as a
+      rolling-hash index, the diff applier as a state machine over a token stream, the uniqueness
+      ladder by suffix-array sorting and the triple enumeration as an independent reference splicer.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">&#128300; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">drift &mdash; one re-typed line comes back changed
+            <span id="vDrift" class="b" style="float:right">4%</span>
+            <input id="sDrift" type="range" min="0" max="20" step="1" value="4"></label>
+          <label class="sl">chatter &mdash; the reply is wrapped in prose
+            <span id="vChat" class="b" style="float:right">15%</span>
+            <input id="sChat" type="range" min="0" max="60" step="5" value="15"></label>
+          <label class="sl">elide &mdash; a whole-file answer skips an untouched run
+            <span id="vEl" class="b" style="float:right">10%</span>
+            <input id="sEl" type="range" min="0" max="50" step="5" value="10"></label>
+        </div>
+        <div class="grid3 mt3">
+          <label class="sl">context lines each side of the hunk
+            <span id="vK" class="b" style="float:right">3</span>
+            <input id="sK" type="range" min="0" max="6" step="1" value="3"></label>
+          <label class="sl">which edit to write out
+            <span id="vSite" class="b" style="float:right">11</span>
+            <input id="sSite" type="range" min="0" max="26" step="1" value="11"></label>
+          <div class="flex g4 wrapf" style="align-items:flex-end">
+            <label class="xs mut">family <select id="selFam"></select></label>
+            <label class="xs mut">document <select id="selDoc"></select></label>
+            <label class="xs mut">harness <select id="selPol"></select></label>
+          </div>
+        </div>
+        <p class="note mt3">
+          Three numbers on this page are <strong>declared</strong> and everything else is a count.
+          <strong>drift</strong> is the probability that a single line the model had to RE-TYPE comes
+          back changed in a way that changes no meaning &mdash; and it is per line, which is the whole
+          point: a format that asks for forty lines back is forty times as exposed as one that asks
+          for four, so the probability an emission is clean is
+          <code class="tok">(1&nbsp;&minus;&nbsp;drift)</code> raised to the number of lines it
+          re-typed. <strong>chatter</strong> is the probability the reply arrives wrapped in a
+          sentence, half of those inside a fence and half not. <strong>elide</strong> applies only to
+          a whole-document answer: the probability it replaces its longest untouched run with a
+          placeholder line. Set all three to zero and the page tells you what is structural rather
+          than accidental. Everything else &mdash; every match, every parse, every splice, every
+          token count, every one of the 507 sites and 11,883 triples &mdash; is real string code over
+          a finite enumerated set, so a <span class="ok">0.00%</span> here is a zero and not
+          "none seen".
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; THREE HUNKS IN ONE CALL &mdash; parameter-free</p>
+        <p class="sm mut2 mb3">Every disjoint triple of single-line edits in every document, applied
+          for real. The model read the ORIGINAL file, so its line numbers are the original's &mdash;
+          they are not wrong, they are stale, and only the harness knows in what order it applied
+          them. <span class="b">wrong</span> is a document that is now incorrect and said nothing;
+          <span class="b">refused</span> is the harness stopping. No slider reaches this panel.</p>
+        <div class="scroll"><table class="num" id="t3Tbl"></table></div>
+        <p class="sm mt3" id="t3Note"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 2 &middot; THE SENTENCE AFTER THE ANSWER &mdash; parameter-free</p>
+          <p class="sm mut2 mb3">The same edits with drift off, asked three ways: the payload alone,
+            the payload inside a fence, and the payload sitting in prose with no fence. The split is
+            not a matter of degree.</p>
+          <div class="scroll"><table class="num" id="chTbl"></table></div>
+          <p class="sm mt3" id="chNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">HOW MUCH CONTEXT A SEARCH BLOCK NEEDS</p>
+          <p class="sm mut2 mb3">Parameter-free. For every site, the smallest number of surrounding
+            lines that makes the search block occur exactly once in its document.
+            <span class="b">cum</span> is the share covered at that width or below.</p>
+          <div class="scroll"><table class="num" id="ladTbl"></table></div>
+          <p class="note mt2" id="ladNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE SCOREBOARD &mdash; ten harnesses on the same 507 edits</p>
+        <p class="sm mut2 mb3">Same documents, same edits, same arithmetic.
+          <span class="b">refused</span> is loud and retryable; <span class="b">cosmetic</span> is a
+          document that now differs only in whitespace; <span class="b">substantive</span> is one that
+          does not. <span class="b">delivered</span> and <span class="b">left wrong</span> allow one
+          retry. <span class="b">re-typed</span> is how many lines of existing document text the model
+          had to copy, which is what the drift dial is multiplied by.
+          <span class="pill p-free">harness</span> marks a check that costs
+          <strong>0</strong> extra output tokens because it runs on a reply you already have.</p>
+        <div class="scroll"><table class="num" id="polTbl"></table></div>
+        <p class="sm mt3" id="polNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE CONTEXT SWEEP &mdash; the advice that is backwards</p>
+        <p class="sm mut2 mb3">The same scoreboard at six context widths. Adding context buys
+          uniqueness, which runs out; it costs re-typed lines, which do not. Both curves are here with
+          the bill beside them, so the peak is visible rather than argued.</p>
+        <div class="scroll"><table class="num" id="swTbl"></table></div>
+        <p class="sm mt3" id="swNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">WHAT EACH KIND OF DRIFT DOES</p>
+          <p class="sm mut2 mb3">Parameter-free, at the current context width: the share still correct
+            when the re-typed text comes back with that one change and nothing else is wrong. Two of
+            the three are no-ops on a line with no leading or interior whitespace, so a column is
+            partly a fact about the corpus.</p>
+          <div class="scroll"><table class="num" id="drTbl"></table></div>
+          <p class="note mt2" id="drNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">AMBIGUITY AT THE WIDTH TOOLS SHIP</p>
+          <p class="sm mut2 mb3">How many sites still have a search block that occurs more than once,
+            and in how many of those the intended one is not the first hit &mdash; which is exactly
+            when "take the first match" writes to the wrong place and says nothing.</p>
+          <div class="scroll"><table class="num" id="ambTbl"></table></div>
+          <p class="note mt2" id="ambNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHAT IT COSTS, BY DOCUMENT LENGTH</p>
+        <p class="sm mut2 mb3">Parameter-free, clean emissions only. "Send a patch, not a file" is a
+          claim about one ratio, and the ratio has a crossover: a search/replace block writes the
+          neighbourhood <em>twice</em>, a diff writes it once, and a short file is shorter than either.
+          The prompt-side cost is identical for all five formats &mdash; the document has to be in the
+          prompt regardless &mdash; so only the reply is priced here.</p>
+        <div class="scroll"><table class="num" id="lenTbl"></table></div>
+        <p class="sm mt3" id="lenNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE CONTROL &mdash; is the drift model doing the work?</p>
+          <p class="sm mut2 mb3">Every row recomputed with a style change confined to a single line
+            instead of applied throughout the re-typed block. If the ranking moves, the page is
+            measuring its own assumption.</p>
+          <div class="scroll"><table class="num" id="scTbl"></table></div>
+          <p class="note mt2" id="scNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">WITH NOTHING GOING WRONG</p>
+          <p class="sm mut2 mb3">All three declared numbers at zero: a model that re-types perfectly,
+            never chatters and never elides. What is left is structural, and it is the honest place to
+            start reading the scoreboard.</p>
+          <div class="scroll"><table class="num" id="zeroTbl"></table></div>
+          <p class="note mt2" id="zeroNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">ONE EDIT, WRITTEN OUT</p>
+        <p class="sm mut2 mb3">The document, the site and the harness come from the controls above.
+          This is the whole mechanism with nothing aggregated: the reply the model would have to
+          write, what the harness does with it, and every emission state with the weight the declared
+          numbers give it.</p>
+        <pre id="traceOut">running&hellip;</pre>
+        <p class="sm mt3" id="traceNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">The format decides which failures you hear about</h2>
+      <p>Ask a model to change a document and you have to tell it what the answer should look like.
+        There are five shapes in common use. Send the whole file back. Send a block to find and a
+        block to put in its place. Send a unified diff. Send a line range and its replacement. Name an
+        anchor line and say what goes after it. Every discussion of this choice I have read is about
+        the token bill, and the token bill is the least interesting thing about it.</p>
+      <p>Here is what the page found instead. The five formats fail at broadly similar rates. What
+        differs, enormously, is what happens <em>when</em> they fail. A search block that matches
+        nothing is a refusal you can retry. A line range applied to a file that has already shifted is
+        a splice into the wrong place, and it returns success. The first is a bad afternoon. The
+        second is a corrupted file with a green tick next to it.</p>
+
+      <h3 class="lg b">The instruction is written against a file that no longer exists</h3>
+      <p>Put three changes in one reply, which is the ordinary case. The model saw one document and
+        numbered its hunks against that document. Your harness applies them one at a time. After the
+        first hunk, if it added or removed a line, every number below it is off by that much &mdash;
+        and the model was never wrong, it never saw the intermediate file, it could not have numbered
+        against it.</p>
+      <p>Apply them from the bottom up and the problem disappears completely, because an edit low in
+        the file cannot move anything above it. That is an identity, not a tuning: every one of the
+        11,883 triples the page enumerates comes back exactly right. Apply them top-down and 93.14% of
+        them come back wrong, and because a line range carries nothing to verify against, all 93.14%
+        come back wrong silently.</p>
+      <p>Give the same three edits to a unified diff applier and the wrongness rate is 0.00%. Not
+        because a diff is cleverer about ordering &mdash; it is applied in exactly the same broken
+        order &mdash; but because a diff carries the lines it expects to find and the applier compares
+        them before it writes. When the file has shifted, the comparison fails and the applier stops.
+        95.16% refused, 0.00% wrong. The information content of the two replies is identical. One of
+        them is checkable and the other is not.</p>
+
+      <h3 class="lg b">A search block is a query, and a query can have more than one answer</h3>
+      <p>Search/replace avoids line numbers entirely by naming the text instead. That works until the
+        text occurs twice, which in real documents it does constantly: two identical stanzas in a
+        config, two identical catch blocks, a repeated key in an env file. On this corpus 30.57% of
+        sites have a one-line search block that occurs more than once, and in 55.48% of those the
+        intended one is not the first hit.</p>
+      <p>The standard answer is context: include the surrounding lines until the block is unique. The
+        page enumerates the smallest context that works for each site, and it is small &mdash; 69.43%
+        of sites need none at all, 98.42% are covered by three lines each side, and the worst site in
+        the corpus needs five. So context does solve ambiguity, and it solves it quickly.</p>
+      <p>It is what context costs that nobody prices. Every context line is a line the model has to
+        re-type, and a re-typed line is a line that can come back with different indentation. Past the
+        point where uniqueness is already won, more context is pure exposure. Search/replace peaks at
+        three context lines &mdash; which is, by luck rather than by argument, the width the tools
+        ship &mdash; and falls away above it; a unified diff peaks at <em>zero</em>, because a diff
+        already carries a line number to locate the hunk and the removed lines to verify it, and the
+        context lines are doing no work at all that the removed lines were not already doing.</p>
+
+      <h3 class="lg b">Where the surrounding lines end up</h3>
+      <p>This is the mechanical difference between the two patch formats and it is worth stating on its
+        own. In a unified diff the context lines are input to the applier: it reads them, checks them
+        and throws them away. In a search/replace block the surrounding lines appear twice &mdash;
+        once in the search half and once again in the replacement half &mdash; and the replacement
+        half is what gets written to disk. So the same defect has two different consequences. A
+        context line that came back re-indented makes a diff fail to apply. It makes a search/replace
+        block <em>succeed</em> and write the re-indented line into your file.</p>
+      <p>That is why the obvious fix backfires. Matching whitespace-insensitively removes every
+        drift-induced refusal &mdash; it is guaranteed to, by construction, because the normaliser
+        collapses exactly the differences that drift creates. And it converts them into applications
+        of the drifted text. Delivery goes from 97.11% to 84.53%. The 15.20% it gains in "applied" is
+        15.20% of files that now differ from what you asked for. It is nearly all cosmetic, and the
+        page counts it as cosmetic rather than lumping it in, because a whitespace diff nobody asked
+        for is a real cost and not the same cost as a deleted line.</p>
+
+      <h3 class="lg b">Why the safe fallback is the worst row</h3>
+      <p>When a patch format misapplies, the reflex is to ask for the whole file back. It cannot
+        misapply: there is nothing to locate and nothing to match. That is exactly the problem. Every
+        other format on this page has some check between the reply and the disk, and a check that
+        fails is a refusal. A whole-file answer has no check, so its failure rate and its silent
+        failure rate are the same number: 48.66% at the default dials, against 0.00% for either patch
+        format.</p>
+      <p>And it is the most exposed format there is, because it re-types the entire document: 21.71
+        lines against a diff's 7.33. Exposure is not a metaphor here, it is the exponent. Then there is
+        the failure only this format has &mdash; the answer that says <code class="tok">// ... rest of
+        file unchanged ...</code> in the middle. A three-line size guard catches most of those, costs
+        nothing, and refuses none of the legitimate edits. It is the single best-value line of code on
+        the page and it still leaves the format last.</p>
+
+      <h3 class="lg b">What this is not about</h3>
+      <p>Day 70 measured how an output format survives a preamble, and this page inherits the answer
+        rather than re-deriving it: the formats with a closing marker survive prose around the answer
+        untouched, and the ones with only an opening marker take the following sentence into the
+        document. Day 73 was about where a reply gets cut, and Day 74 about where a prompt does. This
+        page is about none of those. It is about the reply being an <em>instruction</em> rather than a
+        document, and about the fact that an instruction can be checked before it is carried out.</p>
+      <p>If there is one sentence to keep: ask for the format that lets your harness refuse. Then let
+        it refuse.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">&#128296; How it is built</h2>
+      <p>Every number on the MEASURE tab comes from the block between
+        <code class="tok">ENGINE:BEGIN</code> and <code class="tok">ENGINE:END</code> in this file's
+        source. It touches no DOM, reads no clock and calls no random number generator. An independent
+        Node verifier rebuilds each load-bearing structure a second way &mdash; a rolling hash instead
+        of a line-by-line scan, a state machine instead of a line-prefix switch, a sorted suffix table
+        instead of a repeated search, an independent reference splicer instead of the appliers &mdash;
+        and compares them item for item.</p>
+
+      <h3 class="lg b">1. The corpus is data and the edits are enumerated</h3>
+      <p>Nine documents across seven families &mdash; config, YAML, code, SQL, markdown, JSON and a
+        flat env list &mdash; written out line by line in the source. Three of them carry
+        byte-identical regions on purpose, because that is the hazard under test, and one is a single
+        block written out twice so that the minimum-context ladder has a top end that is not an
+        accident. An edit site is a start line and a span of one, two or three lines: 507 of them,
+        every one enumerated, so every rate on the page is a count over a finite set.</p>
+
+      <h3 class="lg b">2. The replacement is derived by one content-driven rule</h3>
+      <p>Bump the first numeral in the span if there is one; otherwise append a comment line at the
+        same indentation. That rule is not decoration. It is what makes 97.93% of the enumerated
+        triples contain at least one edit that changes the document's line count, which is the only
+        reason a stale line number can be caught at all &mdash; and the exact 6.86% of triples that
+        top-down application survives is the set where no length change happens above a later
+        hunk.</p>
+
+      <h3 class="lg b">3. Five emitters that write what a model would have to write</h3>
+      <p>A whole document, a search/replace block with its three markers, a unified diff with an
+        <code class="tok">@@</code> header and prefixed lines, a line-range instruction, and an anchor
+        instruction. Each returns the literal reply string and, separately, the number of existing
+        document lines it required the model to copy. That second number is the page's exposure
+        measure and it is what the drift dial is raised to the power of.</p>
+
+      <h3 class="lg b">4. Four parsers written the way real ones are written</h3>
+      <p>Each one scans for its marker rather than assuming the reply starts with it, which is what
+        makes a preamble harmless. What separates them is the other end: search/replace has a closing
+        marker, a diff has a self-terminating line grammar, and a line-range or anchor instruction has
+        nothing at all &mdash; so everything after the header is the payload, including the sentence
+        the model added afterwards. That is a structural property of the format, not a bug in the
+        parser, and the parameter-free chatter panel is where it shows up as 100.00% against
+        0.00%.</p>
+
+      <h3 class="lg b">5. Six appliers, and an oracle that is not one of them</h3>
+      <p>Exact line matching, whitespace-insensitive matching, first-match and refuse-unless-unique,
+        diff context verification with and without fuzz, a line splice with no verification at all, an
+        anchor lookup, and a whole-file replace with a size guard. The result of each is compared line
+        for line against the document the edit was supposed to produce, which is built independently
+        of every applier. Three outcomes: correct, refused, or applied-and-wrong &mdash; and the last
+        is split into cosmetic and substantive, because a file that differs only in whitespace and a
+        file with a line missing are not the same event.</p>
+
+      <h3 class="lg b">6. Emission states are enumerated and then weighted</h3>
+      <p>Four drift kinds, three chatter kinds and two elision states, and the applier is run for
+        every combination that a format can reach. Only then are the declared numbers used, as
+        weights, so nothing on the page is sampled: a rate is a weighted sum over outcomes that were
+        each computed by running real code. The probability that an emission is clean is
+        <code class="tok">(1 &minus; drift)</code> raised to the number of re-typed lines, which is how
+        a per-line dial becomes a per-format exposure. One retry after a refusal is allowed, drawn
+        independently, and that independence is an assumption rather than a measurement &mdash; so it
+        is stated here and the un-retried columns are on the table too.</p>
+
+      <h3 class="lg b">7. The drift model has its own control</h3>
+      <p>A style change could reasonably be systematic or a single slip. The page assumes systematic
+        and then recomputes the entire scoreboard the other way, confining the change to one line. The
+        control panel prints the gap for every row and how many places the ranking moved. Both are
+        zero, which is what a control is for: it says the formats are doing the work rather than the
+        assumption.</p>
+
+      <h3 class="lg b">8. The claims are attacked rather than restated</h3>
+      <p>The in-page assertions check that the two search/replace harnesses emit bit-identical replies
+        and differ only in the check; that the two whole-file harnesses do too; that the guard refuses
+        no legitimate edit; that fuzz changes nothing on a single hunk; that a fenced reply is
+        indistinguishable from a bare payload after extraction; that the hand-written token scanner
+        agrees with the regular expression it replaced on every payload; that every weight set sums to
+        one; that delivery is monotone in each declared number; that a cosmetic difference really is
+        whitespace-only; and that the minimum-context ladder agrees with the ambiguity census at every
+        width. The verifier re-derives all of it from its own independent stack and then re-checks
+        every number quoted in the headline against the engine.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Edit formats: how you ask for a CHANGE instead of a document, and what the harness does with the
+// answer. Nothing here simulates language ability. There is no model, no sampling and no claim about
+// what an assistant "tends" to write. What is built is the other half: real appliers - an exact line
+// matcher, a whitespace-insensitive one, a unified-diff reader with context verification and fuzz, a
+// line-range splice, a one-line anchor locator and a whole-document replace with a size guard - over
+// documents that are DATA and edit sites that are ENUMERATED. Every emission is produced by a real
+// serializer, put through a real string transformation and applied for real, so an outcome is decided
+// by running the applier and never by a formula. Exactly three numbers are DECLARED, all three on
+// sliders and all three labelled where they are used: `drift`, the probability that a single
+// RE-TYPED line comes back changed; `chatter`, the probability the reply is wrapped in prose; and
+// `elide`, the probability that a whole-document answer replaces an untouched run with a placeholder.
+// Everything else is integer combinatorics over strings.
+
+// ---------------------------------------------------------------- 1. the corpus, as data
+// Nine documents in seven families. Several carry BYTE-IDENTICAL regions, because that is the hazard
+// the page is about: a search block is a query and a query can have more than one answer.
+// `cfg-mirror` is the extreme - the file is one block written out twice.
+var DOCS = [
+  { id: "cfg-workers", fam: "config", lines: [
+    "[server]",
+    "host = 10.0.0.4",
+    "port = 8080",
+    "tls  = on",
+    "",
+    "[worker]",
+    "  queue = default",
+    "  threads = 4",
+    "  timeout = 30",
+    "",
+    "[worker]",
+    "  queue = default",
+    "  threads = 4",
+    "  timeout = 30",
+    "",
+    "[limits]",
+    "  max_body = 1048576",
+    "  max_conn = 512",
+    "",
+    "[logging]",
+    "  level = info",
+    "  target = stdout",
+    "  rotate = daily",
+    "",
+    "[metrics]",
+    "  enabled = true",
+    "  port = 9090"
+  ] },
+  { id: "yaml-deploy", fam: "yaml", lines: [
+    "apiVersion: apps/v1",
+    "kind: Deployment",
+    "metadata:",
+    "  name: invoice-api",
+    "spec:",
+    "  replicas: 3",
+    "  template:",
+    "    spec:",
+    "      containers:",
+    "        - name: api",
+    "          image: invoice-api:1.4.0",
+    "          resources:",
+    "            limits:",
+    "              cpu: 500m",
+    "              memory: 512Mi",
+    "        - name: sidecar",
+    "          image: log-shipper:0.9.1",
+    "          resources:",
+    "            limits:",
+    "              cpu: 500m",
+    "              memory: 512Mi",
+    "      restartPolicy: Always",
+    "      terminationGracePeriodSeconds: 30"
+  ] },
+  { id: "js-handlers", fam: "code", lines: [
+    "import { db } from './db.js';",
+    "",
+    "export async function getInvoice(req, res) {",
+    "  try {",
+    "    const row = await db.invoice(req.params.id);",
+    "    res.json(row);",
+    "  } catch (err) {",
+    "    log.error(err);",
+    "    res.status(500).send('internal error');",
+    "  }",
+    "}",
+    "",
+    "export async function getCustomer(req, res) {",
+    "  try {",
+    "    const row = await db.customer(req.params.id);",
+    "    res.json(row);",
+    "  } catch (err) {",
+    "    log.error(err);",
+    "    res.status(500).send('internal error');",
+    "  }",
+    "}",
+    "",
+    "export function health(req, res) {",
+    "  res.json({ ok: true });",
+    "}"
+  ] },
+  { id: "sql-migration", fam: "sql", lines: [
+    "-- 0042_invoice_status.sql",
+    "BEGIN;",
+    "",
+    "ALTER TABLE invoice",
+    "  ADD COLUMN status text NOT NULL DEFAULT 'draft';",
+    "",
+    "ALTER TABLE invoice",
+    "  ADD COLUMN paid_at timestamptz;",
+    "",
+    "CREATE INDEX ON invoice (status);",
+    "CREATE INDEX ON invoice (paid_at);",
+    "",
+    "UPDATE invoice SET status = 'paid' WHERE paid_at IS NOT NULL;",
+    "",
+    "ALTER TABLE customer",
+    "  ADD COLUMN status text NOT NULL DEFAULT 'draft';",
+    "",
+    "COMMIT;"
+  ] },
+  { id: "md-runbook", fam: "markdown", lines: [
+    "# Invoice API runbook",
+    "",
+    "## Restart",
+    "",
+    "1. drain the queue",
+    "2. stop the service",
+    "3. start the service",
+    "",
+    "## Rollback",
+    "",
+    "1. drain the queue",
+    "2. stop the service",
+    "3. deploy the previous tag",
+    "",
+    "## Contacts",
+    "",
+    "- on call: rota in the wiki",
+    "- escalation: platform team",
+    "",
+    "## Notes",
+    "",
+    "The queue drains in about 90 seconds."
+  ] },
+  { id: "json-config", fam: "json", lines: [
+    "{",
+    '  "service": "invoice-api",',
+    '  "version": "1.4.0",',
+    '  "upstreams": [',
+    "    {",
+    '      "name": "billing",',
+    '      "url": "http://billing.internal",',
+    '      "retries": 3',
+    "    },",
+    "    {",
+    '      "name": "ledger",',
+    '      "url": "http://ledger.internal",',
+    '      "retries": 3',
+    "    }",
+    "  ],",
+    '  "timeout_ms": 2000,',
+    '  "log_level": "info"',
+    "}"
+  ] },
+  { id: "env-list", fam: "env", lines: [
+    "APP_NAME=invoice-api",
+    "APP_ENV=production",
+    "LOG_LEVEL=info",
+    "DB_HOST=db.internal",
+    "DB_PORT=5432",
+    "DB_POOL=10",
+    "TIMEOUT=30",
+    "BILLING_URL=http://billing.internal",
+    "BILLING_RETRIES=3",
+    "TIMEOUT=30",
+    "LEDGER_URL=http://ledger.internal",
+    "LEDGER_RETRIES=3",
+    "CACHE_TTL=300",
+    "FEATURE_NEW_TAX=false",
+    "FEATURE_SPLIT_PAY=false"
+  ] },
+  { id: "cfg-mirror", fam: "config", lines: [
+    "[region]",
+    "  name = eu-west",
+    "  primary = true",
+    "  shards = 4",
+    "  drain = 30",
+    "[region]",
+    "  name = eu-west",
+    "  primary = true",
+    "  shards = 4",
+    "  drain = 30"
+  ] },
+  { id: "py-service", fam: "code", lines: [
+    "from dataclasses import dataclass",
+    "",
+    "@dataclass",
+    "class Invoice:",
+    "    id: int",
+    "    amount: float",
+    "    status: str",
+    "",
+    "def total(items):",
+    "    return sum(i.amount for i in items)",
+    "",
+    "def unpaid(items):",
+    "    return [i for i in items if i.status != 'paid']",
+    "",
+    "def summary(items):",
+    "    return {",
+    "        'count': len(items),",
+    "        'total': total(items),",
+    "        'unpaid': len(unpaid(items)),",
+    "    }"
+  ] }
+];
+var FAMILIES = ["all", "config", "yaml", "code", "sql", "markdown", "json", "env"];
+var DOC_IDS = [];
+(function(){ var i; for (i = 0; i < DOCS.length; i++) DOC_IDS.push(DOCS[i].id); })();
+
+// ---------------------------------------------------------------- 2. the edit, as data
+// An edit site is a start line and a span. The replacement is derived from the lines it replaces by
+// one declared, content-driven rule, so some edits keep the line count and some do not - which is
+// the only reason a stale line number can ever be caught.
+var SPANS = [1, 2, 3];
+function indentOf(line){ var m = line.match(/^[ \t]*/); return m ? m[0] : ""; }
+function revise(line){
+  var m = line.match(/\d+/);
+  if (!m) return null;
+  return line.slice(0, m.index) + String(parseInt(m[0], 10) + 1) + line.slice(m.index + m[0].length);
+}
+var NL_MEMO = {};
+function newLinesFor(docL, a, span){
+  var key = docL.length + ":" + docL[0] + "|" + a + "|" + span, hit = NL_MEMO[key];
+  if (hit) return hit;
+  var orig = docL.slice(a, a + span), out = [], i, bumped = false;
+  for (i = 0; i < orig.length; i++){
+    var r = revise(orig[i]);
+    if (r !== null && !bumped){ out.push(r); bumped = true; } else out.push(orig[i]);
+  }
+  if (!bumped) out.push(indentOf(orig[orig.length - 1]) + "# reviewed");
+  NL_MEMO[key] = out;
+  return out;
+}
+var SITES = [];
+(function(){
+  var d, a, s;
+  for (d = 0; d < DOCS.length; d++){
+    var L = DOCS[d].lines.length;
+    for (a = 0; a < L; a++) for (s = 0; s < SPANS.length; s++)
+      if (a + SPANS[s] <= L) SITES.push({ di: d, a: a, span: SPANS[s] });
+  }
+})();
+
+// ---------------------------------------------------------------- 3. a token count, declared
+// Runs of word characters, runs of horizontal whitespace, newlines and single punctuation marks. It
+// is not any vendor's tokenizer; it is a consistent one applied to every format identically, which
+// is all a comparison between formats needs.
+function isWordCode(c){
+  return (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+}
+function tok(s){
+  var n = 0, i = 0, L = s.length, c;
+  while (i < L){
+    c = s.charCodeAt(i);
+    if (c === 10){ n++; i++; continue; }
+    if (c === 32 || c === 9){ while (i < L && (s.charCodeAt(i) === 32 || s.charCodeAt(i) === 9)) i++; n++; continue; }
+    if (isWordCode(c)){ while (i < L && isWordCode(s.charCodeAt(i))) i++; n++; continue; }
+    i++; n++;
+  }
+  return n;
+}
+// the same count written as one regular expression, kept so the scanner has something to agree with
+function tokRe(s){ var m = String(s).match(/[A-Za-z0-9_]+|[ \t]+|\n|[^ \t\nA-Za-z0-9_]/g); return m ? m.length : 0; }
+function tokLines(a){ return tok(a.join("\n")); }
+
+// ---------------------------------------------------------------- 4. drift: real string edits
+// Three ways a re-typed line comes back different, all of them things that change no meaning. Two
+// are no-ops on lines with no leading or interior whitespace, so exposure is a property of the TEXT
+// and not only of the dial.
+var DRIFTS = ["none", "indent", "trail", "collapse"];
+var DRIFT_LABEL = { none: "typed back exactly", indent: "leading whitespace changed",
+                    trail: "trailing space added", collapse: "interior spaces collapsed" };
+function driftLine(line, kind){
+  if (kind === "indent"){ return /^[ \t]/.test(line) ? "  " + line : line; }
+  if (kind === "trail") return line + " ";
+  if (kind === "collapse") return line.replace(/(\S)[ \t]{2,}(\S)/g, "$1 $2");
+  return line;
+}
+// `scope` is a CONTROL, not a dial. "all" says a style change is systematic - a model that reindents
+// reindents throughout. "one" says it slips on a single line. Every ranking on the page is reported
+// under both, and the control panel is where the difference is shown rather than assumed.
+function driftAll(lines, kind, scope){
+  if (kind === "none") return lines.slice();
+  var out = [], i, done = false;
+  for (i = 0; i < lines.length; i++){
+    if (scope === "one" && done){ out.push(lines[i]); continue; }
+    var d = driftLine(lines[i], kind);
+    if (scope === "one" && d !== lines[i]) done = true;
+    out.push(d);
+  }
+  return out;
+}
+var SCOPES = ["all", "one"];
+
+// ---------------------------------------------------------------- 5. matching, exact and trimmed
+function normExact(s){ return s; }
+function normTrim(s){ return s.replace(/[ \t]+/g, " ").replace(/^ /, "").replace(/ $/, ""); }
+function normArr(a, norm){
+  if (norm === normExact) return a;
+  var out = [], i;
+  for (i = 0; i < a.length; i++) out.push(norm(a[i]));
+  return out;
+}
+function findAll(hay, needle, norm){
+  var hits = [], i, j, ok;
+  if (!needle.length) return hits;
+  var H = normArr(hay, norm), N = normArr(needle, norm);
+  for (i = 0; i + N.length <= H.length; i++){
+    ok = true;
+    for (j = 0; j < N.length; j++) if (H[i + j] !== N[j]){ ok = false; break; }
+    if (ok) hits.push(i);
+  }
+  return hits;
+}
+function windowAt(docL, a, span, k){
+  var lo = a - k < 0 ? 0 : a - k, hi = a + span + k > docL.length ? docL.length : a + span + k;
+  return { lo: lo, hi: hi };
+}
+// the smallest context that makes this site's search block occur exactly once (null if none up to kMax)
+function minUniqueK(docL, a, span, norm, kMax){
+  var k;
+  for (k = 0; k <= kMax; k++){
+    var w = windowAt(docL, a, span, k);
+    if (findAll(docL, docL.slice(w.lo, w.hi), norm).length === 1) return k;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------- 6. the five formats, serialized
+// Each emitter returns the STRING the reply carries, exactly as a model would have to write it.
+// `retyped` is how many lines of existing document text the model had to copy: the page's exposure
+// measure, and the only thing separating these formats when nothing else is wrong.
+var ID_MEMO = {};
+function intendedDoc(docL, site){
+  var key = site.di + "|" + site.a + "|" + site.span, hit = ID_MEMO[key];
+  if (hit) return hit;
+  var out = docL.slice(0, site.a).concat(newLinesFor(docL, site.a, site.span),
+                                         docL.slice(site.a + site.span));
+  if (site.di !== undefined) ID_MEMO[key] = out;
+  return out;
+}
+// the longest run of >= 4 lines the edit did not touch: what a lazy whole-file answer replaces
+function longestUntouchedRun(nd, site, added){
+  var blockedLo = site.a - 1, blockedHi = site.a + added + 1;
+  var best = null, lo = -1, i;
+  for (i = 0; i <= nd.length; i++){
+    var inside = i < nd.length && (i < blockedLo || i >= blockedHi);
+    if (inside){ if (lo < 0) lo = i; }
+    else {
+      if (lo >= 0 && i - lo >= 4 && (!best || i - lo > best.hi - best.lo)) best = { lo: lo, hi: i };
+      lo = -1;
+    }
+  }
+  return best;
+}
+function emitWhole(docL, site, drift, elide, scope){
+  var added = newLinesFor(docL, site.a, site.span);
+  var nd = docL.slice(0, site.a).concat(added, docL.slice(site.a + site.span));
+  var body = nd, cut = 0;
+  if (elide){
+    var r = longestUntouchedRun(nd, site, added.length);
+    if (r){
+      body = nd.slice(0, r.lo).concat([indentOf(nd[r.lo]) + "# ... unchanged ..."], nd.slice(r.hi));
+      cut = r.hi - r.lo - 1;
+    }
+  }
+  body = driftAll(body, drift, scope);
+  return { payload: body.join("\n"), retyped: nd.length, elided: cut };
+}
+// Search/replace re-types the surrounding lines TWICE - once to find the place and once as part of
+// what is written there. That second copy is the difference between this format and a diff: a
+// drifted context line in a diff can only fail to match, while here it lands in your file.
+function emitSR(docL, site, k, drift, scope){
+  var w = windowAt(docL, site.a, site.span, k);
+  var search = docL.slice(w.lo, w.hi);
+  var replace = driftAll(docL.slice(w.lo, site.a), drift, scope)
+                    .concat(newLinesFor(docL, site.a, site.span))
+                    .concat(driftAll(docL.slice(site.a + site.span, w.hi), drift, scope));
+  var ds = driftAll(search, drift, scope);
+  return { search: ds, replace: replace,
+           retyped: search.length,
+           payload: "<<<<<<< SEARCH\n" + ds.join("\n") + "\n=======\n" + replace.join("\n") +
+                    "\n>>>>>>> REPLACE" };
+}
+function emitUdiff(docL, site, k, drift, at, scope){
+  var w = windowAt(docL, site.a, site.span, k);
+  var before = docL.slice(w.lo, site.a), removed = docL.slice(site.a, site.a + site.span);
+  var after = docL.slice(site.a + site.span, w.hi), added = newLinesFor(docL, site.a, site.span);
+  var dB = driftAll(before, drift, scope), dR = driftAll(removed, drift, scope),
+      dA = driftAll(after, drift, scope);
+  var body = [], i;
+  for (i = 0; i < dB.length; i++) body.push(" " + dB[i]);
+  for (i = 0; i < dR.length; i++) body.push("-" + dR[i]);
+  for (i = 0; i < added.length; i++) body.push("+" + added[i]);
+  for (i = 0; i < dA.length; i++) body.push(" " + dA[i]);
+  var start = at - (site.a - w.lo);
+  var head = "@@ -" + (start + 1) + "," + (w.hi - w.lo) + " +" + (start + 1) + "," +
+             (w.hi - w.lo - site.span + added.length) + " @@";
+  return { at: start, retyped: before.length + removed.length + after.length,
+           payload: head + "\n" + body.join("\n") };
+}
+function emitLines(docL, site, at){
+  var added = newLinesFor(docL, site.a, site.span);
+  return { at: at, retyped: 0,
+           payload: "REPLACE LINES " + (at + 1) + "-" + (at + site.span) + " WITH\n" + added.join("\n") };
+}
+function emitAnchor(docL, site, drift, scope){
+  var anchor = site.a > 0 ? docL[site.a - 1] : null;
+  var added = newLinesFor(docL, site.a, site.span);
+  var da = anchor === null ? null : driftAll([anchor], drift, scope)[0];
+  return { retyped: anchor === null ? 0 : 1,
+           payload: "AFTER THE LINE\n" + (da === null ? "(start of file)" : da) +
+                    "\nREPLACE THE NEXT " + site.span + " LINE(S) WITH\n" + added.join("\n") };
+}
+
+// ---------------------------------------------------------------- 7. chatter and extraction
+// Day 70 owns what a preamble does to a PARSER. This dial is here so the comparison between formats
+// is fair, not because it is the finding: a chatty reply is either fenced, and a fence-aware
+// extractor recovers it, or bare, and the prose is part of the payload.
+var CHATTERS = ["plain", "fenced", "bare"];
+// the wrapper's own token cost, so a reply's bill is the payload's plus a constant: the wrapper
+// begins and ends at a newline, and a newline is its own token, so nothing merges across the seam
+var WRAP_TOK = { plain: 0, fenced: 0, bare: 0 };
+function wrapReply(payload, chatter){
+  if (chatter === "fenced")
+    return "Sure! Here is the change:\n\n```\n" + payload + "\n```\n\nLet me know if you need anything else.";
+  if (chatter === "bare")
+    return "Sure! Here is the change:\n" + payload + "\nLet me know if you need anything else.";
+  return payload;
+}
+(function(){
+  var probe = "x", c;
+  for (c = 0; c < CHATTERS.length; c++)
+    WRAP_TOK[CHATTERS[c]] = tok(wrapReply(probe, CHATTERS[c])) - tok(probe);
+})();
+function extract(reply){
+  var i = reply.indexOf("```");
+  if (i >= 0){
+    var j = reply.indexOf("\n", i), e = reply.indexOf("```", j + 1);
+    if (j >= 0 && e > j) return reply.slice(j + 1, e).replace(/\n$/, "");
+  }
+  return reply;
+}
+
+// ---------------------------------------------------------------- 8. the appliers, real code
+function applyWhole(docL, text, guard){
+  var out = text.split("\n");
+  if (guard && out.length < Math.ceil(docL.length * 0.9)) return { status: "loud", why: "shrank" };
+  return { status: "applied", doc: out };
+}
+// Each parser is written the way a real one is written, and what separates them is not style. A
+// search/replace block has an opening marker AND a closing one; a unified diff has a
+// self-terminating line grammar; an instruction like "replace lines 12-14 with" has an opening
+// marker and nothing whatsoever to say where the payload STOPS. Day 70 measured what that costs a
+// data parser. This is what it costs an edit: the sentence after the answer goes into your file.
+function parseSR(text){
+  var A = "<<<<<<< SEARCH\n", B = "\n=======\n", C = "\n>>>>>>> REPLACE";
+  var a = text.indexOf(A);                              // scanned, so a preamble is harmless
+  if (a < 0) return null;
+  var b = text.indexOf(B, a + A.length);
+  if (b < 0) return null;
+  var c = text.indexOf(C, b + B.length);                // and a postamble stops at the closing marker
+  if (c < 0) return null;
+  return { search: text.slice(a + A.length, b).split("\n"),
+           replace: text.slice(b + B.length, c).split("\n") };
+}
+function applySR(docL, text, pol){
+  var ins = parseSR(text);
+  if (!ins) return { status: "loud", why: "unparsable" };
+  var norm = pol.match === "trim" ? normTrim : normExact;
+  var hits = findAll(docL, ins.search, norm);
+  if (!hits.length) return { status: "loud", why: "not found" };
+  if (hits.length > 1 && pol.multi === "strict") return { status: "loud", why: "ambiguous" };
+  var at = hits[0];
+  return { status: "applied",
+           doc: docL.slice(0, at).concat(ins.replace, docL.slice(at + ins.search.length)) };
+}
+function parseUdiff(text){
+  var lines = text.split("\n"), i, h = null;
+  for (i = 0; i < lines.length; i++){                   // scanned for the hunk header
+    h = lines[i].match(/^@@ -(\d+),(\d+) \+\d+,\d+ @@$/);
+    if (h) break;
+  }
+  if (!h) return null;
+  var before = [], removed = [], added = [], after = [], phase = 0, j;
+  for (j = i + 1; j < lines.length; j++){               // terminated by its own line grammar
+    var c = lines[j].charAt(0), rest = lines[j].slice(1);
+    if (c === " "){ if (phase === 0) before.push(rest); else after.push(rest); }
+    else if (c === "-"){ phase = 1; removed.push(rest); }
+    else if (c === "+"){ phase = 1; added.push(rest); }
+    else break;
+  }
+  return { at: parseInt(h[1], 10) - 1, before: before, removed: removed, added: added, after: after };
+}
+function applyUdiff(docL, text, pol){
+  var ins = parseUdiff(text);
+  if (!ins) return { status: "loud", why: "unparsable" };
+  var norm = pol.match === "trim" ? normTrim : normExact;
+  var ctx = ins.before.concat(ins.removed, ins.after), fuzz = pol.fuzz || 0, o, c, at;
+  for (o = 0; o <= fuzz; o++){
+    var cands = o === 0 ? [ins.at] : [ins.at - o, ins.at + o];
+    for (c = 0; c < cands.length; c++){
+      at = cands[c];
+      if (at < 0 || at + ctx.length > docL.length) continue;
+      var ok = true, j;
+      for (j = 0; j < ctx.length; j++) if (norm(docL[at + j]) !== norm(ctx[j])){ ok = false; break; }
+      if (ok){
+        var s = at + ins.before.length;
+        return { status: "applied",
+                 doc: docL.slice(0, s).concat(ins.added, docL.slice(s + ins.removed.length)) };
+      }
+    }
+  }
+  return { status: "loud", why: "context mismatch" };
+}
+function parseLines(text){
+  var lines = text.split("\n"), i, m = null;
+  for (i = 0; i < lines.length; i++){                   // scanned for the header, like the others
+    m = lines[i].match(/^REPLACE LINES (\d+)-(\d+) WITH$/);
+    if (m) break;
+  }
+  if (!m) return null;
+  // and then there is nothing to stop on: everything after the header is the replacement
+  return { at: parseInt(m[1], 10) - 1, to: parseInt(m[2], 10), replace: lines.slice(i + 1) };
+}
+function applyLines(docL, text){
+  var ins = parseLines(text);
+  if (!ins) return { status: "loud", why: "unparsable" };
+  if (ins.at < 0 || ins.to > docL.length || ins.to <= ins.at) return { status: "loud", why: "out of range" };
+  return { status: "applied", doc: docL.slice(0, ins.at).concat(ins.replace, docL.slice(ins.to)) };
+}
+function parseAnchor(text){
+  var lines = text.split("\n"), i, j = -1;
+  for (i = 0; i < lines.length; i++) if (lines[i] === "AFTER THE LINE"){ j = i; break; }
+  if (j < 0 || j + 2 >= lines.length) return null;
+  var m = lines[j + 2].match(/^REPLACE THE NEXT (\d+) LINE\(S\) WITH$/);
+  if (!m) return null;
+  return { anchor: lines[j + 1], span: parseInt(m[1], 10), replace: lines.slice(j + 3) };
+}
+function applyAnchor(docL, text, pol){
+  var ins = parseAnchor(text);
+  if (!ins) return { status: "loud", why: "unparsable" };
+  var norm = pol.match === "trim" ? normTrim : normExact, at, i;
+  if (ins.anchor === "(start of file)") at = -1;
+  else {
+    var hits = [];
+    for (i = 0; i < docL.length; i++) if (norm(docL[i]) === norm(ins.anchor)) hits.push(i);
+    if (!hits.length) return { status: "loud", why: "anchor not found" };
+    if (hits.length > 1 && pol.multi === "strict") return { status: "loud", why: "ambiguous anchor" };
+    at = hits[0];
+  }
+  var s = at + 1;
+  if (s + ins.span > docL.length) return { status: "loud", why: "out of range" };
+  return { status: "applied", doc: docL.slice(0, s).concat(ins.replace, docL.slice(s + ins.span)) };
+}
+
+// ---------------------------------------------------------------- 9. the nine harnesses
+// A policy is a format plus the checks the harness runs on the answer. Rows 3 and 4 emit
+// BIT-IDENTICAL replies and differ only in what the harness does when the search block matches
+// twice; rows 8 and 9 likewise. Those two pairs are the page's free controls.
+// `checks` is what the harness does with a reply it already has, so every one of them costs ZERO
+// extra output tokens. `width` is what the FORMAT costs, and only that column moves the bill.
+var POLICIES = [
+  { id: "lines",        fmt: "lines",  label: "line ranges, spliced as given",          checks: "none" },
+  { id: "anchor",       fmt: "anchor", label: "one-line anchor, first match",           checks: "none" },
+  { id: "sr-first",     fmt: "sr",     label: "search/replace, first match wins",       checks: "none" },
+  { id: "sr-strict",    fmt: "sr",     label: "search/replace, refuse unless unique",   checks: "unique" },
+  { id: "sr-trim",      fmt: "sr",     label: "search/replace, whitespace-insensitive", checks: "trim" },
+  { id: "sr-trim-strict", fmt: "sr",   label: "search/replace, insensitive AND unique", checks: "trim+unique" },
+  { id: "udiff-fuzz",   fmt: "udiff",  label: "unified diff, context searched +/-2",    checks: "fuzz" },
+  { id: "udiff-strict", fmt: "udiff",  label: "unified diff, context must match",       checks: "context" },
+  { id: "whole",        fmt: "whole",  label: "whole document, taken as given",         checks: "none" },
+  { id: "whole-guard",  fmt: "whole",  label: "whole document, size guard",             checks: "size" }
+];
+var POLICY_IDS = [], POL = {};
+(function(){ var i; for (i = 0; i < POLICIES.length; i++){ POLICY_IDS.push(POLICIES[i].id);
+  POL[POLICIES[i].id] = POLICIES[i]; } })();
+function polOpts(id){
+  return { match: (id === "sr-trim" || id === "sr-trim-strict") ? "trim" : "exact",
+           multi: (id === "sr-strict" || id === "sr-trim-strict" || id === "udiff-strict")
+                  ? "strict" : "first",
+           fuzz: id === "udiff-fuzz" ? 2 : 0,
+           guard: id === "whole-guard" };
+}
+
+// ---------------------------------------------------------------- 10. one cell = one real run
+// Serialize, wrap, extract, apply, compare line for line against the document the edit was supposed
+// to produce. Three outcomes only: `ok`; `loud`, the harness refused and you get to try again; and
+// `silent`, it applied something and the document is now wrong.
+function sameDoc(a, b){
+  if (a.length !== b.length) return false;
+  var i; for (i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+// A silent failure is not one thing. If the only difference from the intended document is
+// whitespace, the file still means what it meant and the damage is a diff nobody asked for;
+// if a line moved, vanished or changed content, it is not. The two are counted separately
+// because lumping them together is how a whole-document rewrite gets talked out of its worst
+// column and how it gets blamed for its most harmless one.
+function silentKind(got, want){
+  if (got.length !== want.length) return "substantive";
+  var i;
+  for (i = 0; i < got.length; i++) if (normTrim(got[i]) !== normTrim(want[i])) return "substantive";
+  return "cosmetic";
+}
+// the reply a model has to write for one site under one emission state
+function emitFor(polId, site, k, drift, elide, scope){
+  var docL = DOCS[site.di].lines, p = POL[polId];
+  if (p.fmt === "whole") return emitWhole(docL, site, drift, elide, scope);
+  if (p.fmt === "sr") return emitSR(docL, site, k, drift, scope);
+  if (p.fmt === "udiff") return emitUdiff(docL, site, k, drift, site.a, scope);
+  if (p.fmt === "lines") return emitLines(docL, site, site.a);
+  return emitAnchor(docL, site, drift, scope);
+}
+// and what the harness does with it, compared line for line against the document it should produce
+function applyReply(polId, site, em, chatter){
+  var docL = DOCS[site.di].lines, p = POL[polId], o = polOpts(polId);
+  var reply = wrapReply(em.payload, chatter), text = extract(reply), res;
+  if (p.fmt === "whole") res = applyWhole(docL, text, o.guard);
+  else if (p.fmt === "sr") res = applySR(docL, text, o);
+  else if (p.fmt === "udiff") res = applyUdiff(docL, text, o);
+  else if (p.fmt === "lines") res = applyLines(docL, text);
+  else res = applyAnchor(docL, text, o);
+  var want = intendedDoc(docL, site), status, kind = "";
+  if (res.status === "loud") status = "loud";
+  else if (sameDoc(res.doc, want)) status = "ok";
+  else { status = "silent"; kind = silentKind(res.doc, want); }
+  return { status: status, kind: kind, why: res.why || "", retyped: em.retyped,
+           payload: em.payload, reply: reply, elided: em.elided || 0, got: res.doc || null };
+}
+function runCell(polId, site, k, drift, chatter, elide, scope){
+  var em = emitFor(polId, site, k, drift, elide, scope || "all");
+  var c = applyReply(polId, site, em, chatter);
+  c.out = tok(em.payload) + WRAP_TOK[chatter];
+  return c;
+}
+
+// ---------------------------------------------------------------- 11. declared probabilities
+// `drift` is per RE-TYPED LINE, which is the whole point: a format that asks the model to copy 40
+// lines is forty times as exposed as one that asks it to copy 4. The mass that is not "typed back
+// exactly" is split evenly across the three drift kinds; that split is declared.
+function driftWeights(d, retyped){
+  var clean = Math.pow(1 - d, retyped), rest = 1 - clean;
+  return { none: clean, indent: rest / 3, trail: rest / 3, collapse: rest / 3 };
+}
+function chatterWeights(c){ return { plain: 1 - c, fenced: c / 2, bare: c / 2 }; }
+function cellsFor(polId, site, k, scope){
+  var p = POL[polId], out = [], di, ci, ei;
+  var elides = p.fmt === "whole" ? [false, true] : [false];
+  var drifts = p.fmt === "lines" ? ["none"] : DRIFTS;
+  for (di = 0; di < drifts.length; di++)
+    for (ei = 0; ei < elides.length; ei++){
+      // the reply is written once and read three ways: chatter changes the wrapper, never the edit
+      var em = emitFor(polId, site, k, drifts[di], elides[ei], scope || "all");
+      var base = tok(em.payload);
+      for (ci = 0; ci < CHATTERS.length; ci++){
+        var c = applyReply(polId, site, em, CHATTERS[ci]);
+        c.out = base + WRAP_TOK[CHATTERS[ci]];
+        out.push({ drift: drifts[di], chatter: CHATTERS[ci], elide: elides[ei], r: c });
+      }
+    }
+  return out;
+}
+function weightOf(cell, cfg, retyped, isWhole){
+  var w = driftWeights(cfg.drift, retyped)[cell.drift] * chatterWeights(cfg.chatter)[cell.chatter];
+  if (isWhole) w *= cell.elide ? cfg.elide : (1 - cfg.elide);
+  return w;
+}
+
+// ---------------------------------------------------------------- 12. the scoreboard
+// One retry is allowed after a loud refusal, drawn independently from the same declared
+// distribution - stated here because it is an assumption and not a measurement.
+var CELL_CACHE = {};
+function cellBase(k, fam, scope, only){
+  var key = k + "|" + fam + "|" + (scope || "all") + "|" + (only ? only.join(",") : "*");
+  if (CELL_CACHE[key]) return CELL_CACHE[key];
+  var base = [], pi, si;
+  for (pi = 0; pi < POLICIES.length; pi++){
+    if (only && only.indexOf(POLICIES[pi].id) < 0) continue;
+    var rows = [];
+    for (si = 0; si < SITES.length; si++){
+      if (fam !== "all" && DOCS[SITES[si].di].fam !== fam) continue;
+      rows.push({ site: SITES[si], cells: cellsFor(POLICIES[pi].id, SITES[si], k, scope) });
+    }
+    base.push({ id: POLICIES[pi].id, rows: rows });
+  }
+  CELL_CACHE[key] = base;
+  return base;
+}
+function scoreboard(cfg, scope, only){
+  var base = cellBase(cfg.k, cfg.fam, scope, only), out = [], i, j, m;
+  for (i = 0; i < base.length; i++){
+    var p = POL[base[i].id], isWhole = p.fmt === "whole";
+    var ok = 0, loud = 0, cos = 0, sub = 0, outTok = 0, retyped = 0, n = base[i].rows.length;
+    for (j = 0; j < base[i].rows.length; j++){
+      var row = base[i].rows[j], rt = row.cells[0].r.retyped;
+      retyped += rt;
+      for (m = 0; m < row.cells.length; m++){
+        var w = weightOf(row.cells[m], cfg, rt, isWhole);
+        if (w === 0) continue;
+        var c = row.cells[m].r;
+        if (c.status === "ok") ok += w;
+        else if (c.status === "loud") loud += w;
+        else if (c.kind === "cosmetic") cos += w; else sub += w;
+        outTok += w * c.out;
+      }
+    }
+    var pOk = ok / n, pLoud = loud / n, pCos = cos / n, pSub = sub / n, bill = outTok / n;
+    out.push({ id: base[i].id, label: p.label, fmt: p.fmt, checks: p.checks, n: n,
+               ok: pOk, loud: pLoud, silent: pCos + pSub, cosmetic: pCos, substantive: pSub,
+               out: bill, retyped: retyped / n,
+               delivered: pOk + pLoud * pOk, residual: (pCos + pSub) * (1 + pLoud),
+               resSub: pSub * (1 + pLoud), stillLoud: pLoud * pLoud, bill: bill * (1 + pLoud) });
+  }
+  return out;
+}
+// the CONTROL: the same scoreboard with drift confined to a single line instead of applied
+// throughout. If the ranking moves, the page's drift model is doing the work rather than the
+// formats, and the panel says so.
+function scopeControl(cfg){
+  var a = scoreboard(cfg, "all"), b = scoreboard(cfg, "one"), out = [], i;
+  var ra = a.slice().sort(function(x, y){ return y.delivered - x.delivered; });
+  var rb = b.slice().sort(function(x, y){ return y.delivered - x.delivered; });
+  var rank = {}, j;
+  for (j = 0; j < ra.length; j++) rank[ra[j].id] = j;
+  var moved = 0;
+  for (j = 0; j < rb.length; j++) if (rank[rb[j].id] !== j) moved++;
+  for (i = 0; i < a.length; i++)
+    out.push({ id: a[i].id, label: a[i].label, all: a[i], one: b[i],
+               gap: b[i].delivered - a[i].delivered });
+  return { rows: out, moved: moved, winnerAll: ra[0].id, winnerOne: rb[0].id };
+}
+
+// ---------------------------------------------------------------- 13. the uniqueness ladder
+// Parameter-free. For every site, the smallest context making the search block occur exactly once,
+// and what that block costs against simply sending the whole file back.
+var KMAX = 14;
+function uniqueLadder(fam){
+  var hist = {}, k, tot = 0, never = 0, sumK = 0, maxK = 0, trimWorse = 0, cheaper = 0, dearer = 0;
+  for (k = 0; k <= KMAX; k++) hist[k] = 0;
+  var i;
+  for (i = 0; i < SITES.length; i++){
+    var s = SITES[i], docL = DOCS[s.di].lines;
+    if (fam !== "all" && DOCS[s.di].fam !== fam) continue;
+    tot++;
+    var mk = minUniqueK(docL, s.a, s.span, normExact, KMAX);
+    var mt = minUniqueK(docL, s.a, s.span, normTrim, KMAX);
+    if (mk === null) never++;
+    else {
+      hist[mk]++; sumK += mk; if (mk > maxK) maxK = mk;
+      var w = windowAt(docL, s.a, s.span, mk);
+      var blk = tokLines(docL.slice(w.lo, w.hi)) + tokLines(
+        docL.slice(w.lo, s.a).concat(newLinesFor(docL, s.a, s.span), docL.slice(s.a + s.span, w.hi)));
+      var whole = tokLines(intendedDoc(docL, s));
+      if (blk < whole) cheaper++; else dearer++;
+    }
+    if (mk !== null && (mt === null || mt > mk)) trimWorse++;
+  }
+  var rows = [], acc = 0;
+  for (k = 0; k <= KMAX; k++){
+    if (!hist[k] && k > 8) continue;
+    acc += hist[k];
+    rows.push({ k: k, n: hist[k], share: hist[k] / tot, cum: acc / tot });
+  }
+  return { rows: rows, tot: tot, never: never, mean: sumK / (tot - never), maxK: maxK,
+           trimWorse: trimWorse, cheaper: cheaper, dearer: dearer };
+}
+function ambiguityAt(k, fam){
+  var i, tot = 0, amb = 0, notFirst = 0, hitsSum = 0, ambT = 0;
+  for (i = 0; i < SITES.length; i++){
+    var s = SITES[i], docL = DOCS[s.di].lines;
+    if (fam !== "all" && DOCS[s.di].fam !== fam) continue;
+    tot++;
+    var w = windowAt(docL, s.a, s.span, k), blk = docL.slice(w.lo, w.hi);
+    var hits = findAll(docL, blk, normExact);
+    hitsSum += hits.length;
+    if (hits.length > 1){ amb++; if (hits[0] !== w.lo) notFirst++; }
+    if (findAll(docL, blk, normTrim).length > 1) ambT++;
+  }
+  return { tot: tot, amb: amb, share: amb / tot, notFirst: notFirst,
+           notFirstShare: amb ? notFirst / amb : 0, meanHits: hitsSum / tot,
+           ambTrim: ambT, shareTrim: ambT / tot };
+}
+
+// ---------------------------------------------------------------- 14. the context sweep
+var SWEEP_KS = [0, 1, 2, 3, 4, 6];
+// only six policies read the context width at all; `lines`, `anchor` and both whole-document rows
+// emit the same reply at every k, which is itself worth saying out loud
+var CTX_POLICIES = ["sr-first", "sr-strict", "sr-trim-strict", "udiff-fuzz", "udiff-strict"];
+function contextSweep(cfg){
+  var out = [], i, j;
+  for (i = 0; i < SWEEP_KS.length; i++){
+    var sb = scoreboard({ k: SWEEP_KS[i], fam: cfg.fam, drift: cfg.drift,
+                          chatter: cfg.chatter, elide: cfg.elide }, "all", CTX_POLICIES);
+    var row = { k: SWEEP_KS[i], by: {} };
+    for (j = 0; j < sb.length; j++) row.by[sb[j].id] = sb[j];
+    row.amb = ambiguityAt(SWEEP_KS[i], cfg.fam);
+    out.push(row);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 15. three hunks in one call
+// Parameter-free, and the only place a line number can be stale. Every disjoint triple of
+// single-line edit sites in every document is enumerated; the numbers are the ones a model reads off
+// the file it was given, so applying them top-down is arithmetic on a file that no longer exists.
+var TRIPLE_ARMS = [
+  { id: "lines-top",     fmt: "lines", order: "top",    fuzz: 0, label: "line ranges, applied top-down" },
+  { id: "lines-bottom",  fmt: "lines", order: "bottom", fuzz: 0, label: "line ranges, applied bottom-up" },
+  { id: "udiff-top",     fmt: "udiff", order: "top",    fuzz: 0, label: "unified diff, top-down, exact context" },
+  { id: "udiff-bottom",  fmt: "udiff", order: "bottom", fuzz: 0, label: "unified diff, bottom-up, exact context" },
+  { id: "udiffz-top",    fmt: "udiff", order: "top",    fuzz: 2, label: "unified diff, top-down, fuzz +/-2" },
+  { id: "udiffz-bottom", fmt: "udiff", order: "bottom", fuzz: 2, label: "unified diff, bottom-up, fuzz +/-2" }
+];
+// parameter-free, so it is computed once per family and kept
+var TRIPLE_MEMO = {};
+function tripleTable(fam){
+  if (TRIPLE_MEMO[fam]) return TRIPLE_MEMO[fam];
+  var res = { n: 0, lenChange: 0, keys: [], cases: {}, arms: TRIPLE_ARMS }, ki;
+  for (ki = 0; ki < TRIPLE_ARMS.length; ki++){
+    res.keys.push(TRIPLE_ARMS[ki].id);
+    res.cases[TRIPLE_ARMS[ki].id] = { ok: 0, loud: 0, silent: 0, cosmetic: 0, substantive: 0 };
+  }
+  var d, a, b, c;
+  for (d = 0; d < DOCS.length; d++){
+    if (fam !== "all" && DOCS[d].fam !== fam) continue;
+    var docL = DOCS[d].lines, L = docL.length;
+    for (a = 0; a < L; a++) for (b = a + 1; b < L; b++) for (c = b + 1; c < L; c++){
+      var hunks = [{ di: d, a: a, span: 1 }, { di: d, a: b, span: 1 }, { di: d, a: c, span: 1 }];
+      res.n++;
+      var want = docL, hi, changed = false;
+      for (hi = hunks.length - 1; hi >= 0; hi--){
+        var nl = newLinesFor(docL, hunks[hi].a, 1);
+        if (nl.length !== 1) changed = true;
+        want = want.slice(0, hunks[hi].a).concat(nl, want.slice(hunks[hi].a + 1));
+      }
+      if (changed) res.lenChange++;
+      var ai;
+      for (ai = 0; ai < TRIPLE_ARMS.length; ai++){
+        var arm = TRIPLE_ARMS[ai], order = arm.order === "top" ? [0, 1, 2] : [2, 1, 0];
+        var cur = docL, bad = false, j;
+        for (j = 0; j < order.length && !bad; j++){
+          var h = hunks[order[j]];
+          var em = arm.fmt === "lines" ? emitLines(docL, h, h.a)
+                                       : emitUdiff(docL, h, 1, "none", h.a, "all");
+          var r = arm.fmt === "lines" ? applyLines(cur, em.payload)
+                                      : applyUdiff(cur, em.payload, { match: "exact", fuzz: arm.fuzz });
+          if (r.status === "loud") bad = true; else cur = r.doc;
+        }
+        var cell = res.cases[arm.id];
+        if (bad) cell.loud++;
+        else if (sameDoc(cur, want)) cell.ok++;
+        else { cell.silent++; if (silentKind(cur, want) === "cosmetic") cell.cosmetic++;
+               else cell.substantive++; }
+      }
+    }
+  }
+  TRIPLE_MEMO[fam] = res;
+  return res;
+}
+
+// ---------------------------------------------------------------- 16. by document, by drift
+function docTable(cfg){
+  var out = [], d, i;
+  for (d = 0; d < DOCS.length; d++){
+    var docL = DOCS[d].lines, sites = 0, amb = 0, sumK = 0, nk = 0, mx = 0;
+    for (i = 0; i < SITES.length; i++) if (SITES[i].di === d){
+      sites++;
+      var w = windowAt(docL, SITES[i].a, SITES[i].span, cfg.k);
+      if (findAll(docL, docL.slice(w.lo, w.hi), normExact).length > 1) amb++;
+      var mk = minUniqueK(docL, SITES[i].a, SITES[i].span, normExact, KMAX);
+      if (mk !== null){ sumK += mk; nk++; if (mk > mx) mx = mk; }
+    }
+    out.push({ id: DOCS[d].id, fam: DOCS[d].fam, lines: docL.length, sites: sites, amb: amb,
+               ambShare: amb / sites, meanK: nk ? sumK / nk : 0, maxK: mx,
+               wholeTok: tokLines(docL) });
+  }
+  return out;
+}
+// what each drift kind actually does to each format, at the current context width
+function driftTable(cfg){
+  var base = cellBase(cfg.k, cfg.fam), out = [], i, j, m, di;
+  for (i = 0; i < base.length; i++){
+    var row = { id: base[i].id, label: POL[base[i].id].label, by: {} };
+    for (di = 0; di < DRIFTS.length; di++){
+      var ok = 0, loud = 0, silent = 0, n = 0;
+      var cos = 0;
+      for (j = 0; j < base[i].rows.length; j++)
+        for (m = 0; m < base[i].rows[j].cells.length; m++){
+          var cl = base[i].rows[j].cells[m];
+          if (cl.drift !== DRIFTS[di] || cl.chatter !== "plain" || cl.elide) continue;
+          n++;
+          if (cl.r.status === "ok") ok++;
+          else if (cl.r.status === "loud") loud++;
+          else { silent++; if (cl.r.kind === "cosmetic") cos++; }
+        }
+      row.by[DRIFTS[di]] = n ? { ok: ok / n, loud: loud / n, silent: silent / n,
+                                 cosmetic: cos / n, n: n } : null;
+    }
+    out.push(row);
+  }
+  return out;
+}
+// Parameter-free: what the sentence around the answer does to each format, with drift off and no
+// elision, so the only thing moving is whether the payload is naked, fenced, or sitting in prose.
+function chatterTable(cfg){
+  var base = cellBase(cfg.k, cfg.fam, "all"), out = [], i, j, m, ci;
+  for (i = 0; i < base.length; i++){
+    var row = { id: base[i].id, label: POL[base[i].id].label, by: {} };
+    for (ci = 0; ci < CHATTERS.length; ci++){
+      var ok = 0, loud = 0, silent = 0, n = 0;
+      for (j = 0; j < base[i].rows.length; j++)
+        for (m = 0; m < base[i].rows[j].cells.length; m++){
+          var cl = base[i].rows[j].cells[m];
+          if (cl.chatter !== CHATTERS[ci] || cl.drift !== "none" || cl.elide) continue;
+          n++;
+          if (cl.r.status === "ok") ok++; else if (cl.r.status === "loud") loud++; else silent++;
+        }
+      row.by[CHATTERS[ci]] = { ok: ok / n, loud: loud / n, silent: silent / n, n: n };
+    }
+    row.fencedSame = Math.abs(row.by.plain.ok - row.by.fenced.ok) < 1e-12;
+    row.bareCost = row.by.plain.ok - row.by.bare.ok;
+    out.push(row);
+  }
+  return out;
+}
+// the cost side, isolated: what each format costs to emit, and what it re-types to get there
+function costTable(cfg){
+  var sb = scoreboard(cfg), out = [], i, whole = null;
+  for (i = 0; i < sb.length; i++) if (sb[i].id === "whole") whole = sb[i];
+  for (i = 0; i < sb.length; i++)
+    out.push({ id: sb[i].id, label: sb[i].label, checks: sb[i].checks, out: sb[i].out,
+               bill: sb[i].bill, retyped: sb[i].retyped, ratio: sb[i].bill / whole.bill,
+               delivered: sb[i].delivered, residual: sb[i].residual, resSub: sb[i].resSub });
+  return out;
+}
+// The saving people ascribe to "send a patch, not a file" is a function of one number: how long the
+// document is against how much of it the patch re-types. Search/replace writes the surrounding lines
+// TWICE, a diff writes them once, so the two have different crossovers - computed here per document
+// with no parameters, from clean emissions only.
+function lengthTable(k){
+  var out = [], d, i;
+  for (d = 0; d < DOCS.length; d++){
+    var docL = DOCS[d].lines, n = 0, sums = { sr: 0, udiff: 0, lines: 0, anchor: 0, whole: 0 };
+    for (i = 0; i < SITES.length; i++){
+      if (SITES[i].di !== d) continue;
+      n++;
+      sums.sr += tok(emitSR(docL, SITES[i], k, "none", "all").payload);
+      sums.udiff += tok(emitUdiff(docL, SITES[i], k, "none", SITES[i].a, "all").payload);
+      sums.lines += tok(emitLines(docL, SITES[i], SITES[i].a).payload);
+      sums.anchor += tok(emitAnchor(docL, SITES[i], "none", "all").payload);
+      sums.whole += tok(emitWhole(docL, SITES[i], "none", false, "all").payload);
+    }
+    out.push({ id: DOCS[d].id, fam: DOCS[d].fam, L: docL.length, n: n,
+               sr: sums.sr / n, udiff: sums.udiff / n, lines: sums.lines / n,
+               anchor: sums.anchor / n, whole: sums.whole / n,
+               srRatio: sums.sr / sums.whole, udiffRatio: sums.udiff / sums.whole });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 17. one edit, written out
+function traceOne(cfg){
+  var docL = DOCS[cfg.di].lines;
+  var site = null, i;
+  for (i = 0; i < SITES.length; i++) if (SITES[i].di === cfg.di && SITES[i].a === cfg.a &&
+                                         SITES[i].span === cfg.span) site = SITES[i];
+  if (!site) site = { di: cfg.di, a: 0, span: 1 };
+  var cells = cellsFor(cfg.pol, site, cfg.k, "all"), rows = [], m;
+  for (m = 0; m < cells.length; m++)
+    rows.push({ drift: cells[m].drift, chatter: cells[m].chatter, elide: cells[m].elide,
+                status: cells[m].r.status, kind: cells[m].r.kind, why: cells[m].r.why,
+                out: cells[m].r.out,
+                w: weightOf(cells[m], cfg, cells[m].r.retyped, POL[cfg.pol].fmt === "whole") });
+  var clean = runCell(cfg.pol, site, cfg.k, "none", "plain", false, "all");
+  var w = windowAt(docL, site.a, site.span, cfg.k);
+  return { site: site, doc: DOCS[cfg.di], rows: rows, clean: clean,
+           hits: findAll(docL, docL.slice(w.lo, w.hi), normExact).length,
+           minK: minUniqueK(docL, site.a, site.span, normExact, KMAX),
+           retyped: clean.retyped, want: intendedDoc(docL, site) };
+}
+
+// ---------------------------------------------------------------- 18. defaults
+var DEFAULTS = { k: 3, fam: "all", drift: 0.04, chatter: 0.15, elide: 0.10,
+                 pol: "sr-strict", di: 0, a: 11, span: 1 };
+function withDefaults(c){
+  c = c || {};
+  var o = {}, keys = ["k", "fam", "drift", "chatter", "elide", "pol", "di", "a", "span"], i;
+  for (i = 0; i < keys.length; i++)
+    o[keys[i]] = c[keys[i]] === undefined ? DEFAULTS[keys[i]] : c[keys[i]];
+  return o;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- view
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function pc(x){ return (100 * x).toFixed(2) + "%"; }
+function n1(x){ return x.toFixed(1); }
+function n2(x){ return x.toFixed(2); }
+function n3(x){ return x.toFixed(3); }
+function cm(x){ return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function G(t){ return '<span class="ok">' + t + "</span>"; }
+function B(t){ return '<span class="bad">' + t + "</span>"; }
+function W(t){ return '<span class="warn">' + t + "</span>"; }
+function D(t){ return '<span class="dim">' + t + "</span>"; }
+// a delivered share: green when high, red at zero
+function dl(x){ return x < 1e-12 ? B(pc(x)) : (x > 0.999 ? G(pc(x)) : (x < 0.6 ? W(pc(x)) : pc(x))); }
+// a damage share: green at zero, red when high
+function dm(x){ return x < 1e-12 ? G(pc(x)) : (x > 0.3 ? B(pc(x)) : W(pc(x))); }
+// a refusal is not damage - it is the harness working, so it is never red
+function lo(x){ return x < 1e-12 ? D(pc(x)) : W(pc(x)); }
+function head(cells){
+  var s = "<tr>", i;
+  for (i = 0; i < cells.length; i++) s += "<th>" + cells[i] + "</th>";
+  return s + "</tr>";
+}
+function row(cells, klass){
+  var s = "<tr" + (klass ? ' class="' + klass + '"' : "") + ">", i;
+  for (i = 0; i < cells.length; i++) s += "<td>" + cells[i] + "</td>";
+  return s + "</tr>";
+}
+function bar(x, w){ return '<span class="bar" style="width:' + Math.max(1, Math.round(x * w)) + 'px"></span>'; }
+function pill(t, k){ return '<span class="pill ' + k + '">' + t + "</span>"; }
+
+var CHECK_LABEL = { none: "&mdash;", unique: "refuse if not unique", trim: "ignore whitespace",
+                    "trim+unique": "ignore whitespace + unique", fuzz: "search +/-2 lines",
+                    context: "context must match", size: "size guard" };
+var CHATTER_LABEL = { plain: "the payload alone", fenced: "inside a fence", bare: "in prose, no fence" };
+
+function cfgUI(){
+  return { drift: (+$("sDrift").value) / 100, chatter: (+$("sChat").value) / 100,
+           elide: (+$("sEl").value) / 100, k: +$("sK").value,
+           fam: $("selFam").value, pol: $("selPol").value, di: +$("selDoc").value,
+           a: +$("sSite").value, span: 1 };
+}
+
+var FIRST = true, PENDING2 = null, PENDING3 = null, PEAKS = { sr: null, ud: null };
+
+function draw(){
+  var c = withDefaults(cfgUI()), i, j, r;
+  $("vDrift").textContent = Math.round(100 * c.drift) + "%";
+  $("vChat").textContent = Math.round(100 * c.chatter) + "%";
+  $("vEl").textContent = Math.round(100 * c.elide) + "%";
+  $("vK").textContent = String(c.k);
+  $("vSite").textContent = String(c.a);
+
+  // ---------------------------------------------------------------- probe 1: three hunks
+  var T = tripleTable("all");
+  var h = head(["how the three hunks were applied", "correct", "refused &mdash; loud", "wrong &mdash; silent", ""]);
+  for (i = 0; i < T.arms.length; i++){
+    var arm = T.arms[i], cell = T.cases[arm.id];
+    h += row([arm.label, dl(cell.ok / T.n), lo(cell.loud / T.n), dm(cell.silent / T.n),
+              bar(cell.ok / T.n, 90)],
+             arm.id === "lines-bottom" ? "hi" : (arm.id === "lines-top" ? "mis" : ""));
+  }
+  $("t3Tbl").innerHTML = h;
+  var lt = T.cases["lines-top"], lb = T.cases["lines-bottom"], ut = T.cases["udiff-top"],
+      uz = T.cases["udiffz-top"], ub = T.cases["udiff-bottom"];
+  $("t3Note").innerHTML =
+    "Every one of " + G(cm(T.n)) + " disjoint triples, no parameters. The two rows to read together " +
+    "are the first and the third: the same three edits, the same broken order, " +
+    B(pc(lt.silent / T.n)) + " wrong and " + D(pc(lt.loud / T.n)) + " refused for a line range, " +
+    G(pc(ut.silent / T.n)) + " wrong and " + W(pc(ut.loud / T.n)) + " refused for a diff. A diff " +
+    "carries the lines it expects to find; a line range carries a number, and a number is always " +
+    "readable. " + pc(T.lenChange / T.n) + " of these triples contain at least one edit that changes " +
+    "the line count, and the " + G(pc(lb.ok / T.n)) + " on the second row is an identity rather than " +
+    "a result: an edit low in a file cannot move anything above it, so applying the hunks in " +
+    "descending order of line number is correct for every triple, at " + G("0") + " extra tokens. " +
+    "Fuzz is the row nobody expects: searching two lines either side takes top-down application from " +
+    pc(ut.ok / T.n) + " to " + G(pc(uz.ok / T.n)) + " correct, " +
+    "+" + n2(100 * (uz.ok - ut.ok) / T.n) + " points, and still " + G(pc(uz.silent / T.n)) +
+    " wrong - because it only accepts a position where the context actually matches. Even bottom-up, " +
+    "a diff refuses " + W(pc(ub.loud / T.n)) + ": adjacent hunks overlap each other's context, which " +
+    "is a refusal and not a corruption.";
+
+  // ---------------------------------------------------------------- probe 2: chatter
+  var CH = chatterTable(c);
+  h = head(["harness", "the payload alone", "inside a fence", "in prose, no fence", "what a bare reply does"]);
+  for (i = 0; i < CH.length; i++){
+    r = CH[i];
+    var bare = r.by.bare;
+    h += row([POL[r.id].label, dl(r.by.plain.ok), dl(r.by.fenced.ok), dl(bare.ok),
+              bare.silent > 0.999 ? B("all of it lands in the file")
+                                  : (bare.loud > 1e-12 ? W("refused") : G("nothing"))],
+             bare.silent > 0.999 ? "mis" : "");
+  }
+  $("chTbl").innerHTML = h;
+  var nImmune = 0, nAll = 0, fencedSame = true;
+  for (i = 0; i < CH.length; i++){
+    if (CH[i].by.bare.silent < 1e-12) nImmune++;
+    if (CH[i].by.bare.silent > 0.999) nAll++;
+    if (!CH[i].fencedSame) fencedSame = false;
+  }
+  $("chNote").innerHTML =
+    "Not a matter of degree: " + G(String(nImmune)) + " of " + CH.length + " harnesses are " +
+    "completely unaffected and " + B(String(nAll)) + " take " + B("100.00%") + " of the trailing " +
+    "sentence into the document. The line is drawn by whether the format has something that says " +
+    "where the payload STOPS - search/replace has a closing marker, a diff has a line grammar that " +
+    "ends at the first line it does not recognise, and " + code("REPLACE LINES 12-14 WITH") +
+    " has nothing. " + (fencedSame ? G("NULL: ") : B("")) +
+    "fencing the reply is worth exactly " + G("0.00") + " on all " + CH.length + " rows, because a " +
+    "fence-aware extractor removes it and hands back the identical payload - it costs tokens and " +
+    "buys nothing that the format's own markers were not already buying. Day 70 measured this for " +
+    "data records; the difference here is that the postamble is not garbled output, it is a line " +
+    "of your file.";
+
+  // ---------------------------------------------------------------- the ladder
+  var UL = uniqueLadder(c.fam);
+  h = head(["context lines needed", "sites", "share", "cum", ""]);
+  for (i = 0; i < UL.rows.length; i++){
+    r = UL.rows[i];
+    h += row([r.k === 0 ? "none" : String(r.k), cm(r.n), pc(r.share),
+              r.cum > 0.9999 ? G(pc(r.cum)) : pc(r.cum), bar(r.share, 80)],
+             r.k === 0 ? "hi" : "");
+  }
+  $("ladTbl").innerHTML = h;
+  $("ladNote").innerHTML =
+    UL.never === 0 ? ("Context does solve ambiguity, and it solves it fast: " + G(pc(UL.rows[0].share)) +
+      " of sites are already unique with no context at all, " + pc(UL.rows[3].cum) + " are covered by " +
+      "three lines each side, and the worst site in the corpus needs " + W(String(UL.maxK)) + ". " +
+      G(cm(UL.never)) + " sites are unreachable. The column that matters is on the cost panel: at its " +
+      "own minimum width, a search block is cheaper than the whole file on " + G(cm(UL.cheaper)) +
+      " sites and dearer on " + B(cm(UL.dearer)) + ". Whitespace-insensitive matching makes " +
+      W(String(UL.trimWorse)) + " sites need MORE context than exact matching does, because " +
+      "normalising is merging lines that were distinguishable.")
+      : (B(cm(UL.never)) + " sites have no width that works.");
+
+  // ---------------------------------------------------------------- scoreboard
+  var SB = scoreboard(c), by = {};
+  for (i = 0; i < SB.length; i++) by[SB[i].id] = SB[i];
+  h = head(["harness", "check", "correct", "refused", "cosmetic", "substantive", "delivered",
+            "left wrong", "re-typed", "reply tokens", "bill w/ retry"]);
+  for (i = 0; i < SB.length; i++){
+    r = SB[i];
+    var kl = r.checks === "none" ? D(CHECK_LABEL[r.checks])
+                                 : pill(CHECK_LABEL[r.checks], "p-free");
+    h += row([r.label, kl, pc(r.ok), lo(r.loud), dm(r.cosmetic), dm(r.substantive),
+              dl(r.delivered), dm(r.residual), n2(r.retyped), n1(r.out), n1(r.bill)],
+             r.id === "udiff-strict" ? "hi" : (r.id === "whole" ? "mis" : ""));
+  }
+  $("polTbl").innerHTML = h;
+  $("polNote").innerHTML =
+    "The two rows that emit " + G("bit-identical") + " replies and differ only in the check are the " +
+    "search/replace pair: first-match-wins leaves " + dm(by["sr-first"].residual) + " of files wrong " +
+    "and silent, refusing instead takes that to " + G(pc(by["sr-strict"].residual)) + " for " + G("0") +
+    " extra output tokens. Same for the whole-file pair - the guard is " + G("0") + " tokens and takes " +
+    "substantive damage from " + B(pc(by.whole.substantive)) + " to " + W(pc(by["whole-guard"].substantive)) +
+    " while refusing " + G("none") + " of the legitimate edits. " + B("&#128308;") + " The row I " +
+    "expected to win is " + POL["sr-trim-strict"].label + " and it loses " +
+    B(n2(100 * (by["sr-strict"].delivered - by["sr-trim-strict"].delivered))) + " points: ignoring " +
+    "whitespace removes every drift refusal by construction and converts them into applications of " +
+    "the drifted text, " + dm(by["sr-trim-strict"].cosmetic) + " of calls writing the model's " +
+    "re-indented copy into the file. " + B("&#128308;") + " The unified diff beats search/replace on " +
+    "BOTH axes at once - " + G(pc(by["udiff-strict"].delivered)) + " against " +
+    pc(by["sr-strict"].delivered) + " at " + G(n3(by["udiff-strict"].bill / by["sr-strict"].bill) + "x") +
+    " the bill - because a diff writes the neighbourhood once and search/replace writes it twice. " +
+    B("&#128308;") + " And the fallback everyone reaches for is last: the whole document delivers " +
+    B(pc(by.whole.delivered)) + " and is the only row with " + B(pc(by.whole.loud)) + " refusals, " +
+    "which is one fact and not two - nothing checks it, so nothing can refuse it. " +
+    "Fuzz is a " + G("NULL") + " here: " +
+    (Math.abs(by["udiff-fuzz"].delivered - by["udiff-strict"].delivered) < 1e-12
+      ? G("0.00") + " points on every single-hunk edit" : B("it moved"));
+
+  // ---------------------------------------------------------------- context sweep (deferred)
+  clearTimeout(PENDING2);
+  PENDING2 = setTimeout(function(){ drawHeavy(c, by, T); }, 0);
+}
+
+function code(t){ return '<code class="tok">' + esc(t) + "</code>"; }
+
+function drawHeavy(c, by, T){
+  var i, j, r, h;
+
+  var SW = contextSweep(c);
+  h = head(["context k", "sr, first match", "sr, unique", "sr, whitespace-insensitive",
+            "diff, exact", "diff, fuzz", "sites still ambiguous", "sr tokens", "diff tokens"]);
+  var bestSr = null, bestUd = null;
+  for (i = 0; i < SW.length; i++){
+    r = SW[i];
+    if (!bestSr || r.by["sr-strict"].delivered > bestSr.by["sr-strict"].delivered) bestSr = r;
+    if (!bestUd || r.by["udiff-strict"].delivered > bestUd.by["udiff-strict"].delivered) bestUd = r;
+  }
+  for (i = 0; i < SW.length; i++){
+    r = SW[i];
+    h += row([r.k === 0 ? "none" : String(r.k), pc(r.by["sr-first"].delivered),
+              r.k === bestSr.k ? G(pc(r.by["sr-strict"].delivered)) : pc(r.by["sr-strict"].delivered),
+              pc(r.by["sr-trim-strict"].delivered),
+              r.k === bestUd.k ? G(pc(r.by["udiff-strict"].delivered)) : pc(r.by["udiff-strict"].delivered),
+              pc(r.by["udiff-fuzz"].delivered),
+              r.amb.amb === 0 ? G("0") : W(cm(r.amb.amb)),
+              n1(r.by["sr-strict"].bill), n1(r.by["udiff-strict"].bill)],
+             r.k === bestUd.k ? "hi" : (r.k === 3 ? "amb" : ""));
+  }
+  $("swTbl").innerHTML = h;
+  var k3 = null;
+  for (i = 0; i < SW.length; i++) if (SW[i].k === 3) k3 = SW[i];
+  PEAKS.sr = bestSr.k; PEAKS.ud = bestUd.k;
+  $("swNote").innerHTML =
+    B("&#128308;") + " " + G("REFUTED") + ": more context is not safer. Search/replace peaks at " +
+    G("k = " + bestSr.k) + " and a unified diff peaks at " + G("k = " + bestUd.k) +
+    " - at " + G(pc(bestUd.by["udiff-strict"].delivered)) + " for " +
+    G(n1(bestUd.by["udiff-strict"].bill)) + " tokens, the best and the cheapest cell on the page. " +
+    "Zero context wins for a diff because the header already locates the hunk and the removed lines " +
+    "already verify it, so a context line does no work the removed lines were not doing and is one " +
+    "more line that can come back wrong. Against the width tools actually ship - search/replace at " +
+    "three - that is " + G(n2(bestUd.by["udiff-strict"].bill ? k3.by["sr-strict"].bill / bestUd.by["udiff-strict"].bill : 0) + "x") +
+    " the price for " + B(n2(100 * (k3.by["sr-strict"].delivered - bestUd.by["udiff-strict"].delivered))) +
+    " points less. Ambiguity is why context is not zero-valued: it falls from " +
+    cm(SW[0].amb.amb) + " sites to " + cm(k3.amb.amb) + " over the same range. Both effects are real " +
+    "and the second one saturates.";
+
+  // ---------------------------------------------------------------- drift kinds
+  var DT = driftTable(c);
+  h = head(["harness"].concat(function(){
+    var a = [], q; for (q = 0; q < DRIFTS.length; q++) a.push(DRIFT_LABEL[DRIFTS[q]]); return a;
+  }()));
+  for (i = 0; i < DT.length; i++){
+    r = DT[i];
+    var cells = [POL[r.id].label], q;
+    for (q = 0; q < DRIFTS.length; q++){
+      var cellv = r.by[DRIFTS[q]];
+      cells.push(cellv === null ? D("n/a") : dl(cellv.ok));
+    }
+    h += row(cells, r.id === "lines" ? "hi" : "");
+  }
+  $("drTbl").innerHTML = h;
+  var trailAll = true, linesNa = DT[0].by.indent === null;
+  for (i = 0; i < DT.length; i++)
+    if (DT[i].by.trail && DT[i].by.trail.ok > 1e-12 && POL[DT[i].id].fmt !== "sr") trailAll = false;
+  $("drNote").innerHTML =
+    "A trailing space is the cheapest possible defect and it is fatal to every exact matcher on the " +
+    "list, because a matcher compares strings and a string with a space at the end is a different " +
+    "string. The line-range row is " + G("n/a") + " on all three columns and that is the point: it " +
+    "re-types " + G("nothing") + ", so it has no drift exposure at all - and it is still the format " +
+    "that silently destroyed 93.14% of the triples. Immunity to one failure mode is not safety. " +
+    "The whitespace-insensitive rows survive every column and pay for it on the scoreboard.";
+
+  // ---------------------------------------------------------------- ambiguity census
+  h = head(["context k", "sites with more than one hit", "share", "intended one not first",
+            "share of those", "mean hits", "after normalising whitespace"]);
+  var KS = [0, 1, 2, 3, 4, 5];
+  for (i = 0; i < KS.length; i++){
+    var A = ambiguityAt(KS[i], c.fam);
+    h += row([KS[i] === 0 ? "none" : String(KS[i]), A.amb === 0 ? G("0") : cm(A.amb),
+              A.amb === 0 ? G(pc(A.share)) : pc(A.share),
+              A.notFirst === 0 ? G("0") : B(cm(A.notFirst)),
+              A.amb === 0 ? D("&mdash;") : pc(A.notFirstShare), n3(A.meanHits),
+              A.ambTrim > A.amb ? B(cm(A.ambTrim)) : cm(A.ambTrim)],
+             KS[i] === c.k ? "hi" : "");
+  }
+  $("ambTbl").innerHTML = h;
+  var A0 = ambiguityAt(0, c.fam), Ak = ambiguityAt(c.k, c.fam);
+  $("ambNote").innerHTML =
+    "With no context, " + B(pc(A0.share)) + " of sites have a search block that matches more than " +
+    "once, and in " + B(pc(A0.notFirstShare)) + " of those the intended site is not the first hit - " +
+    "so a first-match-wins harness edits the wrong place and returns success. At the current width " +
+    "that is down to " + (Ak.amb ? W(cm(Ak.amb)) : G("0")) + " sites. The last column is the one " +
+    "argument against normalising whitespace that has nothing to do with drift: it can only ever " +
+    "make MORE things equal, so the ambiguous set can grow and never shrink.";
+
+  // ---------------------------------------------------------------- cost by length
+  var LT = lengthTable(c.k);
+  h = head(["document", "family", "lines", "whole file", "search/replace", "unified diff",
+            "line range", "sr / whole", "diff / whole"]);
+  var srOver = 0, udOver = 0;
+  for (i = 0; i < LT.length; i++){
+    r = LT[i];
+    if (r.srRatio > 1) srOver++;
+    if (r.udiffRatio > 1) udOver++;
+    h += row([r.id, r.fam, String(r.L), n1(r.whole), n1(r.sr), n1(r.udiff), n1(r.lines),
+              r.srRatio > 1 ? B(n3(r.srRatio)) : G(n3(r.srRatio)),
+              r.udiffRatio > 1 ? B(n3(r.udiffRatio)) : G(n3(r.udiffRatio))],
+             r.srRatio > 1 && r.udiffRatio > 1 ? "mis" : (r.srRatio > 1 ? "amb" : ""));
+  }
+  $("lenTbl").innerHTML = h;
+  $("lenNote").innerHTML =
+    "The saving is real and it is conditional. Search/replace costs " + B("more") + " than sending " +
+    "the whole file back on " + B(String(srOver)) + " of " + LT.length + " documents at this context " +
+    "width, a unified diff on " + (udOver ? W(String(udOver)) : G("0")) + ", and the ordering is by " +
+    "length: below roughly twice the patch's own footprint there is nothing left to save. The reason " +
+    "the two patch formats sit so far apart is one line of design - a search/replace block repeats " +
+    "the surrounding lines in its replacement half and a diff does not - and that same line of design " +
+    "is why one of them can write a re-indented context line into your file and the other cannot.";
+
+  // ---------------------------------------------------------------- controls
+  clearTimeout(PENDING3);
+  PENDING3 = setTimeout(function(){ drawControls(c, by, T); }, 0);
+}
+
+function drawControls(c, by, T){
+  var i, r, h;
+  var SC = scopeControl(c);
+  h = head(["harness", "style change throughout", "style change on one line", "gap"]);
+  for (i = 0; i < SC.rows.length; i++){
+    r = SC.rows[i];
+    h += row([POL[r.id].label, pc(r.all.delivered), pc(r.one.delivered),
+              Math.abs(r.gap) < 1e-12 ? G("0.00") : B(n2(100 * r.gap))]);
+  }
+  $("scTbl").innerHTML = h;
+  $("scNote").innerHTML =
+    (SC.moved === 0 ? G("The control holds") : B("The control failed")) + ": the ranking moved in " +
+    (SC.moved === 0 ? G("0") : B(String(SC.moved))) + " places and every row is identical to " +
+    G("0.00") + " points. It has to be, and knowing why is the point: an exact matcher cannot tell " +
+    "one changed line from ten, and a document that differs in one line is as different from the " +
+    "intended one as a document that differs in all of them. The winner under both readings is " +
+    code(SC.winnerAll) + ".";
+
+  var Z = scoreboard(withDefaults({ k: c.k, fam: c.fam, drift: 0, chatter: 0, elide: 0 }));
+  h = head(["harness", "delivered", "left wrong", "what is left"]);
+  var perfect = 0;
+  for (i = 0; i < Z.length; i++){
+    r = Z[i];
+    if (r.delivered > 0.99999) perfect++;
+    h += row([r.label, dl(r.delivered), dm(r.residual),
+              r.delivered > 0.99999 ? D("nothing")
+                : B(POL[r.id].fmt === "anchor" ? "an anchor line that occurs twice"
+                                               : "a search block that matches twice")],
+             r.delivered > 0.99999 ? "" : "mis");
+  }
+  $("zeroTbl").innerHTML = h;
+  $("zeroNote").innerHTML =
+    G(String(perfect)) + " of " + Z.length + " harnesses come back at exactly " + G("100.00%") +
+    " once the three declared numbers are zero, which says plainly how much of the scoreboard is the " +
+    "dials talking. The " + B(String(Z.length - perfect)) + " that do not are the ones whose failure " +
+    "is structural rather than accidental: a repeated region in the document, which no amount of " +
+    "model quality removes. And none of it touches PROBE 1, where every number is already " +
+    "parameter-free.";
+
+  drawTrace(c);
+  var bundle = { T: T, by: by, SC: SC, Z: Z, bestSr: PEAKS.sr, bestUd: PEAKS.ud };
+  setTimeout(function(){ selftest(c, bundle); }, 0);
+}
+
+function drawTrace(c){
+  var TR = traceOne(c), out = [], i;
+  var docL = DOCS[c.di].lines, site = TR.site;
+  out.push("document   : " + DOCS[c.di].id + "  (" + DOCS[c.di].fam + ", " + docL.length + " lines)");
+  out.push("edit       : replace line " + (site.a + 1) + " of " + docL.length +
+           "   " + JSON.stringify(docL[site.a]));
+  out.push("intended   : " + JSON.stringify(newLinesFor(docL, site.a, site.span).join("\n")));
+  out.push("harness    : " + POL[c.pol].label + "   (context " + c.k + ")");
+  out.push("re-typed   : " + TR.retyped + " lines of existing text   ->   clean with probability " +
+           (Math.pow(1 - c.drift, TR.retyped)).toFixed(4));
+  out.push("search hits: " + TR.hits + (TR.minK === null ? "" : "   (unique from context " + TR.minK + ")"));
+  out.push("");
+  out.push("the reply the model has to write:");
+  out.push("  " + TR.clean.payload.split("\n").join("\n  "));
+  out.push("");
+  out.push("every emission state, with the weight the declared numbers give it:");
+  out.push("  drift        chatter   elide   weight    outcome");
+  var tot = 0;
+  for (i = 0; i < TR.rows.length; i++){
+    var r = TR.rows[i];
+    tot += r.w;
+    if (r.w < 1e-9) continue;
+    out.push("  " + (r.drift + "            ").slice(0, 12) +
+             " " + (r.chatter + "        ").slice(0, 9) +
+             " " + (r.elide ? "yes " : "no  ") +
+             "   " + r.w.toFixed(4) +
+             "    " + r.status + (r.kind ? " (" + r.kind + ")" : "") + (r.why ? " - " + r.why : ""));
+  }
+  out.push("  weights sum to " + tot.toFixed(12));
+  $("traceOut").textContent = out.join("\n");
+  $("traceNote").innerHTML =
+    "Nothing in this panel is a model: the reply is the one a correct model would have to write, and " +
+    "what is counted is what the harness does with it. The weights are the only place the three " +
+    "declared numbers appear, and they sum to " + G("1") + " by construction - the outcomes " +
+    "themselves were each decided by running the applier.";
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selftest(c, R){
+  var pass = 0, fail = 0, lines = [], i, j, k, m, r;
+  function ok(cond, label){ if (cond) pass++; else { fail++; if (fail <= 25) lines.push("  FAIL  " + label); } }
+
+  // 1. the corpus and the enumeration
+  {
+    var nSites = 0;
+    for (i = 0; i < DOCS.length; i++){
+      var L = DOCS[i].lines.length;
+      ok(L > 0, "a document is empty");
+      for (j = 0; j < SPANS.length; j++) nSites += Math.max(0, L - SPANS[j] + 1);
+      for (j = 0; j < DOCS[i].lines.length; j++)
+        ok(DOCS[i].lines[j].indexOf("\n") < 0, "a document line contains a newline");
+    }
+    ok(nSites === SITES.length, "the site enumeration does not match the documents");
+    for (i = 0; i < SITES.length; i++){
+      var s = SITES[i], d = DOCS[s.di].lines;
+      ok(s.a + s.span <= d.length, "a site runs off the end of its document");
+      var want = intendedDoc(d, s), nl = newLinesFor(d, s.a, s.span);
+      ok(want.length === d.length - s.span + nl.length, "the intended document has the wrong length");
+      for (j = 0; j < s.a; j++) ok(want[j] === d[j], "the intended document changed a line above the site");
+      for (j = s.a + s.span; j < d.length; j++)
+        ok(want[j - s.span + nl.length] === d[j], "the intended document changed a line below the site");
+      ok(nl.length === s.span || nl.length === s.span + 1, "the revision rule changed the span oddly");
+    }
+  }
+
+  // 2. the token scanner against the regular expression it replaced
+  {
+    var checked = 0;
+    for (i = 0; i < SITES.length; i++){
+      var st = SITES[i], dl2 = DOCS[st.di].lines;
+      var pays = [emitWhole(dl2, st, "none", false, "all").payload,
+                  emitSR(dl2, st, c.k, "none", "all").payload,
+                  emitUdiff(dl2, st, c.k, "none", st.a, "all").payload,
+                  emitLines(dl2, st, st.a).payload,
+                  emitAnchor(dl2, st, "none", "all").payload];
+      for (j = 0; j < pays.length; j++){ ok(tok(pays[j]) === tokRe(pays[j]),
+        "the token scanner disagrees with its own regular expression"); checked++; }
+    }
+    ok(checked === SITES.length * 5, "the token cross-check lost a payload");
+  }
+
+  // 3. the pairs that must emit bit-identical replies
+  {
+    for (i = 0; i < SITES.length; i++){
+      var s3 = SITES[i], dd = DOCS[s3.di].lines, q;
+      for (q = 0; q < DRIFTS.length; q++){
+        var a1 = emitSR(dd, s3, c.k, DRIFTS[q], "all").payload;
+        ok(a1 === emitSR(dd, s3, c.k, DRIFTS[q], "all").payload, "an emitter is not deterministic");
+        var w1 = emitWhole(dd, s3, DRIFTS[q], false, "all").payload;
+        ok(w1 === emitWhole(dd, s3, DRIFTS[q], false, "all").payload, "an emitter is not deterministic");
+      }
+      // the guard refuses nothing that was not elided
+      var res = applyWhole(dd, emitWhole(dd, s3, "none", false, "all").payload, true);
+      ok(res.status === "applied", "the size guard refused a legitimate whole-file edit");
+    }
+  }
+
+  // 4. matching, uniqueness and the ladder agree with each other
+  {
+    for (i = 0; i < SITES.length; i++){
+      var s4 = SITES[i], d4 = DOCS[s4.di].lines;
+      var mk = minUniqueK(d4, s4.a, s4.span, normExact, KMAX);
+      ok(mk !== null, "no context width makes this site unique");
+      var w4 = windowAt(d4, s4.a, s4.span, mk);
+      ok(findAll(d4, d4.slice(w4.lo, w4.hi), normExact).length === 1,
+         "the ladder's own width is not unique");
+      if (mk > 0){
+        var wm = windowAt(d4, s4.a, s4.span, mk - 1);
+        ok(findAll(d4, d4.slice(wm.lo, wm.hi), normExact).length > 1,
+           "the ladder returned a width that was not minimal");
+      }
+      // the site's own window always contains at least its own position
+      var wc = windowAt(d4, s4.a, s4.span, c.k);
+      var hits = findAll(d4, d4.slice(wc.lo, wc.hi), normExact);
+      ok(hits.length >= 1, "a block taken from the document does not occur in it");
+      var found = false;
+      for (j = 0; j < hits.length; j++) if (hits[j] === wc.lo) found = true;
+      ok(found, "a block taken from the document does not occur at its own position");
+      // normalising can only ever merge
+      ok(findAll(d4, d4.slice(wc.lo, wc.hi), normTrim).length >= hits.length,
+         "normalising whitespace made a block MORE unique");
+    }
+  }
+
+  // 5. every cell, every harness: the weights and the outcome taxonomy
+  {
+    var base = cellBase(c.k, c.fam, "all"), cells = 0;
+    for (i = 0; i < base.length; i++){
+      var pol = POL[base[i].id], isWhole = pol.fmt === "whole";
+      for (j = 0; j < base[i].rows.length; j++){
+        var rowj = base[i].rows[j], rt = rowj.cells[0].r.retyped, sum = 0;
+        for (m = 0; m < rowj.cells.length; m++){
+          var cell = rowj.cells[m];
+          cells++;
+          sum += weightOf(cell, c, rt, isWhole);
+          ok(cell.r.status === "ok" || cell.r.status === "loud" || cell.r.status === "silent",
+             "an outcome is outside the taxonomy");
+          ok(cell.r.status !== "silent" || cell.r.kind === "cosmetic" || cell.r.kind === "substantive",
+             "a silent failure has no kind");
+          ok(cell.r.retyped === rt, "the re-typed count moved between cells of one site");
+          ok(cell.r.out > 0, "a reply costs nothing");
+        }
+        ok(Math.abs(sum - 1) < 1e-9, "the weights for one site do not sum to one");
+      }
+    }
+    ok(cells > 0, "the cell base is empty");
+  }
+
+  // 6. the identities the page prints as identities
+  {
+    var T = R.T;
+    ok(T.cases["lines-bottom"].ok === T.n, "bottom-up line ranges are no longer exactly correct");
+    ok(T.cases["lines-bottom"].silent === 0 && T.cases["lines-bottom"].loud === 0,
+       "bottom-up line ranges failed somewhere");
+    ok(T.cases["lines-top"].loud === 0, "a line range refused something");
+    ok(T.cases["udiff-top"].silent === 0 && T.cases["udiff-bottom"].silent === 0,
+       "a verified diff applied to the wrong place");
+    ok(T.cases["udiffz-top"].silent === 0, "fuzz applied a hunk to the wrong place");
+    ok(T.cases["udiffz-top"].ok > T.cases["udiff-top"].ok, "fuzz stopped helping the stale case");
+    ok(T.cases["udiffz-bottom"].ok === T.cases["udiff-bottom"].ok,
+       "fuzz changed the bottom-up case, where nothing has shifted");
+    ok(T.cases["lines-top"].ok + T.cases["lines-top"].silent === T.n, "the triple counts do not add up");
+    var q;
+    for (q = 0; q < T.keys.length; q++){
+      var cq = T.cases[T.keys[q]];
+      ok(cq.ok + cq.loud + cq.silent === T.n, "an arm's outcomes do not add up");
+      ok(cq.cosmetic + cq.substantive === cq.silent, "an arm's silent split does not add up");
+    }
+    // the control
+    ok(R.SC.moved === 0, "confining drift to one line reordered the scoreboard");
+    for (q = 0; q < R.SC.rows.length; q++)
+      ok(Math.abs(R.SC.rows[q].gap) < 1e-12, "a row moved when drift was confined to one line");
+  }
+
+  // 7. fuzz, fences and the pairs that must agree
+  {
+    var SBc = scoreboard(c), byc = {};
+    for (i = 0; i < SBc.length; i++) byc[SBc[i].id] = SBc[i];
+    ok(Math.abs(byc["udiff-fuzz"].delivered - byc["udiff-strict"].delivered) < 1e-12,
+       "fuzz is no longer worth exactly zero on single-hunk edits");
+    ok(Math.abs(byc["udiff-fuzz"].bill - byc["udiff-strict"].bill) < 1e-12,
+       "fuzz changed the bill");
+    ok(Math.abs(byc["sr-first"].out - byc["sr-strict"].out) < 1e-12,
+       "the search/replace pair no longer emits identical replies");
+    ok(Math.abs(byc.whole.out - byc["whole-guard"].out) < 1e-12,
+       "the whole-file pair no longer emits identical replies");
+    ok(byc["sr-strict"].silent < 1e-12, "refusing on a repeated block stopped removing silent damage");
+    ok(byc["whole-guard"].substantive <= byc.whole.substantive + 1e-12,
+       "the size guard made substantive damage worse");
+    ok(Math.abs(byc.whole.cosmetic - byc["whole-guard"].cosmetic) < 1e-12,
+       "the size guard changed cosmetic damage, which it cannot see");
+    ok(byc["udiff-strict"].delivered > byc["sr-strict"].delivered &&
+       byc["udiff-strict"].bill < byc["sr-strict"].bill,
+       "the unified diff no longer dominates search/replace on both axes");
+    var CH = chatterTable(c);
+    for (i = 0; i < CH.length; i++)
+      ok(CH[i].fencedSame, "a fenced reply stopped being identical to a bare payload");
+  }
+
+  // 8. monotone in each declared number, and zero at zero
+  {
+    var d, prev = null, ids = ["sr-strict", "udiff-strict", "whole"], q2;
+    for (q2 = 0; q2 < ids.length; q2++){
+      prev = null;
+      for (d = 0; d <= 20; d += 4){
+        var sbd = scoreboard(withDefaults({ k: c.k, fam: c.fam, drift: d / 100,
+                                            chatter: c.chatter, elide: c.elide })), got = null;
+        for (i = 0; i < sbd.length; i++) if (sbd[i].id === ids[q2]) got = sbd[i];
+        if (prev !== null) ok(got.delivered <= prev + 1e-12, "delivery rose as drift rose");
+        prev = got.delivered;
+      }
+    }
+    var Z = R.Z;
+    for (i = 0; i < Z.length; i++)
+      ok(Z[i].delivered > 0.7, "a harness is broken even with nothing going wrong");
+    var lz = null, uz = null;
+    for (i = 0; i < Z.length; i++){ if (Z[i].id === "lines") lz = Z[i]; if (Z[i].id === "udiff-strict") uz = Z[i]; }
+    ok(Math.abs(lz.delivered - 1) < 1e-12,
+       "line ranges no longer pass every single-hunk test with nothing going wrong");
+    ok(Math.abs(uz.delivered - 1) < 1e-12, "the diff no longer passes every single-hunk test");
+  }
+
+  // 9. silent kinds really are what they claim
+  {
+    var base9 = cellBase(c.k, c.fam, "all"), q3;
+    for (i = 0; i < base9.length; i++)
+      for (j = 0; j < base9[i].rows.length; j++)
+        for (m = 0; m < base9[i].rows[j].cells.length; m++){
+          var cc = base9[i].rows[j].cells[m];
+          if (cc.r.status !== "silent" || !cc.r.got) continue;
+          var wantd = intendedDoc(DOCS[base9[i].rows[j].site.di].lines, base9[i].rows[j].site);
+          if (cc.r.kind === "cosmetic"){
+            ok(cc.r.got.length === wantd.length, "a cosmetic difference changed the line count");
+            for (q3 = 0; q3 < wantd.length; q3++)
+              ok(normTrim(cc.r.got[q3]) === normTrim(wantd[q3]),
+                 "a cosmetic difference is not whitespace-only");
+          }
+        }
+  }
+
+  $("selftest").textContent = ([
+    (fail ? "FAILED" : "PASS") + "  " + cm(pass) + " assertions, " + fail + " failures"
+  ].concat(lines).concat([
+    "",
+    "  parameter-free    : " + cm(R.T.n) + " disjoint triples, every one applied for real",
+    "  headline          : line ranges top-down " + pc(R.T.cases["lines-top"].silent / R.T.n) +
+      " WRONG and " + pc(R.T.cases["lines-top"].loud / R.T.n) + " refused;",
+    "                      the same edits as a diff " + pc(R.T.cases["udiff-top"].silent / R.T.n) +
+      " wrong and " + pc(R.T.cases["udiff-top"].loud / R.T.n) + " refused",
+    "  identity          : bottom-up line ranges are correct on " +
+      cm(R.T.cases["lines-bottom"].ok) + " of " + cm(R.T.n) + " triples -- 0 extra tokens",
+    "  invisible         : with nothing going wrong, line ranges deliver 100.00% of all " +
+      cm(SITES.length) + " SINGLE edits",
+    "  refuted           : whitespace-insensitive matching, the obvious cure for drift, LOSES " +
+      n2(100 * (R.by["sr-strict"].delivered - R.by["sr-trim-strict"].delivered)) + " points",
+    "  refuted           : more context is not monotonically safer -- search/replace peaks at k=" +
+      R.bestSr + ", a diff at k=" + R.bestUd,
+    "  free vs paid      : refusing a block that matches twice costs 0 output tokens and takes " +
+      "silent damage to " + pc(R.by["sr-strict"].silent),
+    "  free vs paid      : a size guard costs 0 output tokens, takes substantive damage " +
+      pc(R.by.whole.substantive) + " -> " + pc(R.by["whole-guard"].substantive) + ", refuses 0 real edits",
+    "  dominated         : the unified diff beats search/replace on BOTH axes -- " +
+      pc(R.by["udiff-strict"].delivered) + " vs " + pc(R.by["sr-strict"].delivered) + " at " +
+      n3(R.by["udiff-strict"].bill / R.by["sr-strict"].bill) + "x the bill",
+    "  worst row         : the whole document delivers " + pc(R.by.whole.delivered) +
+      " and refuses " + pc(R.by.whole.loud) + " -- one fact, not two",
+    "  null              : fencing the reply is worth exactly 0.00 on all " + POLICY_IDS.length +
+      " harnesses",
+    "  null              : fuzz is worth exactly 0.00 on every single-hunk edit -- and +" +
+      n2(100 * (R.T.cases["udiffz-top"].ok - R.T.cases["udiff-top"].ok) / R.T.n) +
+      " points on the triples",
+    "  control           : confining a style change to one line moves every row by 0.00 and " +
+      "reorders " + R.SC.moved
+  ])).join("\n");
+  FIRST = false;
+}
+
+// ---------------------------------------------------------------- wiring
+(function(){
+  var a = $("selFam"), b = $("selDoc"), d = $("selPol"), i;
+  for (i = 0; i < FAMILIES.length; i++)
+    a.insertAdjacentHTML("beforeend", '<option value="' + FAMILIES[i] + '"' +
+      (FAMILIES[i] === DEFAULTS.fam ? " selected" : "") + ">" +
+      (FAMILIES[i] === "all" ? "everything" : esc(FAMILIES[i])) + "</option>");
+  for (i = 0; i < DOCS.length; i++)
+    b.insertAdjacentHTML("beforeend", '<option value="' + i + '"' +
+      (i === DEFAULTS.di ? " selected" : "") + ">" + esc(DOCS[i].id) + "</option>");
+  for (i = 0; i < POLICIES.length; i++)
+    d.insertAdjacentHTML("beforeend", '<option value="' + POLICIES[i].id + '"' +
+      (POLICIES[i].id === DEFAULTS.pol ? " selected" : "") + ">" + esc(POLICIES[i].label) + "</option>");
+})();
+function syncSite(){
+  var di = +$("selDoc").value;
+  $("sSite").max = String(DOCS[di].lines.length - 1);
+  if (+$("sSite").value > DOCS[di].lines.length - 1)
+    $("sSite").value = String(DOCS[di].lines.length - 1);
+}
+var pending = null;
+function schedule(){ clearTimeout(pending); pending = setTimeout(draw, 180); }
+["sDrift", "sChat", "sEl", "sK"].forEach(function(id){ $(id).addEventListener("input", schedule); });
+$("sSite").addEventListener("input", function(){ clearTimeout(pending);
+  pending = setTimeout(function(){ drawTrace(withDefaults(cfgUI())); }, 120); });
+["selFam", "selPol"].forEach(function(id){ $(id).addEventListener("change", schedule); });
+$("selDoc").addEventListener("change", function(){ syncSite(); schedule(); });
+syncSite();
+draw();
+</script>
+</body>
+</html>
