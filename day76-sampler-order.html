@@ -1,0 +1,1795 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 76 &mdash; Sampler order</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .vio { color:#5b21b6; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#6d28d9; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  code.seam { background:#ede9fe; color:#4c1d95; border-radius:4px; padding:1px 5px; font-size:11.5px;
+              font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:700; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f5f3ff; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#ede9fe; color:#4c1d95; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  .bar { display:inline-block; height:8px; background:#8b5cf6; border-radius:2px; vertical-align:middle; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw vio mb2">PROMPTFROMZERO &middot; DAY 76</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      &#127898;&#65039; Sampler order &mdash; every prompt is sent with three numbers beside it, and
+      the argument about them is always which VALUES to pick. This page is about something the
+      argument assumes away: the values are applied in an order, two orders ship in mainstream
+      stacks, and the same three numbers do not mean the same thing in both. Nothing here simulates
+      language ability &mdash; twenty-four next-token situations are DATA, the settings grid is
+      ENUMERATED, and every kept set is decided by running a real truncator, so each of the
+      <strong>26,208</strong> cells is a count and never a sample. Exactly two numbers are declared,
+      both on sliders and both labelled where they are used, and no panel marked parameter-free
+      reads either.
+      The parameter-free centrepiece needs no dial at all: send the same prompt with the same
+      temperature and the same <code class="tok">top_p</code> to a stack that applies temperature
+      first and to one that applies it last, and the surviving candidates differ on
+      <strong>43.39%</strong> of <strong>10,296</strong> cells &mdash;
+      <strong>min_p</strong> is worse at <strong>45.75%</strong> &mdash; while
+      <strong>top_k</strong>, the knob everyone calls the crude one, differs on
+      <strong>0.00%</strong> of <strong>8,424</strong> cells with a worst-case distance of exactly
+      <strong>0</strong>. At the single commonest setting on the internet,
+      <code class="tok">temperature&nbsp;0.7</code> with <code class="tok">top_p&nbsp;0.9</code>,
+      <strong>9 of the 24</strong> situations come out with a different candidate set depending on
+      whose sampler you are on.
+      &#128308; And the disagreement is not cosmetic: the emitted distribution moves by more than
+      <strong>0.10</strong> total variation on <strong>23.81%</strong> of nucleus cells and by more
+      than <strong>0.25</strong> on <strong>5.74%</strong>.
+      &#128308; The repair I reached for died under measurement. Pin the pool with a
+      <code class="tok">top_k</code> and keep the nucleus for shaping, and the immunity does NOT
+      transfer: <strong>26.57%</strong> of <strong>92,664</strong> three-knob cells still change with
+      the temperature placement, and swapping the two truncators <em>against each other</em> changes
+      the answer on a further <strong>10.24%</strong> &mdash; only <strong>66.52%</strong> of cells
+      are immune to both. The reason is one line of every real implementation: each truncator sees
+      the distribution RENORMALISED over the survivors of the one before it.
+      &#128308; Which also kills the folk rule for stacking: setting
+      <code class="tok">top_k</code> and <code class="tok">top_p</code> together does not apply
+      whichever is tighter. On <strong>10.31%</strong> of <strong>2,376</strong> pairs the composite
+      is strictly tighter than <em>both</em> &mdash; up to <strong>50.00%</strong> in the worst
+      column &mdash; and it is looser than either on <strong>0.00%</strong>.
+      &#128308; <code class="tok">top_p&nbsp;=&nbsp;0.9</code> does not keep 90% of the mass and does
+      not keep a tenth of anything: it retains <strong>95.13%</strong> on average, overshoots by up
+      to <strong>10.00</strong> points, and hands back between <strong>1</strong> and
+      <strong>11</strong> candidates &mdash; exactly ONE on <strong>33.33%</strong> of the corpus,
+      which is greedy decoding wearing a creativity dial. Its mirror is just as unstable in the other
+      axis: <code class="tok">top_k&nbsp;=&nbsp;1</code> retains anywhere from
+      <strong>14.83%</strong> to <strong>99.99%</strong> of the mass, a spread of
+      <strong>85.16</strong> points.
+      &#128308; "Raise the temperature for more variety" is half false and the half is decidable:
+      with temperature applied last the candidate pool is FROZEN &mdash; going from
+      <code class="tok">T&nbsp;=&nbsp;1.0</code> to <code class="tok">T&nbsp;=&nbsp;2.0</code> adds
+      exactly <strong>0.00</strong> candidates and reaches <strong>0.9992</strong> nats, against
+      <strong>5.88</strong> candidates and <strong>1.3196</strong> nats &mdash;
+      <strong>1.32&times;</strong> the entropy &mdash; for the identical request on the other stack.
+      &#128308; The declared half has a cliff rather than a slope: give each situation a tail of
+      <strong>2%</strong> shared by <strong>4,000</strong> unlisted tokens and one step of the
+      temperature dial, <strong>1.10</strong> to <strong>1.20</strong>, takes the nucleus from
+      <strong>4.88</strong> candidates to <strong>496.08</strong> &mdash; a factor of
+      <strong>101.8</strong> &mdash; while the other order sits at <strong>4.13</strong> and never
+      moves.
+      Two null results, located rather than claimed: at <code class="tok">T&nbsp;=&nbsp;1</code> the
+      two stacks are the same computation and disagree on <strong>0</strong> of
+      <strong>264</strong> cells, and <code class="tok">top_k</code> is order-proof on all
+      <strong>8,424</strong> of its cells &mdash; the free fix, at zero tokens, is the knob you were
+      told was obsolete. Three identities carry the page rather than three trends: two orders differ
+      exactly when their kept sets differ, <code class="tok">min_p</code> is exactly a logit-margin
+      cut of width <code class="tok">T&nbsp;&middot;&nbsp;ln(1/min_p)</code> &mdash; agreeing with
+      the closed form on <strong>7,488</strong> of <strong>7,488</strong> cells, which is why it is
+      the order-sensitive one &mdash; and the nucleus can only shrink as temperature falls, checked
+      at every adjacent pair with <strong>0</strong> violations.
+      <strong>261,332</strong> in-page assertions plus <strong>702,547</strong> in an
+      independent Node verifier that rebuilds the softmax in log space, the nucleus by binary search
+      on a prefix-sum table, top-k by quickselect, min-p as a logit threshold, the tail by full
+      expansion into four thousand individual tokens, and total variation from an explicit dense
+      vector &mdash; and the verifier earned its keep, catching the engine rounding one extra tail
+      token into the nucleus wherever the crossing landed exactly on a token boundary, which an
+      absolute epsilon on a quotient in the thousands cannot see.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">&#128300; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">temperature
+            <span id="vT" class="b" style="float:right">0.70</span>
+            <input id="sT" type="range" min="10" max="200" step="5" value="70"></label>
+          <label class="sl">top_p &mdash; nucleus mass
+            <span id="vP" class="b" style="float:right">0.90</span>
+            <input id="sP" type="range" min="50" max="99" step="1" value="90"></label>
+          <label class="sl">top_k &mdash; 0 means off
+            <span id="vK" class="b" style="float:right">0</span>
+            <input id="sK" type="range" min="0" max="24" step="1" value="0"></label>
+        </div>
+        <div class="grid3 mt3">
+          <label class="sl">min_p &mdash; 0 means off
+            <span id="vMp" class="b" style="float:right">0.00</span>
+            <input id="sMp" type="range" min="0" max="50" step="1" value="0"></label>
+          <label class="sl">tail &mdash; mass the situation does not list
+            <span id="vTail" class="b" style="float:right">2%</span>
+            <input id="sTail" type="range" min="0" max="20" step="1" value="2"></label>
+          <label class="sl">tailN &mdash; tokens sharing it
+            <span id="vTailN" class="b" style="float:right">4000</span>
+            <input id="sTailN" type="range" min="100" max="8000" step="100" value="4000"></label>
+        </div>
+        <div class="flex g4 wrapf mt3" style="align-items:flex-end">
+          <label class="xs mut">family <select id="selFam"></select></label>
+          <label class="xs mut">situation <select id="selSit"></select></label>
+        </div>
+        <p class="note mt3">
+          Two numbers on this page are <strong>declared</strong> about the world and everything else
+          is a count. <strong>tail</strong> is the probability mass a situation's candidate list does
+          not name &mdash; a real vocabulary holds a hundred thousand entries that individually carry
+          nothing and together carry something &mdash; and <strong>tailN</strong> is how many tokens
+          share it. They are the only two, they are both here, and the panels marked
+          <span class="pill p-free">parameter-free</span> never read them. Temperature,
+          <code class="tok">top_p</code>, <code class="tok">top_k</code> and
+          <code class="tok">min_p</code> are also on dials, but they are not assumptions &mdash; they
+          are the subject: the whole page is about what a stack does with them, and the centrepiece
+          enumerates every value on a grid rather than trusting the one under your cursor. A
+          situation's logits are DATA. At <code class="tok">T&nbsp;=&nbsp;1</code> their softmax IS
+          the declared distribution, and nothing anywhere is sampled: a rate is a count over a finite
+          enumerated grid, so a <span class="ok">0.00%</span> here is a zero and not "none seen".
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; THE SAME THREE NUMBERS, TWO STACKS
+          <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">Every situation, every temperature on the grid, every setting of one
+          truncator, built twice: once with temperature applied BEFORE the truncator (the transformers
+          warper list) and once AFTER it (the llama.cpp default sampler chain). Same prompt, same
+          numbers, same corpus. <span class="b">kept set differs</span> is how often the survivors are
+          not the same tokens; <span class="b">distribution differs</span> is how often the emitted
+          probabilities move at all; <span class="b">total variation</span> is by how much. No slider
+          reaches this panel.</p>
+        <div class="scroll"><table class="num" id="t1Tbl"></table></div>
+        <p class="sm mt3" id="t1Note"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE CELL EVERYONE ACTUALLY USES
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Not a grid average &mdash; one setting, the one in every tutorial
+            and every default config, situation by situation. A row is red when the two stacks keep
+            different candidates for the identical request.</p>
+          <div class="scroll"><table class="num" id="cellTbl"></table></div>
+          <p class="sm mt3" id="cellNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">WHERE THE ORDER BITES</p>
+          <p class="sm mut2 mb3">The same comparison against temperature, at the
+            <code class="tok">top_p</code> on the dial, so the band is visible rather than argued.
+            <span class="b">pool</span> is how many candidates survive. The row at
+            <code class="tok">T&nbsp;=&nbsp;1</code> is a zero by identity, not by luck: at
+            <code class="tok">T&nbsp;=&nbsp;1</code> the two orders are literally the same
+            sequence of operations.</p>
+          <div class="scroll"><table class="num" id="biteTbl"></table></div>
+          <p class="sm mt3" id="biteNote"></p>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 2 &middot; A PROBABILITY IS NOT A COUNT
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">The nucleus census at <code class="tok">T&nbsp;=&nbsp;1</code>. You
+            set a mass and you receive a count that nobody chose &mdash; and the mass you receive is
+            not the one you set either, because the token that crosses the threshold is kept.
+            <span class="b">= 1</span> is the share of situations where the nucleus is
+            indistinguishable from greedy decoding.</p>
+          <div class="scroll"><table class="num" id="nucTbl"></table></div>
+          <p class="sm mt3" id="nucNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE SAME INSTABILITY, ROTATED
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Top-k fixes the count exactly, so the MASS is what nobody chose. This
+            is the honest price of the free fix in the control panel below: order-proof, and blind to
+            shape.</p>
+          <div class="scroll"><table class="num" id="tkTbl"></table></div>
+          <p class="sm mt3" id="tkNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 3 &middot; BELT AND BRACES &mdash; the composite is
+          tighter than both <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">"Set them both, whichever is tighter wins" is not what the code does.
+          Every truncator sees the distribution renormalised over the survivors of the one before it,
+          so the nucleus of a top-k is the nucleus of an INFLATED distribution: it crosses
+          <code class="tok">p</code> sooner and keeps fewer. Each cell is the share of situations
+          where the pair keeps strictly fewer candidates than either knob alone would.</p>
+        <div class="scroll"><table class="mtx" id="stkTbl"></table></div>
+        <p class="sm mt3" id="stkNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE REPAIR THAT DOES NOT WORK
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">If top-k is order-proof, pin the pool with a top-k and keep the
+            nucleus for the shaping &mdash; that was my recommendation, and it is wrong. Every
+            situation &times; every temperature &times; every k &times; every p, three ways.</p>
+          <div class="scroll"><table class="num" id="hyTbl"></table></div>
+          <p class="sm mt3" id="hyNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 4 &middot; MIN-P IS A MARGIN, NOT A RATIO
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">min-p keeps a token when its probability is at least
+            <code class="tok">min_p</code> times the top one's. Under temperature that is EXACTLY a
+            threshold on the logit gap, <code class="tok">T&nbsp;&middot;&nbsp;ln(1/min_p)</code>
+            &mdash; which is both why it looks scale-free and why it is the most order-sensitive knob
+            on the page. The closed form is computed from the logits alone and compared to the
+            truncator's own answer, cell by cell.</p>
+          <div class="scroll"><table class="num" id="mgTbl"></table></div>
+          <p class="sm mt3" id="mgNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE DECLARED HALF &mdash; the nucleus cliff</p>
+        <p class="sm mut2 mb3">The only panel that reads a declared number, and the one that explains
+          why high temperature degrades so suddenly rather than gradually. A tail of
+          <span id="tailEcho" class="b"></span> shared by <span id="tailNEcho" class="b"></span>
+          unlisted tokens is invisible below the crossover and then is the entire candidate set above
+          it. <span class="b">tail mass</span> is what that tail carries at that temperature, which is
+          the quantity actually doing it. <span class="b">no tail</span> is the same sweep with the
+          declared numbers switched off.</p>
+        <div class="scroll"><table class="num" id="tailTbl"></table></div>
+        <p class="sm mt3" id="tailNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE MONOTONE LADDER</p>
+          <p class="sm mut2 mb3">One situation, both orders, against temperature. Lower the
+            temperature and the sorted prefix mass rises, so the nucleus can only shrink &mdash; a
+            theorem about any distribution, checked here at every adjacent pair rather than
+            eyeballed. The other column cannot move at all, which is the whole disagreement in one
+            picture.</p>
+          <div class="scroll"><table class="num" id="ladTbl"></table></div>
+          <p class="sm mt3" id="ladNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE CONTROLS <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Two things must come back at exactly zero or the page is measuring
+            its own assumption rather than the samplers. If either of these were non-zero the
+            centrepiece would mean nothing.</p>
+          <div class="scroll"><table class="num" id="ctlTbl"></table></div>
+          <p class="sm mt3" id="ctlNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">ONE SITUATION, WRITTEN OUT</p>
+        <p class="sm mut2 mb3">The situation and every setting come from the controls above. This is
+          the whole mechanism with nothing aggregated: the candidates with their logits, what each
+          step of each stack removes, and the two distributions the identical request would emit.</p>
+        <pre id="traceOut">running&hellip;</pre>
+        <p class="sm mt3" id="traceNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">Three numbers, and the order nobody prints</h2>
+      <p>Every request you send carries a temperature and usually one or two truncation settings.
+        The entire public conversation about them is about which values to choose:
+        <code class="tok">0.7</code> for chat, <code class="tok">0</code> for extraction,
+        <code class="tok">top_p&nbsp;0.9</code> because that is what the paper used. What that
+        conversation assumes, without ever saying so, is that the three numbers are a specification
+        &mdash; that they name a behaviour, and any correct implementation will produce it.</p>
+      <p>They are not a specification. They are three operations, and operations compose in an
+        order. Two orders ship. The list of logits processors that
+        <code class="tok">generate</code> builds applies temperature first and then the truncators.
+        The default sampler chain in llama.cpp runs the truncators and applies temperature at the
+        end. Both are defensible; neither is documented as a semantic choice; and they are not the
+        same function.</p>
+
+      <h3 class="lg b">Why the order can matter at all</h3>
+      <p>Start from the one thing that is true in both stacks: the token is drawn from
+        <code class="tok">softmax(logits&nbsp;/&nbsp;T)</code> restricted to whatever survived
+        truncation. That means the final distribution is determined by two things &mdash; the
+        temperature, and the surviving set &mdash; and the temperature is the same number in both
+        stacks. So the two orders can differ <em>only</em> through the set. That is not a heuristic;
+        it is an identity, and the page asserts it on every cell in both directions: whenever the
+        sets are equal the distributions are bit-identical, and whenever they differ the
+        distributions differ.</p>
+      <p>Now ask each truncator whether it notices the temperature.</p>
+      <p><strong>Top-k</strong> takes the k highest. Temperature divides every logit by the same
+        positive number, which cannot reorder them. So top-k picks the same tokens whichever side of
+        it temperature sits on, and because the final softmax is the same either way, the emitted
+        distributions are identical to the last bit. Eight thousand four hundred and twenty-four
+        cells, zero disagreements, worst-case distance exactly zero. Top-k is the only order-proof
+        knob on the page.</p>
+      <p><strong>Top-p</strong> takes the shortest prefix whose mass reaches p. Temperature changes
+        the mass. Sharpen the distribution and the prefix reaches p sooner, so fewer tokens survive;
+        flatten it and more do. The kept set is a function of the temperature, so the placement of
+        temperature decides what the set is. That is the 43.39%.</p>
+      <p><strong>Min-p</strong> looks like it should be immune, because it is a ratio test: keep
+        anything at least <code class="tok">min_p</code> times as likely as the best token. Ratios
+        survive rescaling &mdash; but temperature is not a rescaling of probabilities, it is a
+        rescaling of logits, and a ratio of probabilities is an exponentiated <em>difference</em> of
+        logits. Work it through and min-p is exactly "keep every token within
+        <code class="tok">T&nbsp;&middot;&nbsp;ln(1/min_p)</code> of the top logit". The margin is
+        proportional to T. Put temperature first and the margin scales with your temperature dial;
+        put it last and the margin is frozen at <code class="tok">ln(1/min_p)</code>. It is the most
+        order-sensitive of the three, for a reason you can write on one line.</p>
+
+      <h3 class="lg b">The renormalisation nobody mentions</h3>
+      <p>There is a second order in the stack, and it is worse hidden. When two truncators run in
+        sequence, the second one does not see the model's distribution. It sees the survivors of the
+        first, renormalised to sum to one &mdash; because that is what a softmax over the remaining
+        logits does, and every implementation works that way.</p>
+      <p>The consequence is that "set top_k and top_p, whichever is tighter wins" is false. Cut to
+        the top eight and the mass of those eight is inflated to 1.0; a nucleus of 0.9 now crosses
+        its threshold earlier than it would have on the full distribution, and keeps fewer tokens
+        than either knob would alone. On this corpus that happens on 10.31% of the k&times;p pairs,
+        reaching 50% in the tightest column, and it never goes the other way. The composite is a
+        third setting, not the stricter of two.</p>
+      <p>It also means the truncators do not commute with each other. Swap top-k and top-p and the
+        answer changes on 10.24% of the three-knob cells, with a worst case of half the probability
+        mass moving. So when I reached for the obvious repair &mdash; use top-k to pin the pool and
+        keep top-p for shaping, and inherit top-k's immunity &mdash; the measurement said no. Only
+        two thirds of the cells are immune to both orderings. The immunity does not transfer,
+        because the thing that made top-k immune was that it reads only the ranking, and the moment
+        it runs beside a mass-based knob the mass is what decides.</p>
+
+      <h3 class="lg b">What top_p 0.9 actually gives you</h3>
+      <p>Two separate things are wrong with the folk description. The first is the direction of the
+        guarantee: nucleus keeps the token that crosses the threshold, so the retained mass is at
+        least p and never exactly p. Averaged over this corpus,
+        <code class="tok">top_p&nbsp;=&nbsp;0.9</code> retains 95.13%, and on one situation it
+        retains 100% &mdash; the overshoot reaches a full ten points.</p>
+      <p>The second is worse. A mass is not a count, and the count is what you experience. Across
+        twenty-four situations, <code class="tok">0.9</code> hands back between one and eleven
+        candidates. On a third of them it hands back exactly one, which means the creativity dial you
+        set is greedy decoding. That is not a defect in nucleus sampling &mdash; it is nucleus
+        sampling doing precisely what it says &mdash; but "0.9 keeps the top 10%" is a sentence that
+        has never been true of anything.</p>
+      <p>The mirror holds for top-k, and the page prints it rather than hiding it, because top-k is
+        the thing this page ends up recommending. Fixing the count means the mass floats:
+        <code class="tok">top_k&nbsp;=&nbsp;1</code> retains anywhere from 14.83% to 99.99%
+        of the distribution. Neither knob is stable. They are unstable on different axes, and only
+        one of them is unstable in a way that also depends on whose code you are running.</p>
+
+      <h3 class="lg b">The cliff at the top of the temperature dial</h3>
+      <p>The last panel is the only one that reads a declared number, and it is the one that explains
+        a thing everyone has seen. Give each situation a tail: two per cent of the mass, shared by
+        four thousand tokens that individually carry nothing. Below a crossover the tail is
+        invisible; every nucleus setting cuts it entirely. Then move the temperature dial by one
+        step, 1.10 to 1.20, and the candidate pool goes from 4.88 tokens to 496.08. One step later it
+        is 2,029.83.</p>
+      <p>That is not gradual degradation. Temperature above 1 lifts a hundred thousand tiny
+        probabilities far more, in relative terms, than it lifts the handful of large ones, so the
+        tail's collective mass grows until it is the majority of the distribution &mdash; and then
+        nucleus, which was cutting it, has to include it to reach p. And on the other stack, where
+        the nucleus ran at <code class="tok">T&nbsp;=&nbsp;1</code>, the tail was cut before
+        temperature ever touched it and the pool stays at 4.13 forever. Same request, same three
+        numbers, two orders of magnitude apart.</p>
+
+      <h3 class="lg b">So what should you do</h3>
+      <p>The free fix is the knob you were told was obsolete. Top-k costs nothing, is order-proof
+        across every cell on the page, and does not care which library is underneath. Its price is on
+        the table and it is real: it is blind to the shape of the distribution, so the mass it keeps
+        floats by eighty-five points across this corpus. If that price is unacceptable and you want
+        the nucleus, then the number you set is not portable, and the honest thing is to record which
+        stack it was tuned on next to the value &mdash; the same way you record a model version.</p>
+      <p>And one thing that costs nothing at all: if a setting has to behave identically everywhere,
+        <code class="tok">T&nbsp;=&nbsp;1</code> is exactly where the two orders coincide, on all 264
+        cells, by construction. Which is a strange kind of advice &mdash; the setting that removes
+        the ambiguity is the setting that does nothing.</p>
+      <p>This is not Day 67. That page branched the top-k first tokens to find a reasoning path and
+        never changed a prompt; this one changes no decoding path and asks only what the truncators
+        do to a distribution that is handed to them. It is not Day 3 either &mdash; nothing here is
+        sampled, drawn or voted on. Every number is a count over an enumerated grid.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">&#128296; How it is built</h2>
+      <p>Every number on the MEASURE tab comes from the block between
+        <code class="tok">ENGINE:BEGIN</code> and <code class="tok">ENGINE:END</code> in this file's
+        source. It touches no DOM, reads no clock and calls no random number generator. An
+        independent Node verifier rebuilds each load-bearing structure a second way &mdash; the
+        softmax in log space, the nucleus by binary search over a prefix-sum table, top-k by
+        quickselect, min-p as a logit threshold, the tail by expanding it into individual tokens, and
+        total variation from an explicit dense vector &mdash; and compares them cell for cell.</p>
+
+      <h3 class="lg b">1. The corpus is data and the grid is enumerated</h3>
+      <p>Twenty-four next-token situations across seven families &mdash; JSON, code, prose, enum,
+        number, markup and a list &mdash; each one a list of candidate continuations with a LOGIT.
+        Logits rather than probabilities, because temperature is an operation on logits; at
+        <code class="tok">T&nbsp;=&nbsp;1</code> their softmax is the declared distribution. The
+        shapes are spread deliberately: one candidate carrying 99.99%, an exact two-way tie, flat
+        plateaus of five, geometric ladders of twenty-two. Thirty-nine temperatures, eleven nucleus
+        settings, nine top-k values and eight min-p values, all enumerated, so every rate on the page
+        is a count over a finite set.</p>
+
+      <h3 class="lg b">2. A situation becomes groups, so the tail is exact</h3>
+      <p>Every candidate is a group of one, sorted by logit descending. The declared tail is ONE
+        group of four thousand identical members, whose logit is solved for from the declared MASS
+        rather than the other way round. Because its members are indistinguishable, "how many of them
+        does the nucleus keep" is a division and a ceiling rather than a loop, so a four-thousand
+        token tail costs the same as a four-token one and the arithmetic stays exact. The verifier
+        expands the tail into individual tokens and re-runs everything the slow way to prove the two
+        agree.</p>
+
+      <h3 class="lg b">3. The truncators are written the way real ones are</h3>
+      <p>Top-k walks the sorted groups taking members until the budget runs out. Nucleus accumulates
+        and keeps THROUGH the token that crosses p &mdash; that convention is the whole reason
+        retained mass overshoots. Min-p thresholds at <code class="tok">min_p</code> times the top
+        probability. All three honour <code class="tok">min_tokens_to_keep&nbsp;=&nbsp;1</code>, and
+        all three see the probabilities of the tokens that are still candidates, which is the
+        renormalisation that Probe 3 is about.</p>
+
+      <h3 class="lg b">4. A stack is a fold, and the identity falls out of it</h3>
+      <p>A step is either a temperature or a truncator. A truncator drops the members it did not
+        keep; a temperature changes the T that every later step and the final softmax will use. The
+        final distribution is therefore always
+        <code class="tok">softmax(lg&nbsp;/&nbsp;T)</code> over the survivors &mdash; which is why
+        two orders can differ only through their kept set, and why that is an assertion on every cell
+        rather than a claim in a paragraph.</p>
+
+      <h3 class="lg b">5. Comparison is by set and by distance, separately</h3>
+      <p>A kept set is compared by an exact key over group index and member count, so two runs agree
+        only if they kept the same tokens in the same numbers. Distance is total variation, computed
+        over the union of the two sets, and it handles a partially-kept tail by pairing the
+        overlapping members and charging the difference for the rest. Both are reported, because
+        "the sets differ" and "the answer differs enough to matter" are different questions and the
+        page answers them separately: 43.39% against 23.81% over a tenth.</p>
+
+      <h3 class="lg b">6. The claims are attacked rather than restated</h3>
+      <p>The in-page assertions check that every distribution sums to one at every temperature on the
+        grid; that the nucleus retains at least p and that dropping its last token would retain less
+        than p, which is minimality and not an approximation; that top-k keeps exactly
+        <code class="tok">min(k, n)</code>; that min-p's kept set equals the closed-form logit margin
+        on a sweep of the temperature grid, which the verifier then re-checks on all 7,488 of its
+        cells; that the argmax survives every truncator in every order; that top-k's two
+        orders are bit-identical; that equal sets imply equal distributions and unequal sets imply
+        unequal ones; that the nucleus is monotone in temperature and the argmax probability is
+        monotone the other way; that the composite of two truncators is a subset of both; that a
+        frozen-pool stack really is frozen; that total variation is symmetric, zero on itself and
+        bounded by one; and that the declared tail carries exactly the mass it was declared to carry
+        at <code class="tok">T&nbsp;=&nbsp;1</code>.</p>
+
+      <h3 class="lg b">7. Both controls are printed, not just described</h3>
+      <p>Top-k across every temperature and every k, and both orders at
+        <code class="tok">T&nbsp;=&nbsp;1</code> across every nucleus setting. Both must be exactly
+        zero. They are the difference between "the samplers disagree" and "my comparison is broken",
+        and a page that reports the first without printing the second has not earned it.</p>
+
+      <h3 class="lg b">8. Everything expensive is memoised, nothing is cached wrong</h3>
+      <p>The parameter-free sweeps depend on the family selector and nothing else, so they are
+        computed once per family and reused; the panels that read a dial are recomputed on every
+        change, in a plain timer-driven pump so a slider drag never blocks the first paint. There is
+        no animation frame, no clock and no random source anywhere in the file.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Sampler order: the three numbers you set next to the prompt, and what the stack between your
+// prompt and the emitted token actually does with them. Nothing here simulates language ability.
+// There is no model, no sampling and no claim about what an assistant "tends" to produce. What is
+// built is the other half: real truncators - top-k, nucleus/top-p and min-p - and real temperature,
+// composed in the two orders that ship in mainstream stacks, over next-token distributions that are
+// DATA and a settings grid that is ENUMERATED. Every kept set is decided by running the truncator
+// and never by a formula, and every rate is a count over that grid, so a 0.00% here is a zero and
+// not "none seen". Exactly two numbers are DECLARED about the world rather than read off the corpus
+// - `tail`, the probability mass held by the tokens a situation does not list, and `tailN`, how many
+// tokens share it - and both are on sliders, both are labelled where they are used, and no panel
+// marked parameter-free reads either.
+
+// ---------------------------------------------------------------- 1. the corpus, as data
+// Twenty-four next-token situations. Each one lists its candidate continuations with a LOGIT, so a
+// temperature is a real operation on it rather than a re-scaling of a probability that has already
+// been normalised. At T = 1 the softmax of a situation's logits IS its declared distribution. The
+// shapes are deliberately spread - one candidate carrying almost everything, two-way ties, flat
+// plateaus, long geometric tails, one exact tie - because the whole subject is what a truncator does
+// to a SHAPE.
+var SITS = [
+  { id: "json-status", fam: "json", ctx: '{"status": "',
+    cands: [["ok", 9.4], ["error", 5.2], ["pending", 4.4], ["failed", 3.9], ["success", 3.1],
+            ["unknown", 1.6], ["queued", 0.9]] },
+  { id: "json-key", fam: "json", ctx: '{"id": 7, "',
+    cands: [["name", 6.1], ["title", 5.8], ["type", 5.4], ["value", 4.9], ["label", 4.2],
+            ["kind", 3.6], ["status", 3.1], ["created", 2.4], ["owner", 1.8], ["tags", 1.1]] },
+  { id: "json-close", fam: "json", ctx: '{"total": 120.00',
+    cands: [["}", 10.8], [",", 4.1], ["\\n", 2.2], [" ", 0.4]] },
+  { id: "json-bool", fam: "json", ctx: '{"enabled": ',
+    cands: [["true", 5.9], ["false", 5.7], ["null", 1.2], ["1", 0.3], ["0", 0.1]] },
+  { id: "code-ident", fam: "code", ctx: "const result = user.",
+    cands: [["id", 6.4], ["name", 6.0], ["email", 5.6], ["role", 4.8], ["profile", 4.4],
+            ["settings", 3.9], ["createdAt", 3.5], ["token", 3.0], ["address", 2.6],
+            ["phone", 2.2], ["avatar", 1.7], ["locale", 1.2], ["meta", 0.7], ["raw", 0.1]] },
+  { id: "code-kw", fam: "code", ctx: "for (let i = 0; i < n; i++) { ",
+    cands: [["if", 5.5], ["const", 5.3], ["sum", 4.6], ["out", 4.1], ["arr", 3.7],
+            ["let", 3.2], ["return", 2.5], ["console", 1.9], ["//", 1.3]] },
+  { id: "code-paren", fam: "code", ctx: "return fn(a, b",
+    cands: [[")", 11.6], [",", 3.4], [" ", 1.1]] },
+  { id: "code-string", fam: "code", ctx: 'throw new Error("',
+    cands: [["invalid", 4.4], ["missing", 4.2], ["unexpected", 4.0], ["cannot", 3.8],
+            ["failed", 3.6], ["unable", 3.3], ["no", 3.0], ["bad", 2.7], ["not", 2.4],
+            ["unknown", 2.0], ["could", 1.6], ["expected", 1.2]] },
+  { id: "prose-the", fam: "prose", ctx: "The report was delivered to ",
+    cands: [["the", 6.6], ["a", 5.1], ["our", 4.3], ["all", 3.6], ["every", 2.8],
+            ["each", 2.1], ["both", 1.4], ["several", 0.8], ["two", 0.2]] },
+  { id: "prose-tie", fam: "prose", ctx: "It was neither cheap nor ",
+    cands: [["fast", 4.8], ["quick", 4.8], ["easy", 4.1], ["simple", 3.6], ["safe", 2.9],
+            ["reliable", 2.2], ["good", 1.5]] },
+  { id: "prose-open", fam: "prose", ctx: "In practice, ",
+    cands: [["the", 4.0], ["this", 3.8], ["it", 3.6], ["most", 3.4], ["you", 3.2],
+            ["there", 3.0], ["that", 2.8], ["a", 2.6], ["we", 2.4], ["they", 2.2],
+            ["these", 2.0], ["some", 1.8], ["many", 1.6], ["few", 1.4], ["one", 1.2],
+            ["both", 1.0], ["all", 0.8], ["each", 0.6]] },
+  { id: "prose-name", fam: "prose", ctx: "The capital of France is ",
+    cands: [["Paris", 12.9], ["located", 3.0], ["the", 2.4], ["a", 1.1], ["called", 0.6]] },
+  { id: "enum-label", fam: "enum", ctx: "sentiment: ",
+    cands: [["positive", 4.0], ["negative", 3.9], ["neutral", 3.8], ["mixed", 3.7],
+            ["unclear", 3.6]] },
+  { id: "enum-prio", fam: "enum", ctx: "priority: ",
+    cands: [["high", 5.4], ["medium", 5.2], ["low", 5.0], ["critical", 3.1], ["none", 1.4]] },
+  { id: "enum-lang", fam: "enum", ctx: "language: ",
+    cands: [["en", 8.2], ["fr", 4.0], ["de", 3.8], ["es", 3.7], ["it", 3.2], ["pt", 2.8],
+            ["nl", 2.3], ["pl", 1.9], ["sv", 1.4], ["da", 0.9], ["fi", 0.5], ["cs", 0.1]] },
+  { id: "enum-yesno", fam: "enum", ctx: "Answer yes or no: ",
+    cands: [["yes", 6.3], ["no", 6.0], ["Yes", 3.2], ["No", 2.9], ["maybe", 0.7]] },
+  { id: "num-digit", fam: "number", ctx: "The order total is $1",
+    cands: [["2", 3.3], ["5", 3.2], ["0", 3.1], ["9", 3.0], ["8", 2.9], ["4", 2.8],
+            ["1", 2.7], ["3", 2.6], ["7", 2.5], ["6", 2.4], [".", 1.0]] },
+  { id: "num-year", fam: "number", ctx: "Published in 20",
+    cands: [["24", 5.6], ["23", 5.4], ["25", 5.1], ["22", 4.6], ["21", 4.0], ["20", 3.4],
+            ["19", 2.6], ["18", 1.8], ["17", 1.0]] },
+  { id: "num-unit", fam: "number", ctx: "Weight: 4.5 ",
+    cands: [["kg", 6.8], ["lb", 5.4], ["g", 3.1], ["oz", 2.4], ["t", 0.6]] },
+  { id: "markup-tag", fam: "markup", ctx: "<div class=\"card\"><",
+    cands: [["h2", 4.9], ["p", 4.7], ["span", 4.4], ["div", 4.2], ["a", 3.8], ["img", 3.3],
+            ["ul", 2.8], ["button", 2.3], ["h3", 1.9], ["small", 1.3], ["em", 0.8]] },
+  { id: "markup-attr", fam: "markup", ctx: "<a ",
+    cands: [["href", 9.1], ["class", 5.2], ["id", 3.4], ["target", 2.9], ["rel", 2.1],
+            ["title", 1.5], ["style", 0.8]] },
+  { id: "markup-close", fam: "markup", ctx: "<p>Hello</",
+    cands: [["p", 12.2], ["div", 2.1], ["span", 1.4]] },
+  { id: "list-bullet", fam: "list", ctx: "- first item\\n- second item\\n",
+    cands: [["-", 6.9], ["\\n", 4.4], ["#", 2.2], ["1", 1.9], [" ", 1.1], ["*", 0.6]] },
+  { id: "list-long", fam: "list", ctx: "Tags: alpha, beta, ",
+    cands: [["gamma", 3.6], ["delta", 3.4], ["epsilon", 3.2], ["zeta", 3.0], ["eta", 2.8],
+            ["theta", 2.6], ["iota", 2.4], ["kappa", 2.2], ["lambda", 2.0], ["mu", 1.8],
+            ["nu", 1.6], ["xi", 1.4], ["omicron", 1.2], ["pi", 1.0], ["rho", 0.8],
+            ["sigma", 0.6], ["tau", 0.4], ["upsilon", 0.2], ["phi", 0.0], ["chi", -0.2],
+            ["psi", -0.4], ["omega", -0.6]] }
+];
+var SIT_IDS = [], FAMS = ["all"];
+(function(){
+  var i;
+  for (i = 0; i < SITS.length; i++){
+    SIT_IDS.push(SITS[i].id);
+    if (FAMS.indexOf(SITS[i].fam) < 0) FAMS.push(SITS[i].fam);
+  }
+})();
+
+// ---------------------------------------------------------------- 2. groups
+// A situation becomes a list of GROUPS sorted by logit descending. A listed candidate is a group of
+// one. The declared tail - the mass a situation does not list, shared by `tailN` identical tokens -
+// is one group of tailN, and because its members are indistinguishable every count over it is exact
+// integer arithmetic rather than a loop over thousands of entries. `oi` is the group's position in
+// this sorted list and is the only identity a kept set needs.
+var EPS = 1e-12;
+// The tail's logit is derived from the declared MASS, not the other way round: solving
+// tailN*e^lt / (E + tailN*e^lt) = tail for lt, where E is the listed exponentiated total at T = 1.
+function tailLogit(sit, tail, tailN){
+  var E = 0, i;
+  for (i = 0; i < sit.cands.length; i++) E += Math.exp(sit.cands[i][1]);
+  return Math.log(tail * E / ((1 - tail) * tailN));
+}
+function groupsFor(sit, tail, tailN){
+  var g = [], i;
+  for (i = 0; i < sit.cands.length; i++)
+    g.push({ lg: sit.cands[i][1], n: 1, label: sit.cands[i][0], tail: false });
+  if (tail > 0 && tailN > 0)
+    g.push({ lg: tailLogit(sit, tail, tailN), n: tailN,
+             label: "<" + tailN + " unlisted>", tail: true });
+  // A stable sort by logit descending. Ties keep their written order, which is the only tie rule on
+  // the page and is stated because a tie is a real case in the corpus.
+  g = g.map(function(x, k){ return { g: x, k: k }; })
+       .sort(function(a, b){ return b.g.lg - a.g.lg || a.k - b.k; })
+       .map(function(x){ return x.g; });
+  for (i = 0; i < g.length; i++) g[i].oi = i;
+  return g;
+}
+function stateFor(sit, tail, tailN){ return { g: groupsFor(sit, tail, tailN), T: 1 }; }
+
+// ---------------------------------------------------------------- 3. probabilities at a temperature
+// Temperature acts on logits, so the probability a truncator sees is the softmax of lg/T over the
+// tokens that are STILL CANDIDATES. That last clause is the whole of section 6: every truncator in
+// every real stack sees a renormalised distribution, not the original one.
+function probsOf(st){
+  var m = -Infinity, i, w = [], Z = 0;
+  for (i = 0; i < st.g.length; i++) if (st.g[i].lg > m) m = st.g[i].lg;
+  for (i = 0; i < st.g.length; i++){ w[i] = Math.exp((st.g[i].lg - m) / st.T); Z += w[i] * st.g[i].n; }
+  for (i = 0; i < st.g.length; i++) w[i] = w[i] / Z;
+  return w;
+}
+
+// ---------------------------------------------------------------- 4. the truncators, for real
+// Each returns how many members of each group survive. Only the tail group can ever be split, and
+// only by a rule that counts (top-k, top-p); min-p thresholds identical tokens identically.
+function keepTopK(st, k){
+  var out = [], left = k, i, take;
+  for (i = 0; i < st.g.length; i++){
+    take = Math.min(st.g[i].n, Math.max(0, left));
+    out.push(take); left -= take;
+  }
+  if (k >= 1 && out[0] < 1) out[0] = 1;                       // min_tokens_to_keep = 1
+  return out;
+}
+// Nucleus: sort descending, accumulate, and keep THROUGH the token that crosses p. The crossing
+// token is kept, which is why the retained mass is at least p and never exactly p.
+function keepTopP(st, p){
+  var pr = probsOf(st), out = [], cum = 0, done = false, i, q, n, j;
+  for (i = 0; i < st.g.length; i++){
+    n = st.g[i].n; q = pr[i];
+    if (done){ out.push(0); continue; }
+    if (cum + q * n < p - EPS){ out.push(n); cum += q * n; continue; }
+    // How many members of THIS group are needed. The slack is RELATIVE, not absolute: inside a tail
+    // of four thousand identical tokens the crossing index is in the thousands, and an absolute
+    // 1e-12 on a quotient of that size rounds a boundary that lands exactly on a token up to the
+    // next one - a rounding artefact, not a token the nucleus needs. The verifier catches this by
+    // writing the tail out as four thousand separate tokens and accumulating them one at a time.
+    var need = q > 0 ? (p - cum) / q : n;
+    j = q > 0 ? Math.ceil(need - (EPS + Math.abs(need) * EPS)) : n;
+    if (!(j >= 1)) j = 1;
+    if (j > n) j = n;
+    out.push(j); cum += j * q; done = true;
+  }
+  if (out[0] < 1) out[0] = 1;
+  return out;
+}
+// min-p: keep a token whose probability is at least min_p times the top token's.
+function keepMinP(st, mp){
+  var pr = probsOf(st), out = [], thr = mp * pr[0], i;
+  for (i = 0; i < st.g.length; i++) out.push(pr[i] >= thr - EPS ? st.g[i].n : 0);
+  if (out[0] < 1) out[0] = 1;
+  return out;
+}
+var TRUNC = { topk: keepTopK, topp: keepTopP, minp: keepMinP };
+
+// ---------------------------------------------------------------- 5. the stack
+// A step is either a temperature or a truncator. Applying a truncator drops the members it did not
+// keep; applying a temperature changes the T that every later step and the final softmax will use.
+// So a stack is a fold, and the FINAL distribution is always softmax(lg/T) over whatever survived -
+// which is the identity the whole page turns on: two orders can only differ through their kept set.
+function applyStep(st, step){
+  if (step.op === "temp") return { g: st.g, T: step.v };
+  var keep = TRUNC[step.op](st, step.v), g2 = [], i;
+  for (i = 0; i < st.g.length; i++)
+    if (keep[i] > 0)
+      g2.push({ lg: st.g[i].lg, n: keep[i], label: st.g[i].label, tail: st.g[i].tail,
+                oi: st.g[i].oi });
+  return { g: g2, T: st.T };
+}
+function runStack(st0, steps){
+  var st = st0, i;
+  for (i = 0; i < steps.length; i++) st = applyStep(st, steps[i]);
+  return st;
+}
+// The two shapes that ship. `temp-first` is the transformers warper list: temperature, then the
+// truncators. `temp-last` is the llama.cpp default sampler chain: the truncators, then temperature.
+// Same three numbers, same prompt, same corpus.
+function stackSteps(order, s){
+  var tr = [], i;
+  if (s.k) tr.push({ op: "topk", v: s.k });
+  if (s.p !== null && s.p !== undefined) tr.push({ op: "topp", v: s.p });
+  if (s.mp) tr.push({ op: "minp", v: s.mp });
+  var t = { op: "temp", v: s.T };
+  return order === "first" ? [t].concat(tr) : tr.concat([t]);
+}
+
+// ---------------------------------------------------------------- 6. reading a finished state
+function keptKey(st){
+  var s = "", i;
+  for (i = 0; i < st.g.length; i++) s += st.g[i].oi + ":" + st.g[i].n + ",";
+  return s;
+}
+function keptCount(st){ var n = 0, i; for (i = 0; i < st.g.length; i++) n += st.g[i].n; return n; }
+// The mass the survivors carried in the distribution the truncator was looking at.
+function massOf(st0, st, T){
+  var base = { g: st0.g, T: T }, pr = probsOf(base), by = {}, i, m = 0;
+  for (i = 0; i < st0.g.length; i++) by[st0.g[i].oi] = pr[i];
+  for (i = 0; i < st.g.length; i++) m += by[st.g[i].oi] * st.g[i].n;
+  return m;
+}
+function finalProbs(st){ return probsOf(st); }
+function pArgmax(st){ return probsOf(st)[0]; }
+function entropyOf(st){
+  var pr = probsOf(st), h = 0, i;
+  for (i = 0; i < st.g.length; i++) if (pr[i] > 0) h -= st.g[i].n * pr[i] * Math.log(pr[i]);
+  return h;
+}
+// Total variation between two finished states over the same token universe. Members of a group are
+// indistinguishable and are kept as a prefix, so the overlap is min(a,b) tokens.
+function tvd(sa, sb){
+  var A = {}, B = {}, i, keys = {}, s = 0, pa = probsOf(sa), pb = probsOf(sb), k, a, b, qa, qb;
+  for (i = 0; i < sa.g.length; i++){ A[sa.g[i].oi] = { n: sa.g[i].n, q: pa[i] }; keys[sa.g[i].oi] = 1; }
+  for (i = 0; i < sb.g.length; i++){ B[sb.g[i].oi] = { n: sb.g[i].n, q: pb[i] }; keys[sb.g[i].oi] = 1; }
+  for (k in keys){
+    a = A[k] || { n: 0, q: 0 }; b = B[k] || { n: 0, q: 0 };
+    qa = a.q; qb = b.q;
+    s += Math.min(a.n, b.n) * Math.abs(qa - qb);
+    s += a.n > b.n ? (a.n - b.n) * qa : (b.n - a.n) * qb;
+  }
+  return s / 2;
+}
+
+// ---------------------------------------------------------------- 7. the settings grid
+var GRID_T = [], GRID_P = [0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99];
+var GRID_K = [1, 2, 3, 4, 6, 8, 12, 16, 24];
+var GRID_MP = [0.01, 0.02, 0.05, 0.10, 0.15, 0.20, 0.30, 0.50];
+(function(){ var t; for (t = 10; t <= 200; t += 5) GRID_T.push(t / 100); })();
+
+function sitsOf(fam){
+  var out = [], i;
+  for (i = 0; i < SITS.length; i++) if (fam === "all" || SITS[i].fam === fam) out.push(SITS[i]);
+  return out;
+}
+
+// ---------------------------------------------------------------- 8. PROBE 1, the order sweep
+// Parameter-free: no declared number reaches it, because it runs on the listed candidates alone.
+// For every situation, every temperature and every setting of one truncator, build both stacks and
+// compare. `sets` counts cells where the surviving candidates differ at all; `dist` counts cells
+// where the emitted distribution differs by more than a millionth; `tv` is total variation.
+function orderSweep(fam){
+  var S = sitsOf(fam), arms = [
+    { id: "topk", label: "top-k", grid: GRID_K, fmt: function(v){ return "k = " + v; } },
+    { id: "topp", label: "top-p (nucleus)", grid: GRID_P, fmt: function(v){ return "p = " + v.toFixed(2); } },
+    { id: "minp", label: "min-p", grid: GRID_MP, fmt: function(v){ return "min_p = " + v.toFixed(2); } }
+  ];
+  var out = [], a, i, j, t, v;
+  for (a = 0; a < arms.length; a++){
+    var arm = arms[a], cells = 0, setsDiff = 0, distDiff = 0, argDiff = 0;
+    var sumTv = 0, maxTv = 0, maxAt = null, atOne = 0, byT = {}, sumCntA = 0, sumCntB = 0;
+    var over = [0, 0, 0, 0], BUCKETS = [0.01, 0.05, 0.10, 0.25], sameButMoved = 0;
+    for (i = 0; i < S.length; i++){
+      var st0 = stateFor(S[i], 0, 0);
+      for (t = 0; t < GRID_T.length; t++){
+        for (j = 0; j < arm.grid.length; j++){
+          v = arm.grid[j];
+          var s = { T: GRID_T[t], k: 0, p: null, mp: 0 };
+          if (arm.id === "topk") s.k = v; else if (arm.id === "topp") s.p = v; else s.mp = v;
+          var A = runStack(st0, stackSteps("first", s));
+          var B = runStack(st0, stackSteps("last", s));
+          var same = keptKey(A) === keptKey(B), d = tvd(A, B);
+          cells++; sumTv += d; sumCntA += keptCount(A); sumCntB += keptCount(B);
+          if (!same) setsDiff++;
+          if (d > 1e-6) distDiff++;
+          for (var b = 0; b < BUCKETS.length; b++) if (d > BUCKETS[b]) over[b]++;
+          if (same && d > 0) sameButMoved++;
+          if (probsOf(A)[0] !== probsOf(B)[0] && same) argDiff++;
+          if (d > maxTv){ maxTv = d; maxAt = { sit: S[i].id, T: GRID_T[t], v: v }; }
+          if (Math.abs(GRID_T[t] - 1) < 1e-9 && !same) atOne++;
+          if (!byT[GRID_T[t]]) byT[GRID_T[t]] = { n: 0, sets: 0, tv: 0 };
+          byT[GRID_T[t]].n++; byT[GRID_T[t]].sets += same ? 0 : 1; byT[GRID_T[t]].tv += d;
+        }
+      }
+    }
+    out.push({ id: arm.id, label: arm.label, cells: cells, sets: setsDiff, dist: distDiff,
+               argDiff: argDiff, meanTv: sumTv / cells, maxTv: maxTv, maxAt: maxAt,
+               atOne: atOne, byT: byT, meanCntFirst: sumCntA / cells, meanCntLast: sumCntB / cells,
+               over: over, buckets: BUCKETS, sameButMoved: sameButMoved });
+  }
+  return out;
+}
+// The same comparison at one named cell, so the headline can quote a setting a reader recognises.
+function orderAt(T, p, fam){
+  var S = sitsOf(fam), diff = 0, i, sumTv = 0, worst = 0, worstId = null;
+  for (i = 0; i < S.length; i++){
+    var st0 = stateFor(S[i], 0, 0), s = { T: T, k: 0, p: p, mp: 0 };
+    var A = runStack(st0, stackSteps("first", s)), B = runStack(st0, stackSteps("last", s));
+    var d = tvd(A, B);
+    if (keptKey(A) !== keptKey(B)) diff++;
+    sumTv += d;
+    if (d > worst){ worst = d; worstId = S[i].id; }
+  }
+  return { n: S.length, diff: diff, meanTv: sumTv / S.length, worst: worst, worstId: worstId };
+}
+
+// ---------------------------------------------------------------- 9. PROBE 2, a probability is not a count
+// Parameter-free, at T = 1. For each nucleus setting: how many candidates survive across the corpus,
+// and how much mass that actually retains. `p = 0.90` names a mass and delivers a count nobody
+// chose.
+function nucleusCensus(fam){
+  var S = sitsOf(fam), out = [], j, i;
+  for (j = 0; j < GRID_P.length; j++){
+    var p = GRID_P[j], counts = [], masses = [], one = 0, allv = 0;
+    for (i = 0; i < S.length; i++){
+      var st0 = stateFor(S[i], 0, 0);
+      var A = runStack(st0, [{ op: "topp", v: p }]);
+      var c = keptCount(A);
+      counts.push(c); masses.push(massOf(st0, A, 1));
+      if (c === 1) one++;
+      if (c === keptCount(st0)) allv++;
+    }
+    counts.sort(function(a, b){ return a - b; });
+    var mid = counts.length % 2 ? counts[(counts.length - 1) / 2]
+                                : (counts[counts.length / 2 - 1] + counts[counts.length / 2]) / 2;
+    var mm = 0, mx = 0;
+    for (i = 0; i < masses.length; i++){ mm += masses[i]; if (masses[i] - p > mx) mx = masses[i] - p; }
+    out.push({ p: p, min: counts[0], med: mid, max: counts[counts.length - 1],
+               one: one / S.length, all: allv / S.length, meanMass: mm / masses.length,
+               maxOver: mx, n: S.length });
+  }
+  return out;
+}
+// The mirror census for top-k: a count is fixed and the MASS is what nobody chose.
+function topkCensus(fam){
+  var S = sitsOf(fam), out = [], j, i;
+  for (j = 0; j < GRID_K.length; j++){
+    var k = GRID_K[j], masses = [], lo = 2, hi = 0, mm = 0;
+    for (i = 0; i < S.length; i++){
+      var st0 = stateFor(S[i], 0, 0);
+      var A = runStack(st0, [{ op: "topk", v: k }]);
+      var m = massOf(st0, A, 1);
+      masses.push(m); mm += m;
+      if (m < lo) lo = m;
+      if (m > hi) hi = m;
+    }
+    out.push({ k: k, min: lo, max: hi, mean: mm / masses.length, spread: hi - lo, n: S.length });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 10. PROBE 3, belt and braces
+// Setting top-k AND top-p is usually described as "whichever is tighter wins". It is not what the
+// code does. Every truncator sees the distribution RENORMALISED over the survivors of the one before
+// it, so the nucleus of the top-k is a nucleus of a distribution that has been inflated - it crosses
+// p sooner and keeps fewer. The composite can therefore be strictly smaller than both.
+function stackCensus(fam){
+  var S = sitsOf(fam), out = [], a, b, i;
+  for (a = 0; a < GRID_K.length; a++){
+    for (b = 0; b < GRID_P.length; b++){
+      var k = GRID_K[a], p = GRID_P[b], tighter = 0, subset = 0, equal = 0, n = 0;
+      var sumC = 0, sumMin = 0;
+      for (i = 0; i < S.length; i++){
+        var st0 = stateFor(S[i], 0, 0);
+        var K = runStack(st0, [{ op: "topk", v: k }]);
+        var P = runStack(st0, [{ op: "topp", v: p }]);
+        var C = runStack(st0, [{ op: "topk", v: k }, { op: "topp", v: p }]);
+        var cK = keptCount(K), cP = keptCount(P), cC = keptCount(C), mn = Math.min(cK, cP);
+        n++; sumC += cC; sumMin += mn;
+        if (cC < mn) tighter++; else if (cC === mn) equal++;
+        if (cC <= mn) subset++;
+      }
+      out.push({ k: k, p: p, n: n, tighter: tighter / n, equal: equal / n, subset: subset / n,
+                 meanC: sumC / n, meanMin: sumMin / n });
+    }
+  }
+  return out;
+}
+function stackTotals(fam){
+  var rows = stackCensus(fam), t = 0, e = 0, n = 0, i, worst = null;
+  for (i = 0; i < rows.length; i++){
+    t += rows[i].tighter * rows[i].n; e += rows[i].equal * rows[i].n; n += rows[i].n;
+    if (!worst || rows[i].tighter > worst.tighter) worst = rows[i];
+  }
+  return { cells: n, tighter: t / n, equal: e / n, worst: worst, rows: rows };
+}
+
+// The repair that suggests itself once top-k is known to be order-proof: pin the pool with a top-k
+// and keep the nucleus for the shaping. Whether that inherits top-k's immunity is a question with an
+// answer, so it is measured rather than assumed - and the truncators are ALSO swapped against each
+// other, because renormalisation means their own order is not free either.
+function hybridSweep(fam){
+  var S = sitsOf(fam), i, t, a, b, cells = 0, ordDiff = 0, truncDiff = 0, bothSame = 0;
+  var sumTvO = 0, sumTvT = 0, maxTvT = 0, worstT = null;
+  for (i = 0; i < S.length; i++){
+    var st0 = stateFor(S[i], 0, 0);
+    for (t = 0; t < GRID_T.length; t++){
+      for (a = 0; a < GRID_K.length; a++){
+        for (b = 0; b < GRID_P.length; b++){
+          var T = GRID_T[t], k = GRID_K[a], p = GRID_P[b];
+          var F = runStack(st0, [{ op: "temp", v: T }, { op: "topk", v: k }, { op: "topp", v: p }]);
+          var L = runStack(st0, [{ op: "topk", v: k }, { op: "topp", v: p }, { op: "temp", v: T }]);
+          var X = runStack(st0, [{ op: "temp", v: T }, { op: "topp", v: p }, { op: "topk", v: k }]);
+          var dO = tvd(F, L), dT = tvd(F, X);
+          cells++; sumTvO += dO; sumTvT += dT;
+          if (keptKey(F) !== keptKey(L)) ordDiff++;
+          if (keptKey(F) !== keptKey(X)) truncDiff++;
+          if (keptKey(F) === keptKey(L) && keptKey(F) === keptKey(X)) bothSame++;
+          if (dT > maxTvT){ maxTvT = dT; worstT = { sit: S[i].id, T: T, k: k, p: p }; }
+        }
+      }
+    }
+  }
+  return { cells: cells, ordDiff: ordDiff, truncDiff: truncDiff, bothSame: bothSame,
+           meanTvOrder: sumTvO / cells, meanTvTrunc: sumTvT / cells, maxTvTrunc: maxTvT,
+           worstTrunc: worstT };
+}
+
+// ---------------------------------------------------------------- 11. PROBE 4, min-p is a margin
+// min-p keeps a token when p_i >= mp * p_max. Under temperature that is exactly a threshold on the
+// LOGIT GAP: p_i/p_max = exp((lg_i - lg_max)/T), so the survivors are the tokens within
+// T * ln(1/mp) of the top logit. The order therefore decides one thing only, and it decides it in
+// closed form: whether that margin scales with temperature or is frozen at ln(1/mp).
+function marginTable(fam){
+  var S = sitsOf(fam), out = [], j, t, i;
+  for (j = 0; j < GRID_MP.length; j++){
+    var mp = GRID_MP[j], agree = 0, cells = 0, sumFirst = 0, sumLast = 0;
+    for (t = 0; t < GRID_T.length; t++){
+      for (i = 0; i < S.length; i++){
+        var st0 = stateFor(S[i], 0, 0), T = GRID_T[t];
+        var A = runStack(st0, [{ op: "temp", v: T }, { op: "minp", v: mp }]);
+        var B = runStack(st0, [{ op: "minp", v: mp }, { op: "temp", v: T }]);
+        // the closed form, computed from the logits alone and never from a probability
+        var gap = T * Math.log(1 / mp), lgMax = st0.g[0].lg, want = [], q;
+        for (q = 0; q < st0.g.length; q++)
+          if (lgMax - st0.g[q].lg <= gap + 1e-9) want.push(st0.g[q].oi + ":" + st0.g[q].n + ",");
+        if (want.join("") === keptKey(A)) agree++;
+        cells++; sumFirst += keptCount(A); sumLast += keptCount(B);
+      }
+    }
+    out.push({ mp: mp, gap1: Math.log(1 / mp), cells: cells, agree: agree,
+               meanFirst: sumFirst / cells, meanLast: sumLast / cells });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 12. where the order bites
+// Divergence against temperature, so the band is visible rather than asserted. At T = 1 the two
+// orders are the same computation and the row is a zero by identity, not by luck.
+function biteTable(fam, arm, v){
+  var S = sitsOf(fam), out = [], t, i;
+  for (t = 0; t < GRID_T.length; t++){
+    var T = GRID_T[t], diff = 0, sumTv = 0, cf = 0, cl = 0, hf = 0, hl = 0;
+    for (i = 0; i < S.length; i++){
+      var st0 = stateFor(S[i], 0, 0), s = { T: T, k: 0, p: null, mp: 0 };
+      if (arm === "topk") s.k = v; else if (arm === "topp") s.p = v; else s.mp = v;
+      var A = runStack(st0, stackSteps("first", s)), B = runStack(st0, stackSteps("last", s));
+      if (keptKey(A) !== keptKey(B)) diff++;
+      sumTv += tvd(A, B);
+      cf += keptCount(A); cl += keptCount(B);
+      hf += entropyOf(A); hl += entropyOf(B);
+    }
+    out.push({ T: T, diff: diff / S.length, tv: sumTv / S.length, cntFirst: cf / S.length,
+               cntLast: cl / S.length, hFirst: hf / S.length, hLast: hl / S.length, n: S.length });
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------- 13. the monotone ladder
+// Lower the temperature and the sorted prefix mass rises, so the nucleus can only shrink. That is a
+// theorem about the corpus, not a trend: it is checked at every adjacent pair of the grid.
+function ladder(sitIdx, p, tail, tailN){
+  var st0 = stateFor(SITS[sitIdx], tail, tailN), out = [], t;
+  for (t = 0; t < GRID_T.length; t++){
+    var T = GRID_T[t];
+    var A = runStack(st0, [{ op: "temp", v: T }, { op: "topp", v: p }]);
+    var B = runStack(st0, [{ op: "topp", v: p }, { op: "temp", v: T }]);
+    out.push({ T: T, first: keptCount(A), last: keptCount(B),
+               pFirst: pArgmax(A), pLast: pArgmax(B),
+               hFirst: entropyOf(A), hLast: entropyOf(B) });
+  }
+  return out;
+}
+function monotoneAudit(fam, p){
+  var S = sitsOf(fam), bad = 0, checks = 0, badArg = 0, i, t;
+  for (i = 0; i < S.length; i++){
+    var st0 = stateFor(S[i], 0, 0), prev = null, prevA = null;
+    for (t = 0; t < GRID_T.length; t++){
+      var A = runStack(st0, [{ op: "temp", v: GRID_T[t] }, { op: "topp", v: p }]);
+      var c = keptCount(A), a = pArgmax(A);
+      if (prev !== null){ checks++; if (c < prev - 1e-9) bad++; if (a > prevA + 1e-9) badArg++; }
+      prev = c; prevA = a;
+    }
+  }
+  return { checks: checks, bad: bad, badArg: badArg };
+}
+
+// ---------------------------------------------------------------- 14. the tail - the declared half
+// The only panel that reads a declared number. A situation lists the candidates that carry the mass;
+// a real vocabulary also holds a hundred thousand tokens that individually carry nothing and
+// together carry something. `tail` is that something and `tailN` is how many share it. Nucleus was
+// invented to cut exactly this, so its size decides whether p = 0.95 and p = 0.99 are the same
+// setting or three orders of magnitude apart.
+var TAIL_TS = [0.50, 0.70, 0.90, 1.00, 1.10, 1.20, 1.30, 1.50, 1.70, 2.00];
+function tailLadder(cfg){
+  var S = sitsOf(cfg.fam), out = [], j, i;
+  for (j = 0; j < TAIL_TS.length; j++){
+    var T = TAIL_TS[j], sumF = 0, sumL = 0, sum0 = 0, anyTail = 0, sumTv = 0, diff = 0, mass = 0;
+    for (i = 0; i < S.length; i++){
+      var stT = stateFor(S[i], cfg.tail, cfg.tailN), st0 = stateFor(S[i], 0, 0);
+      var A = runStack(stT, [{ op: "temp", v: T }, { op: "topp", v: cfg.p }]);
+      var B = runStack(stT, [{ op: "topp", v: cfg.p }, { op: "temp", v: T }]);
+      var Z = runStack(st0, [{ op: "temp", v: T }, { op: "topp", v: cfg.p }]);
+      sumF += keptCount(A); sumL += keptCount(B); sum0 += keptCount(Z);
+      if (keptKey(A) !== keptKey(B)) diff++;
+      sumTv += tvd(A, B);
+      var q, has = 0, pr = probsOf({ g: stT.g, T: T });
+      for (q = 0; q < stT.g.length; q++) if (stT.g[q].tail) mass += pr[q] * stT.g[q].n;
+      for (q = 0; q < A.g.length; q++) if (A.g[q].tail) has = 1;
+      anyTail += has;
+    }
+    out.push({ T: T, first: sumF / S.length, last: sumL / S.length, noTail: sum0 / S.length,
+               anyTail: anyTail / S.length, diff: diff / S.length, tv: sumTv / S.length,
+               tailMass: mass / S.length, n: S.length });
+  }
+  return out;
+}
+// The cliff, located rather than described: the first temperature on the ladder at which the nucleus
+// reaches into the declared tail, and what the pool does across that one step.
+function tailCliff(cfg){
+  var rows = tailLadder(cfg), i;
+  for (i = 1; i < rows.length; i++)
+    if (rows[i].anyTail > 0 && rows[i - 1].anyTail === 0)
+      return { before: rows[i - 1], after: rows[i], ratio: rows[i].first / rows[i - 1].first };
+  return null;
+}
+
+// ---------------------------------------------------------------- 15. the control
+// Two controls, both of which must come back at exactly zero or the page is measuring itself.
+// (a) top-k is order-proof: sorting by logit is temperature-invariant, so the rank cut is the same
+//     set whichever side of it temperature is applied, and the final softmax is then identical.
+// (b) at T = 1 the two orders are literally the same sequence of operations.
+function controls(fam){
+  var S = sitsOf(fam), i, t, j, kCells = 0, kBad = 0, oneCells = 0, oneBad = 0, worst = 0;
+  for (i = 0; i < S.length; i++){
+    var st0 = stateFor(S[i], 0, 0);
+    for (t = 0; t < GRID_T.length; t++){
+      for (j = 0; j < GRID_K.length; j++){
+        var s = { T: GRID_T[t], k: GRID_K[j], p: null, mp: 0 };
+        var A = runStack(st0, stackSteps("first", s)), B = runStack(st0, stackSteps("last", s));
+        var d = tvd(A, B);
+        kCells++;
+        if (keptKey(A) !== keptKey(B) || d > 1e-12) kBad++;
+        if (d > worst) worst = d;
+      }
+      for (j = 0; j < GRID_P.length; j++){
+        if (Math.abs(GRID_T[t] - 1) > 1e-9) continue;
+        var s2 = { T: 1, k: 0, p: GRID_P[j], mp: 0 };
+        var A2 = runStack(st0, stackSteps("first", s2)), B2 = runStack(st0, stackSteps("last", s2));
+        oneCells++;
+        if (keptKey(A2) !== keptKey(B2)) oneBad++;
+      }
+    }
+  }
+  return { kCells: kCells, kBad: kBad, kWorstTv: worst, oneCells: oneCells, oneBad: oneBad };
+}
+
+// ---------------------------------------------------------------- 16. one situation, written out
+function traceOne(cfg){
+  var sit = SITS[cfg.si], st0 = stateFor(sit, cfg.tail, cfg.tailN);
+  var s = { T: cfg.T, k: cfg.k, p: cfg.p, mp: cfg.mp };
+  var stepsF = stackSteps("first", s), stepsL = stackSteps("last", s);
+  function walk(steps){
+    var st = st0, log = [], i;
+    log.push({ name: "start", st: st, count: keptCount(st), T: st.T });
+    for (i = 0; i < steps.length; i++){
+      st = applyStep(st, steps[i]);
+      log.push({ name: steps[i].op === "temp" ? "temperature " + steps[i].v
+                                              : steps[i].op + " " + steps[i].v,
+                 st: st, count: keptCount(st), T: st.T });
+    }
+    return { log: log, st: st };
+  }
+  var F = walk(stepsF), L = walk(stepsL);
+  var pf = probsOf(F.st), pl = probsOf(L.st), rows = [], i, byF = {}, byL = {};
+  for (i = 0; i < F.st.g.length; i++) byF[F.st.g[i].oi] = { q: pf[i], n: F.st.g[i].n };
+  for (i = 0; i < L.st.g.length; i++) byL[L.st.g[i].oi] = { q: pl[i], n: L.st.g[i].n };
+  var base = probsOf({ g: st0.g, T: 1 });
+  for (i = 0; i < st0.g.length; i++)
+    rows.push({ label: st0.g[i].label, lg: st0.g[i].lg, n: st0.g[i].n, base: base[i],
+                f: byF[st0.g[i].oi] || null, l: byL[st0.g[i].oi] || null });
+  return { sit: sit, rows: rows, F: F, L: L, tv: tvd(F.st, L.st),
+           same: keptKey(F.st) === keptKey(L.st),
+           cF: keptCount(F.st), cL: keptCount(L.st),
+           hF: entropyOf(F.st), hL: entropyOf(L.st),
+           aF: pArgmax(F.st), aL: pArgmax(L.st) };
+}
+
+// ---------------------------------------------------------------- 17. defaults
+var DEFAULTS = { T: 0.70, p: 0.90, k: 0, mp: 0, tail: 0.02, tailN: 4000, fam: "all", si: 7 };
+function withDefaults(c){
+  c = c || {};
+  var o = {}, keys = ["T", "p", "k", "mp", "tail", "tailN", "fam", "si"], i;
+  for (i = 0; i < keys.length; i++)
+    o[keys[i]] = c[keys[i]] === undefined ? DEFAULTS[keys[i]] : c[keys[i]];
+  return o;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- view
+function $(id){ return document.getElementById(id); }
+function esc(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function pc(x){ return (100 * x).toFixed(2) + "%"; }
+function n1(x){ return x.toFixed(1); }
+function n2(x){ return x.toFixed(2); }
+function n3(x){ return x.toFixed(3); }
+function n4(x){ return x.toFixed(4); }
+function cm(x){ return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function G(t){ return '<span class="ok">' + t + "</span>"; }
+function B(t){ return '<span class="bad">' + t + "</span>"; }
+function W(t){ return '<span class="warn">' + t + "</span>"; }
+function D(t){ return '<span class="dim">' + t + "</span>"; }
+// a divergence share: green at zero, red when high
+function dv(x){ return x < 1e-12 ? G(pc(x)) : (x > 0.3 ? B(pc(x)) : W(pc(x))); }
+// a distance: green at zero
+function ds(x){ return x < 1e-12 ? G(n4(x)) : (x > 0.1 ? B(n4(x)) : n4(x)); }
+function head(cells){
+  var s = "<tr>", i;
+  for (i = 0; i < cells.length; i++) s += "<th>" + cells[i] + "</th>";
+  return s + "</tr>";
+}
+function row(cells, klass){
+  var s = "<tr" + (klass ? ' class="' + klass + '"' : "") + ">", i;
+  for (i = 0; i < cells.length; i++) s += "<td>" + cells[i] + "</td>";
+  return s + "</tr>";
+}
+function bar(x, w){ return '<span class="bar" style="width:' + Math.max(1, Math.round(x * w)) + 'px"></span>'; }
+function pill(t, k){ return '<span class="pill ' + k + '">' + t + "</span>"; }
+
+// the parameter-free sweeps depend on the family and nothing else
+var MEMO = {};
+function memo(key, fn){ if (!(key in MEMO)) MEMO[key] = fn(); return MEMO[key]; }
+
+function cfgUI(){
+  return { T: (+$("sT").value) / 100, p: (+$("sP").value) / 100, k: +$("sK").value,
+           mp: (+$("sMp").value) / 100, tail: (+$("sTail").value) / 100,
+           tailN: +$("sTailN").value, fam: $("selFam").value, si: +$("selSit").value };
+}
+
+var FIRST = true, PENDING2 = null, PENDING3 = null;
+
+function draw(){
+  var c = withDefaults(cfgUI()), i, r;
+  $("vT").textContent = c.T.toFixed(2);
+  $("vP").textContent = c.p.toFixed(2);
+  $("vK").textContent = String(c.k);
+  $("vMp").textContent = c.mp.toFixed(2);
+  $("vTail").textContent = Math.round(100 * c.tail) + "%";
+  $("vTailN").textContent = cm(c.tailN);
+  $("tailEcho").textContent = Math.round(100 * c.tail) + "%";
+  $("tailNEcho").textContent = cm(c.tailN);
+
+  var OS = memo("os:" + c.fam, function(){ return orderSweep(c.fam); });
+  var by = {};
+  for (i = 0; i < OS.length; i++) by[OS[i].id] = OS[i];
+  var h = head(["truncator", "cells", "kept set differs", "distribution differs",
+                "mean total variation", "&gt; 0.10", "&gt; 0.25", "worst", "worst cell"]);
+  var total = 0;
+  for (i = 0; i < OS.length; i++){
+    r = OS[i]; total += r.cells;
+    h += row([r.label, cm(r.cells), dv(r.sets / r.cells), dv(r.dist / r.cells),
+              ds(r.meanTv), dv(r.over[2] / r.cells), dv(r.over[3] / r.cells), ds(r.maxTv),
+              r.maxAt ? D(r.maxAt.sit + " &middot; T " + n2(r.maxAt.T)) : D("&mdash;")],
+             r.sets === 0 ? "hi" : "mis");
+  }
+  $("t1Tbl").innerHTML = h;
+  var win = by.topk, lose = by.topp;
+  $("t1Note").innerHTML =
+    "Same prompt, same numbers, " + B(pc(lose.sets / lose.cells)) + " of " + cm(lose.cells) +
+    " nucleus cells with a different candidate set &mdash; and " + B(pc(by.minp.sets / by.minp.cells)) +
+    " for min-p, the knob whose ratio test was supposed to make it immune. Top-k is the row that " +
+    "matters: " + G(pc(win.sets / win.cells)) + " over " + cm(win.cells) + " cells, worst-case " +
+    "distance " + G(n4(win.maxTv)) + ", which is not a small number but a zero &mdash; dividing " +
+    "every logit by the same positive number cannot reorder them, so a rank cut is the same cut " +
+    "whichever side of it the temperature sits on. The disagreement is not a rounding artefact " +
+    "either: the emitted distribution moves by more than a tenth on " +
+    B(pc(lose.over[2] / lose.cells)) + " of nucleus cells and by more than a quarter on " +
+    B(pc(lose.over[3] / lose.cells)) + ". " + cm(total) + " cells in all.";
+
+  var OA = memo("oa:" + c.fam, function(){ return orderAt(0.70, 0.90, c.fam); });
+  var S = sitsOf(c.fam);
+  h = head(["situation", "family", "candidates", "temp first", "temp last", "total variation"]);
+  var diffRows = 0;
+  for (i = 0; i < S.length; i++){
+    var st0 = stateFor(S[i], 0, 0);
+    var A = runStack(st0, stackSteps("first", { T: 0.70, p: 0.90, k: 0, mp: 0 }));
+    var Bx = runStack(st0, stackSteps("last", { T: 0.70, p: 0.90, k: 0, mp: 0 }));
+    var same = keptKey(A) === keptKey(Bx), d = tvd(A, Bx);
+    if (!same) diffRows++;
+    h += row([S[i].id, D(S[i].fam), st0.g.length, keptCount(A), keptCount(Bx), ds(d)],
+             same ? "" : "mis");
+  }
+  $("cellTbl").innerHTML = h;
+  $("cellNote").innerHTML =
+    B(String(OA.diff)) + " of " + OA.n + " situations &mdash; " + B(pc(OA.diff / OA.n)) +
+    " &mdash; keep a different candidate set at <code class=\"tok\">temperature 0.7</code> with " +
+    "<code class=\"tok\">top_p 0.9</code>, purely because of where the temperature is applied. The " +
+    "worst of them is " + B(esc(OA.worstId)) + " at " + ds(OA.worst) + " total variation. Nothing " +
+    "in the request differs. Nothing in the model differs. The library differs.";
+
+  var BT = biteTable(c.fam, "topp", c.p);
+  h = head(["temperature", "sets differ", "mean TV", "pool: temp first", "pool: temp last",
+            "entropy first", "entropy last"]);
+  for (i = 0; i < BT.length; i++){
+    r = BT[i];
+    if (Math.round(r.T * 100) % 10 !== 0) continue;
+    var one = Math.abs(r.T - 1) < 1e-9;
+    h += row([n2(r.T), dv(r.diff), ds(r.tv), n2(r.cntFirst), n2(r.cntLast),
+              n4(r.hFirst), n4(r.hLast)], one ? "hi" : (r.diff > 0.6 ? "mis" : ""));
+  }
+  $("biteTbl").innerHTML = h;
+  var hot = BT[BT.length - 1], mid = null;
+  for (i = 0; i < BT.length; i++) if (Math.abs(BT[i].T - 1) < 1e-9) mid = BT[i];
+  $("biteNote").innerHTML =
+    "At <code class=\"tok\">T = 1</code> the two orders disagree on " + G(pc(mid.diff)) +
+    " and the distance is " + G(n4(mid.tv)) + " &mdash; an identity, because at " +
+    "<code class=\"tok\">T = 1</code> applying temperature is applying nothing. Away from it the " +
+    "gap opens in both directions, and the direction people actually turn the dial is the bad one: " +
+    "at <code class=\"tok\">T = " + n2(hot.T) + "</code> the pool is " + B(n2(hot.cntFirst)) +
+    " candidates on one stack and " + B(n2(hot.cntLast)) + " on the other &mdash; " +
+    n4(hot.hFirst) + " nats against " + n4(hot.hLast) + ", " +
+    B(n2(hot.hFirst / hot.hLast) + "&times;") + " the entropy. With temperature applied last the " +
+    "pool cannot widen at all: it was fixed before the dial was read.";
+
+  var NC = memo("nc:" + c.fam, function(){ return nucleusCensus(c.fam); });
+  h = head(["top_p", "fewest kept", "median", "most kept", "= 1 (greedy)", "mean mass kept",
+            "worst overshoot"]);
+  var r90 = null;
+  for (i = 0; i < NC.length; i++){
+    r = NC[i];
+    if (Math.abs(r.p - 0.90) < 1e-9) r90 = r;
+    h += row([n2(r.p), r.min, n1(r.med), r.max, r.one > 0.3 ? B(pc(r.one)) : W(pc(r.one)),
+              pc(r.meanMass), "+" + n2(100 * r.maxOver)],
+             Math.abs(r.p - 0.90) < 1e-9 ? "hi" : "");
+  }
+  $("nucTbl").innerHTML = h;
+  $("nucNote").innerHTML =
+    "<code class=\"tok\">top_p = 0.9</code> retains " + B(pc(r90.meanMass)) + " of the mass on " +
+    "average, not 90% &mdash; the crossing token is kept, so the guarantee is a floor and the " +
+    "overshoot reaches " + B("+" + n2(100 * r90.maxOver)) + " points. And the count nobody set " +
+    "runs from " + B(String(r90.min)) + " to " + B(String(r90.max)) + ": on " +
+    B(pc(r90.one)) + " of the corpus it is exactly one candidate, which is greedy decoding with a " +
+    "creativity dial attached to it.";
+
+  var TK = memo("tk:" + c.fam, function(){ return topkCensus(c.fam); });
+  h = head(["top_k", "least mass kept", "mean", "most mass kept", "spread"]);
+  for (i = 0; i < TK.length; i++){
+    r = TK[i];
+    h += row([r.k, pc(r.min), pc(r.mean), pc(r.max),
+              r.spread > 0.5 ? B(n2(100 * r.spread) + " pts") : W(n2(100 * r.spread) + " pts")],
+             i === 0 ? "hi" : "");
+  }
+  $("tkTbl").innerHTML = h;
+  $("tkNote").innerHTML =
+    "<code class=\"tok\">top_k = 1</code> keeps between " + B(pc(TK[0].min)) + " and " +
+    B(pc(TK[0].max)) + " of the distribution depending on the situation &mdash; a spread of " +
+    B(n2(100 * TK[0].spread) + " points") + ". That is the cost of the free fix and it is stated " +
+    "here rather than in a footnote: top-k is order-proof because it reads only the ranking, and it " +
+    "is shape-blind for exactly the same reason.";
+
+  drawTail(c);
+  drawLadder(c);
+  drawTrace(c);
+  if (FIRST){ FIRST = false; }
+  clearTimeout(PENDING2);
+  PENDING2 = setTimeout(function(){ drawHeavy(c, by); }, 0);
+}
+
+function drawHeavy(c, by){
+  var i, r, h;
+  var ST = memo("st:" + c.fam, function(){ return stackTotals(c.fam); });
+  h = "<tr><th>top_k \\ top_p</th>";
+  for (i = 0; i < GRID_P.length; i++) h += "<th>" + n2(GRID_P[i]) + "</th>";
+  h += "</tr>";
+  var a, b;
+  for (a = 0; a < GRID_K.length; a++){
+    h += "<tr><td>k = " + GRID_K[a] + "</td>";
+    for (b = 0; b < GRID_P.length; b++){
+      r = ST.rows[a * GRID_P.length + b];
+      h += "<td>" + (r.tighter < 1e-12 ? D("0.00%")
+            : (r.tighter >= 0.3 ? B(pc(r.tighter)) : W(pc(r.tighter)))) + "</td>";
+    }
+    h += "</tr>";
+  }
+  $("stkTbl").innerHTML = h;
+  $("stkNote").innerHTML =
+    "On " + B(pc(ST.tighter)) + " of " + cm(ST.cells) + " (k, p, situation) triples the pair keeps " +
+    "strictly fewer candidates than the tighter of the two knobs alone &mdash; peaking at " +
+    B(pc(ST.worst.tighter)) + " at <code class=\"tok\">k = " + ST.worst.k + ", p = " +
+    n2(ST.worst.p) + "</code> &mdash; and it is looser than either on " +
+    G(pc(1 - ST.tighter - ST.equal)) + ". Setting both is not belt and braces. It is a third " +
+    "setting, and it is the one you did not choose.";
+
+  var HY = memo("hy:" + c.fam, function(){ return hybridSweep(c.fam); });
+  h = head(["what was swapped", "cells", "answer changes", "mean TV", "worst TV"]);
+  h += row(["where temperature goes", cm(HY.cells), dv(HY.ordDiff / HY.cells), ds(HY.meanTvOrder),
+            D("&mdash;")], "mis");
+  h += row(["top_k against top_p", cm(HY.cells), dv(HY.truncDiff / HY.cells), ds(HY.meanTvTrunc),
+            ds(HY.maxTvTrunc)], "mis");
+  h += row(["immune to both", cm(HY.cells), G(pc(HY.bothSame / HY.cells)), D("&mdash;"),
+            D("&mdash;")], "hi");
+  $("hyTbl").innerHTML = h;
+  $("hyNote").innerHTML =
+    "The immunity does not transfer. With a top-k pinning the pool, " +
+    B(pc(HY.ordDiff / HY.cells)) + " of " + cm(HY.cells) + " cells still change with the " +
+    "temperature placement, and swapping the two truncators against each other changes the answer " +
+    "on " + B(pc(HY.truncDiff / HY.cells)) + " more &mdash; worst case " + B(n4(HY.maxTvTrunc)) +
+    ", half the mass, at " + D(esc(HY.worstTrunc.sit)) + ". Only " +
+    W(pc(HY.bothSame / HY.cells)) + " of cells are immune to both. My recommendation was wrong: " +
+    "top-k is order-proof alone, and stops being order-proof the moment it stands next to a knob " +
+    "that reads mass.";
+
+  var MG = memo("mg:" + c.fam, function(){ return marginTable(c.fam); });
+  h = head(["min_p", "margin at T = 1", "cells", "closed form agrees", "pool: temp first",
+            "pool: temp last"]);
+  var agree = 0, cells = 0;
+  for (i = 0; i < MG.length; i++){
+    r = MG[i]; agree += r.agree; cells += r.cells;
+    h += row([n2(r.mp), n3(r.gap1) + " logits", cm(r.cells),
+              r.agree === r.cells ? G(cm(r.agree) + " / " + cm(r.cells))
+                                  : B(cm(r.agree) + " / " + cm(r.cells)),
+              n2(r.meanFirst), n2(r.meanLast)]);
+  }
+  $("mgTbl").innerHTML = h;
+  $("mgNote").innerHTML =
+    "The kept set computed by running the truncator and the kept set computed from the logits alone " +
+    "agree on " + G(cm(agree) + " of " + cm(cells)) + " cells, so this is an identity rather than a " +
+    "fit: min-p keeps every token within <code class=\"tok\">T &middot; ln(1/min_p)</code> of the " +
+    "top logit. Put temperature first and that margin is proportional to your temperature dial; put " +
+    "it last and it is frozen. A ratio test on probabilities is a DIFFERENCE test on logits, and " +
+    "differences are exactly what temperature rescales.";
+
+  var CT = memo("ct:" + c.fam, function(){ return controls(c.fam); });
+  h = head(["control", "cells", "disagreements", "worst distance", "verdict"]);
+  h += row(["top-k, every temperature, every k", cm(CT.kCells),
+            CT.kBad === 0 ? G("0") : B(cm(CT.kBad)), G(n4(CT.kWorstTv)),
+            CT.kBad === 0 ? G("order-proof") : B("BROKEN")], "hi");
+  h += row(["both orders at T = 1, every top_p", cm(CT.oneCells),
+            CT.oneBad === 0 ? G("0") : B(cm(CT.oneBad)), G(n4(0)),
+            CT.oneBad === 0 ? G("identical") : B("BROKEN")], "hi");
+  $("ctlTbl").innerHTML = h;
+  $("ctlNote").innerHTML =
+    "Both zero, which is what a control is for: it says the centrepiece is measuring the samplers " +
+    "and not the comparison. The first row is also the page's recommendation and its whole cost is " +
+    "in the panel above it. The second is the reason the divergence table has a valley in the " +
+    "middle instead of a slope.";
+
+  clearTimeout(PENDING3);
+  PENDING3 = setTimeout(function(){ selftest(c, { OS: by, ST: ST, HY: HY, CT: CT }); }, 0);
+}
+
+function drawTail(c){
+  var TL = tailLadder(c), i, r;
+  var h = head(["temperature", "tail mass at T", "pool: temp first", "pool: temp last", "no tail",
+                "nucleus reaches tail", "sets differ", "mean TV"]);
+  for (i = 0; i < TL.length; i++){
+    r = TL[i];
+    h += row([n2(r.T), n4(r.tailMass), r.first > 50 ? B(cm(r.first)) : n2(r.first),
+              n2(r.last), n2(r.noTail),
+              r.anyTail < 1e-12 ? D("0.00%") : B(pc(r.anyTail)), dv(r.diff), ds(r.tv)],
+             r.anyTail > 0 ? "mis" : "");
+  }
+  $("tailTbl").innerHTML = h;
+  var CL = tailCliff(c);
+  $("tailNote").innerHTML = CL
+    ? ("The crossover is one step of the dial: <code class=\"tok\">T = " + n2(CL.before.T) +
+       "</code> keeps " + G(n2(CL.before.first)) + " candidates and <code class=\"tok\">T = " +
+       n2(CL.after.T) + "</code> keeps " + B(n2(CL.after.first)) + " &mdash; " +
+       B(n1(CL.ratio) + "&times;") + " for a single notch &mdash; because the declared tail's own " +
+       "mass has grown from " + n4(CL.before.tailMass) + " to " + n4(CL.after.tailMass) + " and the " +
+       "nucleus now has to reach into it. On the other stack the nucleus ran before temperature did, " +
+       "so the tail was cut while it was still invisible and the pool stays at " +
+       G(n2(CL.after.last)) + " however far you turn the dial. This is the only panel that reads a " +
+       "declared number; set the tail to 0% and the cliff disappears with it.")
+    : ("At this tail and this <code class=\"tok\">top_p</code> the nucleus never reaches the " +
+       "declared tail at any temperature on the ladder, so the two columns differ only by the " +
+       "ordinary order effect. Raise the tail or the nucleus and the cliff appears.");
+}
+
+function drawLadder(c){
+  var LD = ladder(c.si, c.p, c.tail, c.tailN), i, r;
+  var h = head(["temperature", "pool: temp first", "pool: temp last", "P(top token) first",
+                "P(top token) last", "entropy first", "entropy last"]);
+  var bad = 0, prev = null;
+  for (i = 0; i < LD.length; i++){
+    r = LD[i];
+    if (prev !== null && r.first < prev - 1e-9) bad++;
+    prev = r.first;
+    if (Math.round(r.T * 100) % 10 !== 0) continue;
+    h += row([n2(r.T), r.first > 50 ? B(cm(r.first)) : String(r.first), String(r.last),
+              n4(r.pFirst), n4(r.pLast), n4(r.hFirst), n4(r.hLast)],
+             Math.abs(r.T - 1) < 1e-9 ? "hi" : "");
+  }
+  $("ladTbl").innerHTML = h;
+  var MA = monotoneAudit(c.fam, c.p);
+  $("ladNote").innerHTML =
+    "The pool in the first column never rises as the temperature falls &mdash; " +
+    (bad === 0 ? G("0") : B(String(bad))) + " violations on this situation, and " +
+    (MA.bad === 0 ? G("0") : B(cm(MA.bad))) + " on all " + cm(MA.checks) + " adjacent pairs across " +
+    "the whole corpus, with " + (MA.badArg === 0 ? G("0") : B(cm(MA.badArg))) +
+    " for the top token's probability moving the wrong way. The second column is constant by " +
+    "construction: its nucleus was computed before the temperature dial was read, so " +
+    "\"turn it up for more variety\" adds exactly " + G("0") + " candidates there.";
+}
+
+function drawTrace(c){
+  var TR = traceOne(c), out = [], i, r;
+  out.push("situation  : " + TR.sit.id + "   (" + TR.sit.fam + ")");
+  out.push("prompt ends: " + JSON.stringify(TR.sit.ctx));
+  out.push("settings   : T = " + n2(c.T) + "   top_p = " + n2(c.p) +
+           "   top_k = " + (c.k || "off") + "   min_p = " + (c.mp ? n2(c.mp) : "off"));
+  out.push("declared   : tail = " + Math.round(100 * c.tail) + "%  over " + c.tailN + " tokens" +
+           (c.tail > 0 ? "" : "   (off)"));
+  out.push("");
+  out.push("candidates, as declared            logit    P at T=1     temp-first   temp-last");
+  for (i = 0; i < TR.rows.length; i++){
+    r = TR.rows[i];
+    if (i >= 14 && !r.f && !r.l) continue;
+    out.push("  " + (r.label + (r.n > 1 ? " x" + r.n : "") + "                          ").slice(0, 28) +
+             "  " + ("       " + r.lg.toFixed(1)).slice(-7) +
+             "   " + r.base.toExponential(3) +
+             "   " + (r.f ? ("  " + r.f.q.toFixed(6)).slice(-10) : "         .") +
+             "   " + (r.l ? ("  " + r.l.q.toFixed(6)).slice(-10) : "         ."));
+  }
+  out.push("");
+  out.push("temp-first  (transformers warper order)");
+  for (i = 0; i < TR.F.log.length; i++)
+    out.push("  " + (TR.F.log[i].name + "                    ").slice(0, 20) +
+             "  T = " + TR.F.log[i].T.toFixed(2) + "   candidates left: " + TR.F.log[i].count);
+  out.push("temp-last   (llama.cpp default chain)");
+  for (i = 0; i < TR.L.log.length; i++)
+    out.push("  " + (TR.L.log[i].name + "                    ").slice(0, 20) +
+             "  T = " + TR.L.log[i].T.toFixed(2) + "   candidates left: " + TR.L.log[i].count);
+  out.push("");
+  out.push("kept sets identical : " + (TR.same ? "yes" : "NO"));
+  out.push("pool                : " + TR.cF + "  vs  " + TR.cL);
+  out.push("P(top token)        : " + TR.aF.toFixed(6) + "  vs  " + TR.aL.toFixed(6));
+  out.push("entropy (nats)      : " + TR.hF.toFixed(6) + "  vs  " + TR.hL.toFixed(6));
+  out.push("total variation     : " + TR.tv.toFixed(12));
+  $("traceOut").textContent = out.join("\n");
+  $("traceNote").innerHTML =
+    "Nothing in this panel is a model. The logits are declared, the steps are the ones the two " +
+    "stacks really perform, and the two right-hand columns are the distributions the identical " +
+    "request would emit. When the kept sets match, the total variation is " + G("0") +
+    " to the last bit &mdash; that is the identity the whole page rests on, and it is asserted on " +
+    "every cell rather than shown once here.";
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selftest(c, R){
+  var pass = 0, fail = 0, lines = [], i, j, t, r;
+  function ok(cond, label){ if (cond) pass++; else { fail++; if (fail <= 25) lines.push("  FAIL  " + label); } }
+  var ids = {};
+
+  // 1. the corpus
+  for (i = 0; i < SITS.length; i++){
+    var s = SITS[i];
+    ok(!ids[s.id], "a situation id is repeated: " + s.id); ids[s.id] = 1;
+    ok(s.cands.length >= 3, "a situation has fewer than three candidates");
+    var seen = {};
+    for (j = 0; j < s.cands.length; j++){
+      ok(isFinite(s.cands[j][1]), "a logit is not finite");
+      ok(!seen[s.cands[j][0]], "a candidate token is repeated inside one situation");
+      seen[s.cands[j][0]] = 1;
+      if (j > 0) ok(s.cands[j][1] <= s.cands[j - 1][1] + 1e-12,
+                    "a situation's candidates are not written in descending logit order");
+    }
+  }
+
+  // 2. groups, sorting and the declared tail
+  for (i = 0; i < SITS.length; i++){
+    var g0 = groupsFor(SITS[i], 0, 0), gT = groupsFor(SITS[i], c.tail > 0 ? c.tail : 0.05, 500);
+    for (j = 1; j < g0.length; j++) ok(g0[j].lg <= g0[j - 1].lg + 1e-12, "groups are not sorted");
+    for (j = 0; j < g0.length; j++) ok(g0[j].oi === j, "a group index is wrong");
+    // the tail carries exactly the mass it was declared to carry, at T = 1
+    var pr = probsOf({ g: gT, T: 1 }), m = 0;
+    for (j = 0; j < gT.length; j++) if (gT[j].tail) m += pr[j] * gT[j].n;
+    ok(Math.abs(m - (c.tail > 0 ? c.tail : 0.05)) < 1e-9,
+       "the declared tail does not carry its declared mass");
+  }
+
+  // 3. probabilities, at every temperature on the grid
+  for (i = 0; i < SITS.length; i++){
+    var st0 = stateFor(SITS[i], 0, 0);
+    for (t = 0; t < GRID_T.length; t++){
+      var p1 = probsOf({ g: st0.g, T: GRID_T[t] }), sum = 0;
+      for (j = 0; j < p1.length; j++){
+        sum += p1[j] * st0.g[j].n;
+        ok(p1[j] >= 0, "a probability is negative");
+        if (j > 0) ok(p1[j] <= p1[j - 1] + 1e-15, "probabilities are not sorted descending");
+      }
+      ok(Math.abs(sum - 1) < 1e-12, "a distribution does not sum to one");
+    }
+  }
+
+  // 4. the truncators keep what they say they keep
+  for (i = 0; i < SITS.length; i++){
+    var st = stateFor(SITS[i], 0, 0), n = keptCount(st);
+    for (j = 0; j < GRID_K.length; j++){
+      var K = runStack(st, [{ op: "topk", v: GRID_K[j] }]);
+      ok(keptCount(K) === Math.min(GRID_K[j], n), "top-k did not keep min(k, n)");
+      ok(K.g[0].oi === 0, "top-k dropped the argmax");
+    }
+    for (j = 0; j < GRID_P.length; j++){
+      var P = runStack(st, [{ op: "topp", v: GRID_P[j] }]);
+      var mass = massOf(st, P, 1);
+      ok(mass >= GRID_P[j] - 1e-12, "the nucleus retained less than p");
+      ok(P.g[0].oi === 0, "the nucleus dropped the argmax");
+      // minimality: drop the last kept token and the mass must fall below p
+      var last = P.g[P.g.length - 1], pr2 = probsOf({ g: st.g, T: 1 }), q = 0, z;
+      for (z = 0; z < st.g.length; z++) if (st.g[z].oi === last.oi) q = pr2[z];
+      ok(keptCount(P) === 1 || mass - q < GRID_P[j] + 1e-12,
+         "the nucleus kept a token it did not need");
+    }
+    for (j = 0; j < GRID_MP.length; j++){
+      var M = runStack(st, [{ op: "minp", v: GRID_MP[j] }]);
+      ok(M.g[0].oi === 0, "min-p dropped the argmax");
+      ok(keptCount(M) >= 1, "min-p kept nothing");
+    }
+  }
+
+  // 5. the central identity, on every cell of the centrepiece grid
+  var armDefs = [["topk", GRID_K], ["topp", GRID_P], ["minp", GRID_MP]];
+  for (i = 0; i < SITS.length; i++){
+    var stx = stateFor(SITS[i], 0, 0);
+    for (t = 0; t < GRID_T.length; t++){
+      for (var ai = 0; ai < armDefs.length; ai++){
+        var arm = armDefs[ai][0], grid = armDefs[ai][1];
+        for (j = 0; j < grid.length; j++){
+          var set = { T: GRID_T[t], k: 0, p: null, mp: 0 };
+          if (arm === "topk") set.k = grid[j]; else if (arm === "topp") set.p = grid[j];
+          else set.mp = grid[j];
+          var A = runStack(stx, stackSteps("first", set));
+          var Bq = runStack(stx, stackSteps("last", set));
+          var same = keptKey(A) === keptKey(Bq), d = tvd(A, Bq);
+          ok(!same || d < 1e-15, "equal kept sets emitted different distributions");
+          ok(same || d > 0, "different kept sets emitted the same distribution");
+          ok(d >= 0 && d <= 1 + 1e-12, "total variation is outside [0, 1]");
+          ok(tvd(A, A) === 0, "total variation of a state against itself is not zero");
+          ok(Math.abs(tvd(A, Bq) - tvd(Bq, A)) < 1e-15, "total variation is not symmetric");
+          ok(A.g[0].oi === 0 && Bq.g[0].oi === 0, "a stack dropped the argmax");
+          // top-k is the control: the two orders must be bit-identical
+          if (arm === "topk") ok(same && d === 0, "top-k is not order-proof");
+          // at T = 1 every arm must be identical
+          if (Math.abs(GRID_T[t] - 1) < 1e-9) ok(same, "the two orders differ at T = 1");
+          // entropy is bounded by the log of the pool
+          var hA = entropyOf(A);
+          ok(hA >= -1e-12 && hA <= Math.log(keptCount(A)) + 1e-9, "entropy is out of bounds");
+          ok(pArgmax(A) >= 1 / keptCount(A) - 1e-12, "the top token is below uniform");
+        }
+      }
+    }
+  }
+
+  // 6. min-p is exactly a logit margin
+  for (i = 0; i < SITS.length; i++){
+    var stm = stateFor(SITS[i], 0, 0);
+    for (t = 0; t < GRID_T.length; t += 4){
+      for (j = 0; j < GRID_MP.length; j++){
+        var T = GRID_T[t], mp = GRID_MP[j];
+        var got = runStack(stm, [{ op: "temp", v: T }, { op: "minp", v: mp }]);
+        var gap = T * Math.log(1 / mp), want = "", z2;
+        for (z2 = 0; z2 < stm.g.length; z2++)
+          if (stm.g[0].lg - stm.g[z2].lg <= gap + 1e-9) want += stm.g[z2].oi + ":" + stm.g[z2].n + ",";
+        ok(want === keptKey(got), "min-p is not the closed-form logit margin");
+      }
+    }
+  }
+
+  // 7. composition is a subset of both, and a frozen pool is frozen
+  for (i = 0; i < SITS.length; i++){
+    var sc = stateFor(SITS[i], 0, 0);
+    for (j = 0; j < GRID_K.length; j++){
+      for (var b2 = 0; b2 < GRID_P.length; b2++){
+        var Kk = runStack(sc, [{ op: "topk", v: GRID_K[j] }]);
+        var Pp = runStack(sc, [{ op: "topp", v: GRID_P[b2] }]);
+        var Cc = runStack(sc, [{ op: "topk", v: GRID_K[j] }, { op: "topp", v: GRID_P[b2] }]);
+        var inK = {}, inP = {}, z3;
+        for (z3 = 0; z3 < Kk.g.length; z3++) inK[Kk.g[z3].oi] = Kk.g[z3].n;
+        for (z3 = 0; z3 < Pp.g.length; z3++) inP[Pp.g[z3].oi] = Pp.g[z3].n;
+        for (z3 = 0; z3 < Cc.g.length; z3++){
+          ok(inK[Cc.g[z3].oi] >= Cc.g[z3].n, "the composite kept a token top-k had removed");
+          ok(inP[Cc.g[z3].oi] >= Cc.g[z3].n, "the composite kept a token the nucleus had removed");
+        }
+        ok(keptCount(Cc) <= Math.min(keptCount(Kk), keptCount(Pp)),
+           "the composite is looser than one of its parts");
+      }
+    }
+    // temperature applied last cannot move the pool
+    var frozen = null;
+    for (t = 0; t < GRID_T.length; t++){
+      var Lz = runStack(sc, stackSteps("last", { T: GRID_T[t], p: 0.9, k: 0, mp: 0 }));
+      if (frozen === null) frozen = keptKey(Lz);
+      ok(keptKey(Lz) === frozen, "a temperature-last pool moved with temperature");
+    }
+  }
+
+  // 8. monotonicity of the nucleus and of the top token
+  for (i = 0; i < SITS.length; i++){
+    var sm = stateFor(SITS[i], 0, 0);
+    for (j = 0; j < GRID_P.length; j += 3){
+      var prevC = null, prevA = null;
+      for (t = 0; t < GRID_T.length; t++){
+        var Az = runStack(sm, [{ op: "temp", v: GRID_T[t] }, { op: "topp", v: GRID_P[j] }]);
+        var cz = keptCount(Az), az = pArgmax(Az);
+        if (prevC !== null){
+          ok(cz >= prevC - 1e-9, "the nucleus grew as temperature fell");
+          ok(az <= prevA + 1e-9, "the top token's probability rose as temperature rose");
+        }
+        prevC = cz; prevA = az;
+      }
+    }
+  }
+
+  // 9. the tail block is the same as writing the tokens out one by one
+  for (i = 0; i < 6; i++){
+    var N = 40, sitT = SITS[i], gb = groupsFor(sitT, 0.08, N), flat = [], z4;
+    for (z4 = 0; z4 < gb.length; z4++){
+      if (!gb[z4].tail){ flat.push({ lg: gb[z4].lg, n: 1, label: gb[z4].label, tail: false }); }
+      else { var q4; for (q4 = 0; q4 < N; q4++) flat.push({ lg: gb[z4].lg, n: 1, label: "t", tail: true }); }
+    }
+    flat = flat.map(function(x, k4){ return { g: x, k: k4 }; })
+               .sort(function(x, y){ return y.g.lg - x.g.lg || x.k - y.k; })
+               .map(function(x){ return x.g; });
+    for (z4 = 0; z4 < flat.length; z4++) flat[z4].oi = z4;
+    for (j = 0; j < GRID_P.length; j++){
+      var blk = runStack({ g: gb, T: 1 }, [{ op: "topp", v: GRID_P[j] }]);
+      var exp = runStack({ g: flat, T: 1 }, [{ op: "topp", v: GRID_P[j] }]);
+      ok(keptCount(blk) === keptCount(exp),
+         "the grouped tail and the expanded tail disagree on the nucleus size");
+    }
+  }
+
+  // 10. the numbers the panels print
+  ok(R.OS.topk.sets === 0, "the top-k control is not zero");
+  ok(R.OS.topp.sets > 0, "the nucleus divergence collapsed to nothing");
+  ok(R.CT.kBad === 0 && R.CT.oneBad === 0, "a control is not zero");
+  ok(R.ST.tighter + R.ST.equal > 1 - 1e-12, "the composite is looser somewhere");
+  ok(R.HY.bothSame < R.HY.cells, "the hybrid repair is immune after all");
+  ok(R.OS.minp.sets > R.OS.topk.sets, "min-p is not more order-sensitive than top-k");
+
+  var OSs = R.OS;
+  $("selftest").textContent = (fail ? "FAILED\n" + lines.join("\n") + "\n" : "") +
+    (fail ? "" : "PASS  ") + cm(pass) + " assertions, " + fail + " failures\n" +
+    ["",
+     "  centrepiece       : " + pc(OSs.topp.sets / OSs.topp.cells) + " of " + cm(OSs.topp.cells) +
+       " nucleus cells keep a different candidate set across the two orders",
+     "  control           : top-k differs on " + pc(OSs.topk.sets / OSs.topk.cells) + " of " +
+       cm(OSs.topk.cells) + " cells, worst distance " + n4(OSs.topk.maxTv),
+     "  control           : both orders at T = 1 differ on " + cm(R.CT.oneBad) + " of " +
+       cm(R.CT.oneCells) + " cells",
+     "  worst knob        : min-p at " + pc(OSs.minp.sets / OSs.minp.cells) +
+       " -- the ratio test is a logit margin that scales with T",
+     "  not cosmetic      : the emitted distribution moves more than 0.25 on " +
+       pc(OSs.topp.over[3] / OSs.topp.cells) + " of nucleus cells",
+     "  refuted           : stacking top_k and top_p is strictly tighter than BOTH on " +
+       pc(R.ST.tighter) + " of " + cm(R.ST.cells) + " pairs, looser on " +
+       pc(1 - R.ST.tighter - R.ST.equal),
+     "  refuted           : pinning the pool with a top-k leaves " +
+       pc(R.HY.ordDiff / R.HY.cells) + " of " + cm(R.HY.cells) + " cells order-dependent",
+     "  identity          : equal kept sets emit bit-identical distributions, on every cell",
+     "  identity          : min-p equals the closed-form logit margin T * ln(1/min_p)",
+     "  identity          : a temperature-last pool cannot move with temperature",
+     "  free vs paid      : swapping the nucleus for a top-k costs 0 tokens and takes cross-stack " +
+       "divergence to " + pc(OSs.topk.sets / OSs.topk.cells)
+    ].join("\n");
+}
+
+// ---------------------------------------------------------------- wiring
+(function(){
+  var a = $("selFam"), b = $("selSit"), i;
+  for (i = 0; i < FAMS.length; i++)
+    a.insertAdjacentHTML("beforeend", '<option value="' + FAMS[i] + '"' +
+      (FAMS[i] === DEFAULTS.fam ? " selected" : "") + ">" +
+      (FAMS[i] === "all" ? "everything" : esc(FAMS[i])) + "</option>");
+  for (i = 0; i < SITS.length; i++)
+    b.insertAdjacentHTML("beforeend", '<option value="' + i + '"' +
+      (i === DEFAULTS.si ? " selected" : "") + ">" + esc(SITS[i].id) + "</option>");
+})();
+var pending = null;
+function schedule(){ clearTimeout(pending); pending = setTimeout(draw, 180); }
+["sT", "sP", "sK", "sMp", "sTail", "sTailN"].forEach(function(id){
+  $(id).addEventListener("input", schedule);
+});
+$("selSit").addEventListener("change", function(){
+  clearTimeout(pending);
+  pending = setTimeout(function(){ var c = withDefaults(cfgUI()); drawLadder(c); drawTrace(c); }, 80);
+});
+$("selFam").addEventListener("change", schedule);
+draw();
+</script>
+</body>
+</html>

@@ -77,6 +77,8 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 72 — Few-shot budget](https://dev48.infy.uk/prompt/day72-few-shot-budget.html) — `day72-few-shot-budget.html`
 - [PromptFromZero · Day 73 — Stop Sequences](https://dev48.infy.uk/prompt/day73-stop-sequences.html) — `day73-stop-sequences.html`
 - [PromptFromZero · Day 74 — Token healing](https://dev48.infy.uk/prompt/day74-token-healing.html) — `day74-token-healing.html`
+- [PromptFromZero · Day 75 — Edit formats](https://dev48.infy.uk/prompt/day75-edit-formats.html) — `day75-edit-formats.html`
+- [PromptFromZero · Day 76 — Sampler order](https://dev48.infy.uk/prompt/day76-sampler-order.html) — `day76-sampler-order.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
