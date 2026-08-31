@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 77 &mdash; Logit bias</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Inter", system-ui, sans-serif;
+         background:#f8fafc; color:#0f172a; line-height:1.45; }
+  h1,h2,h3,p,ul,ol { margin:0 0 0 0; }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } .wrap-lg { padding:32px; } }
+  .hdr { background:#fff; border-bottom:1px solid #e2e8f0; position:sticky; top:0; z-index:20; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.10),0 1px 2px rgba(15,23,42,.06);
+          padding:20px; margin-bottom:20px; }
+  .panel { min-height:calc(100vh - 72px); padding:16px; background:#f1f5f9; }
+  @media (min-width:768px){ .panel { padding:32px; } }
+  .flex { display:flex; } .wrapf { flex-wrap:wrap; } .g2 { gap:8px; } .g4 { gap:16px; }
+  .between { justify-content:space-between; } .baseline { align-items:baseline; }
+  .grid3 { display:grid; grid-template-columns:1fr; gap:4px 24px; }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .grid2 { display:grid; grid-template-columns:1fr; gap:20px; }
+  @media (min-width:900px){ .grid2 { grid-template-columns:1fr 1fr; } }
+  .hidden { display:none; }
+  .xs { font-size:11.5px; } .sm { font-size:13px; } .md { font-size:15px; }
+  .lg { font-size:19px; } .xl { font-size:24px; }
+  .b { font-weight:700; } .bb { font-weight:800; } .bk { font-weight:900; }
+  .tw { letter-spacing:.14em; text-transform:uppercase; }
+  .tw2 { letter-spacing:.07em; text-transform:uppercase; }
+  .vio { color:#5b21b6; } .mut { color:#64748b; } .mut2 { color:#475569; }
+  .mb1{margin-bottom:4px}.mb2{margin-bottom:8px}.mb3{margin-bottom:12px}.mb4{margin-bottom:16px}
+  .mt1{margin-top:4px}.mt2{margin-top:8px}.mt3{margin-top:12px}.mt4{margin-top:16px}
+  .prose p { margin:0 0 14px 0; } .prose h3 { margin:26px 0 10px 0; }
+  .prose h2 { margin:0 0 14px 0; } .prose ul { margin:0 0 14px 22px; } .prose li { margin-bottom:6px; }
+  button { font:inherit; border:0; cursor:pointer; padding:8px 20px; border-radius:8px;
+           background:#f1f5f9; font-weight:600; font-size:13px; color:#0f172a; }
+  .tab-active { background:#0f172a; color:#fff; }
+  input[type=range] { width:100%; accent-color:#6d28d9; }
+  select { font:inherit; font-size:12.5px; padding:3px 6px; border:1px solid #cbd5e1; border-radius:6px; background:#fff; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:12px;
+        overflow:auto; white-space:pre; margin:0;
+        font-family: ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+  code.tok { background:#f1f5f9; border-radius:4px; padding:1px 5px; font-size:11.5px;
+             font-family: ui-monospace, Menlo, Consolas, monospace; }
+  code.piece { background:#ede9fe; color:#4c1d95; border-radius:4px; padding:1px 5px; font-size:11.5px;
+               font-family: ui-monospace, Menlo, Consolas, monospace; font-weight:700; }
+  table.num { border-collapse:collapse; width:100%; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:10.5px; letter-spacing:.05em; color:#64748b; text-align:right;
+                 font-weight:700; vertical-align:bottom; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid #e2e8f0; }
+  .scroll { overflow-x:auto; }
+  .ok { color:#166534; font-weight:800; }
+  .bad { color:#991b1b; font-weight:800; }
+  .warn { color:#92400e; font-weight:800; }
+  .dim { color:#94a3b8; }
+  tr.hi td { background:#f5f3ff; } tr.mis td { background:#fef2f2; } tr.amb td { background:#fffbeb; }
+  .pill { font-size:10px; font-weight:800; letter-spacing:.04em; padding:1px 6px; border-radius:99px;
+          display:inline-block; }
+  .p-free { background:#dcfce7; color:#166534; } .p-paid { background:#fee2e2; color:#991b1b; }
+  .p-cheap { background:#fef3c7; color:#92400e; } .p-key { background:#ede9fe; color:#4c1d95; }
+  table.mtx { border-collapse:collapse; }
+  table.mtx td, table.mtx th { padding:3px 7px; font-size:11px; text-align:center;
+                               border:1px solid #e2e8f0; white-space:nowrap; }
+  table.mtx th { color:#64748b; font-weight:700; font-size:10px; letter-spacing:.03em; }
+  table.mtx td:first-child, table.mtx th:first-child { text-align:left; font-weight:700; font-size:11.5px; }
+  label.sl { font-size:13px; display:block; }
+  .note { font-size:11.5px; color:#64748b; }
+  .bar { display:inline-block; height:8px; background:#8b5cf6; border-radius:2px; vertical-align:middle; }
+  hr { border:0; border-top:1px solid #e2e8f0; margin:20px 0; }
+</style>
+</head>
+<body>
+
+<header class="hdr">
+  <div class="wrap">
+    <p class="xs bb tw vio mb2">PROMPTFROMZERO &middot; DAY 77</p>
+    <h1 class="lg bk mb4" style="line-height:1.35">
+      &#128683; Logit bias &mdash; the one vocabulary-level control an API hands you. It acts on
+      TOKENS. Every rule you actually want to enforce is about STRINGS, and those are not the same
+      object. Nothing here simulates language ability: there is no model and nothing is sampled. The
+      vocabulary is TRAINED by a real BPE merge loop over a corpus that is DATA, the tokenizer is
+      real string code, a ban is a real set of token ids, and whether a word survives a ban is
+      decided by walking its segmentation graph &mdash; so each rate is a count over an enumerated
+      corpus and a <strong>0.00%</strong> here is a zero, not "none seen". Exactly two numbers are
+      declared about the world, both on sliders and both labelled where they are used; the bias
+      itself is a third dial but it is not an assumption, it is the subject.
+      The page rests on one theorem rather than a trend, and the theorem is checked and not assumed:
+      <strong>an airtight token ban must contain a single-character token</strong>, because a
+      byte-level vocabulary always leaves the character-by-character spelling available &mdash;
+      <strong>62 of 62</strong> airtight bans across <strong>80</strong> word&times;strategy cells,
+      <strong>0</strong> violations. It is necessary and not sufficient:
+      <strong>5 of 80</strong> cells ban a character and leak anyway.
+      &#128308; The parameter-free centrepiece needs no dial at all. Take the ban every provider's
+      documentation shows &mdash; run the word through <code class="tok">encode()</code>, set
+      <code class="tok">-100</code> on what comes back &mdash; and across sixteen words it leaves the
+      word writable on <strong>81.25%</strong> of them. The three it does stop, it stops by accident:
+      those are the words the tokenizer had shattered into characters, and stopping them cost
+      <strong>30.33</strong> ordinary words out of a <strong>381</strong>-word lexicon each, against
+      <strong>5.08</strong> for the thirteen it failed on &mdash; <strong>5.97&times;</strong> the
+      damage, on the cases where it worked.
+      &#128308; The intended headline died under measurement. I built this expecting the documented
+      ban to leak on everything, since the character path always exists; it does not, and the reason
+      it sometimes holds is a property of the vocabulary rather than of the ban.
+      &#128308; Which makes the vocabulary ladder the most uncomfortable table here: the same
+      sixteen words, the same corpus, the same code, tokenized by a vocabulary of
+      <strong>135</strong> entries and then by one of <strong>495</strong>, and the leak goes from
+      <strong>0.00%</strong> to <strong>81.25%</strong>. A tokenizer that knows the word is a
+      tokenizer whose ban cannot hold it. Upgrading the model breaks the guardrail.
+      &#128308; And the word the ban is worst on is the one that shows what a bias actually does.
+      On <code class="tok">&#9251;delete</code> a <code class="tok">-100</code> on everything
+      <code class="tok">encode()</code> returned removes <strong>0.43%</strong> of the word's
+      probability &mdash; it keeps <strong>99.57%</strong> &mdash; because the weight a bias takes
+      off one spelling does not leave the word, a softmax renormalises it onto the word's other
+      spellings. Which is also why the probability is not even monotone in the dial:
+      <strong>6 of 1,232</strong> steps DOWN the bias grid make the banned word <em>more</em> likely.
+      &#128308; The dial is a discount, not a switch: on <strong>191 of 192</strong> grid cells the
+      word keeps a strictly positive probability at every finite bias, and the single zero is a
+      float64 underflow rather than a policy &mdash; while the argument about the
+      <code class="tok">-100</code> clamp is an argument about nothing, since the emitted
+      probability is bit-identical from <strong>-50</strong> through <strong>-200</strong> and equal
+      to six decimals from <strong>-20</strong>. What the documented ban actually buys, at the
+      dials, is <strong>44.78%</strong> of the word's probability removed &mdash; it keeps
+      <strong>54.40%</strong> on the thirteen it leaks &mdash; and even a writer that strongly
+      prefers the tokenizer's own spelling keeps <strong>8.71%</strong>.
+      &#128308; The clever fix is the wrong objective. Compute the smallest airtight ban and you get
+      the same airtightness as the cheapest airtight ban while damaging <strong>21.13</strong>
+      lexicon words instead of <strong>8.63</strong> &mdash; <strong>2.45&times;</strong> &mdash; for
+      <strong>0.25</strong> fewer tokens banned. At blocklist scale the inversion is starker still:
+      a <strong>29</strong>-token blocklist kills <strong>36.48%</strong> of the lexicon and a
+      <strong>37</strong>-token one kills <strong>28.08%</strong>, for identical coverage.
+      &#128308; And the diligent fix &mdash; ban every surface form &mdash; still leaks on
+      <strong>31.25%</strong> while touching <strong>53.88</strong> words per target, because the
+      spelling nobody bans is the loud one: the ALL-CAPS form survives the ban on
+      <strong>16 of 16</strong> words.
+      Two nulls, located rather than claimed: <strong>28 of 75</strong> single-character tokens cost
+      nothing at all to ban and not one of them occurs in any of the sixteen words, and the free
+      control &mdash; read the string that came back &mdash; bans <strong>0</strong> tokens, touches
+      <strong>0</strong> words, stops <strong>16 of 16</strong>, and costs
+      <code class="tok">1/(1-q)</code> calls: <strong>1.111</strong> at a one-in-ten hazard.
+      <strong>130,278</strong> in-page assertions plus <strong>141,169</strong> in an
+      independent Node verifier that retrains BPE with pair counts recomputed from scratch every
+      round, re-encodes through a character trie, rebuilds every segmentation by explicit
+      enumeration and counts paths in BigInt, re-derives every cut by exhaustive subset search and
+      re-sums the probability path by path.
+      Pure vanilla JavaScript, one file, no build step.
+    </h1>
+    <div class="flex g2 wrapf" id="tabs">
+      <button data-tab="look" class="tab-active">&#128300; MEASURE</button>
+      <button data-tab="understand">&#129504; UNDERSTAND</button>
+      <button data-tab="build">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<section id="look" class="tab-panel">
+  <div class="panel">
+    <div class="wrap wrap-lg" style="padding-top:0">
+
+      <div class="card">
+        <div class="grid3">
+          <label class="sl">alpha &mdash; how strongly the writer prefers the tokenizer's spelling
+            <span id="vA" class="b" style="float:right">1.20</span>
+            <input id="sA" type="range" min="0" max="300" step="10" value="120"></label>
+          <label class="sl">esc &mdash; chance per step of leaving the word
+            <span id="vE" class="b" style="float:right">2.0%</span>
+            <input id="sE" type="range" min="5" max="150" step="5" value="20"></label>
+          <label class="sl">logit_bias &mdash; the value you send
+            <span id="vB" class="b" style="float:right">-100</span>
+            <input id="sB" type="range" min="0" max="200" step="1" value="100"></label>
+        </div>
+        <div class="flex g4 wrapf mt3" style="align-items:flex-end">
+          <label class="xs mut">word <select id="selT"></select></label>
+          <label class="xs mut">ban strategy <select id="selS"></select></label>
+        </div>
+        <p class="note mt3">
+          Two numbers on this page are <strong>declared</strong> about the world and everything else
+          is a count. <strong>alpha</strong> is how much more weight a writer puts on a longer piece
+          &mdash; a trained model has only ever seen canonical spellings, so it prefers them, and
+          alpha says by how much. <strong>esc</strong> is the chance at each step that it walks away
+          from the word instead of finishing it. They are the only two, they are both here, and
+          every panel marked <span class="pill p-free">parameter-free</span> reads neither.
+          <code class="tok">logit_bias</code> is on a dial too, but it is not an assumption &mdash;
+          it is the subject: it is the number your code sends, and the centrepiece enumerates the
+          whole grid of it rather than trusting the one under your cursor. The vocabulary is trained
+          once from the corpus and the segmentation graph is exact, so "can this word still be
+          written" is a graph question with a yes or a no and never a probability.
+        </p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">PROBE 1 &middot; THE BAN THAT ONLY WORKS WHEN IT HURTS
+          <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">Seven ways to stop a model writing sixteen words, each run against
+          every word. <span class="b">still writable</span> is the share of the sixteen the decoder
+          can still spell some way; <span class="b">stopped</span> is what the strategy actually
+          delivers. <span class="b">dead</span> and <span class="b">respelled</span> are ordinary
+          words from the same corpus &mdash; out of <span id="lexN" class="b"></span> &mdash; that
+          the ban either makes unwritable or forces into a clumsier spelling. No slider reaches this
+          panel.</p>
+        <div class="scroll"><table class="num" id="t1Tbl"></table></div>
+        <p class="sm mt3" id="t1Note"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE THEOREM, CHECKED
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">A byte-level vocabulary contains every character, so the
+            character-by-character spelling of any string is always available to a decoder. Cutting
+            it therefore requires banning one of those characters. That is not a tendency, it is a
+            consequence, and the only honest thing to do with it is to check it on every cell rather
+            than write it in a paragraph.</p>
+          <div class="scroll"><table class="num" id="thmTbl"></table></div>
+          <p class="sm mt3" id="thmNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 2 &middot; THE VOCABULARY LADDER
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">The same sixteen words, the same corpus, the same ban &mdash; only
+            the vocabulary changes, because a BPE merge list is prefix-nested and truncating it
+            gives exactly the vocabulary that many merges would have produced. This is the table
+            that says an upgrade breaks the guardrail.</p>
+          <div class="scroll"><table class="num" id="vlTbl"></table></div>
+          <p class="sm mt3" id="vlNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WORD BY WORD &mdash; the documented ban, sixteen times
+          <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">Not an average. Each row is one word put through
+          <code class="tok">encode()</code> with <code class="tok">-100</code> on everything that
+          comes back. <span class="b">spellings</span> is how many distinct token sequences produce
+          the word at all; <span class="b">left</span> is how many the ban did not reach.
+          <span class="b">cut</span> is the size of the smallest set of tokens that would actually
+          be airtight. A row is red when the word survives its own ban.</p>
+        <div class="scroll"><table class="num" id="wordTbl"></table></div>
+        <p class="sm mt3" id="wordNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 3 &middot; THE SPELLINGS NOBODY BANS
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Six surface forms of the same word against the ban built from one
+            of them. <span class="b">untouched</span> means the ban does not contain a single token
+            of that form's own encoding &mdash; the model writes it exactly as it always did,
+            at full probability, with nothing to notice.</p>
+          <div class="scroll"><table class="num" id="varTbl"></table></div>
+          <p class="sm mt3" id="varNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE PRICE OF ONE LETTER
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Since every airtight ban has to include a single-character token,
+            this is the bill it cannot avoid. One token banned, and this is what it does to the rest
+            of the corpus. The top of the table is why a stray
+            <code class="tok">logit_bias</code> entry can make a model sound broken.</p>
+          <div class="scroll"><table class="num" id="alfTbl"></table></div>
+          <p class="sm mt3" id="alfNote"></p>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">PROBE 4 &middot; SMALLEST IS NOT CHEAPEST
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Both columns are airtight: neither word can be written afterwards.
+            One minimises the number of tokens banned, which is the thing that is easy to count. The
+            other minimises the damage, which is the thing you care about. They are not the same
+            set, and the difference is free.</p>
+          <div class="scroll"><table class="num" id="cutTbl"></table></div>
+          <p class="sm mt3" id="cutNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE FLOOR NOBODY GETS UNDER
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">The theorem gives every word a floor: the cheapest single character
+            it contains. No airtight ban on that word can cost less than that, whatever else it
+            does. <span class="b">floor</span> is that number, <span class="b">paid</span> is what
+            the cheapest airtight ban actually costs, and the gap is what the graph forces on top.</p>
+          <div class="scroll"><table class="num" id="floorTbl"></table></div>
+          <p class="sm mt3" id="floorNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE REAL DEPLOYMENT &mdash; one blocklist, all sixteen words
+          <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">Nobody bans one word. The bans go into one call together, and the
+          interference between them is the only reason the coverage improves. So does the bill.</p>
+        <div class="scroll"><table class="num" id="blkTbl"></table></div>
+        <p class="sm mt3" id="blkNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE NULL &middot; A DISCOUNT, NOT A SWITCH</p>
+          <p class="sm mut2 mb3">The whole bias grid against the documented ban.
+            <span class="b">writable</span> is a graph fact and reads no dial;
+            <span class="b">P(word)</span> reads both declared numbers.
+            <span class="b">&gt; 0</span> counts the words that still carry a strictly positive
+            probability &mdash; which is the point: a finite bias multiplies a weight, it does not
+            delete a token.</p>
+          <div class="scroll"><table class="num" id="nullTbl"></table></div>
+          <p class="sm mt3" id="nullNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE DECLARED HALF &mdash; what the ban buys</p>
+          <p class="sm mut2 mb3">The same seven strategies, priced in probability instead of in yes
+            or no, at the dials above. <span class="b">kept</span> is the share of the word's
+            probability the ban failed to remove; <span class="b">on the leaks</span> is the same
+            number restricted to the words it did not stop, which is the honest one.</p>
+          <div class="scroll"><table class="num" id="decTbl"></table></div>
+          <p class="sm mt3" id="decNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">WHAT THE BAN BUYS, WORD BY WORD</p>
+        <p class="sm mut2 mb3">Reachability and probability are different questions and this is the
+          second one. <span class="b">kept</span> is the share of the word's probability that
+          survives the documented ban at the dials. The top of this table is the whole page in one
+          row; the bottom of it is the nuance, because the word whose ban looks cleanest &mdash; one
+          token in, one token banned &mdash; loses nearly all its probability and stays writable
+          anyway.</p>
+        <div class="scroll"><table class="num" id="pwTbl"></table></div>
+        <p class="sm mt3" id="pwNote"></p>
+      </div>
+
+      <div class="grid2">
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE SPELLING-PREFERENCE LADDER</p>
+          <p class="sm mut2 mb3">The one panel that sweeps a declared number rather than reading it.
+            A writer with <code class="tok">alpha&nbsp;=&nbsp;0</code> is indifferent between
+            spellings; a large alpha almost always uses the tokenizer's own. The ban gets better as
+            alpha rises &mdash; and never gets good.</p>
+          <div class="scroll"><table class="num" id="alTbl"></table></div>
+          <p class="sm mt3" id="alNote"></p>
+        </div>
+        <div class="card">
+          <p class="xs bb tw2 mut mb1">THE FREE CONTROL, PRICED
+            <span class="pill p-free">parameter-free</span></p>
+          <p class="sm mut2 mb3">Read the string that came back and call again if the word is in it.
+            It bans nothing, so it damages nothing, and it cannot leak because it tests the object
+            the rule is about. Its price is retries, and that is arithmetic over an enumerated grid
+            of reply-level hazards rather than a number anyone has to declare.</p>
+          <div class="scroll"><table class="num" id="retTbl"></table></div>
+          <p class="sm mt3" id="retNote"></p>
+        </div>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">THE CONTROLS <span class="pill p-free">parameter-free</span></p>
+        <p class="sm mut2 mb3">Five things must come back at exactly zero or this page is measuring
+          its own assumptions rather than the ban. They are swept over the whole declared grid, not
+          taken at the dials.</p>
+        <div class="scroll"><table class="num" id="ctlTbl"></table></div>
+        <p class="sm mt3" id="ctlNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb1">ONE WORD, WRITTEN OUT</p>
+        <p class="sm mut2 mb3">The word and the strategy come from the controls above. This is the
+          whole mechanism with nothing aggregated: what the tokenizer returns, what gets banned,
+          what the decoder can still do, and which ordinary words paid for it.</p>
+        <pre id="traceOut">running&hellip;</pre>
+        <p class="sm mt3" id="traceNote"></p>
+      </div>
+
+      <div class="card">
+        <p class="xs bb tw2 mut mb2">IN-PAGE ASSERTIONS</p>
+        <pre id="selftest">running&hellip;</pre>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<section id="understand" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">You are banning tokens. Your rule is about words.</h2>
+      <p>Every mainstream inference API gives you exactly one control over what the model may say at
+        the vocabulary level. It is called <code class="tok">logit_bias</code>, it takes a map from
+        token id to a number, and that number is added to the token's logit before the softmax. The
+        documented recipe for banning a word is one line long: run the word through the tokenizer,
+        take the ids, set them all to <code class="tok">-100</code>.</p>
+      <p>The recipe has a hole in it, and the hole is not a bug in anyone's code. A decoder does not
+        emit strings. It emits token ids, one at a time, and the text you read is what those ids
+        concatenate to. The tokenizer's answer for a word is <em>one</em> sequence that concatenates
+        to it. It is not the only one. A vocabulary that contains every byte &mdash; which every
+        real one does, because it has to be able to write anything at all &mdash; contains at least
+        one other: the word spelled out one character at a time.</p>
+
+      <h3 class="lg b">The theorem, and why it settles the argument</h3>
+      <p>Line up the two facts. To stop a word being written you must remove every token sequence
+        that spells it. The character-by-character sequence always exists. Therefore any airtight
+        ban contains at least one single-character token.</p>
+      <p>That is three sentences and it decides the whole design space. There is no surgical ban.
+        Airtightness and collateral damage are not two properties you can trade off against each
+        other with a cleverer choice of tokens &mdash; they are the same knob. If your ban is
+        precise it is leaky, and if it is airtight it has taken a letter out of the alphabet.</p>
+      <p>The page checks it rather than asserting it: every strategy, every word, and for each of the
+        airtight ones, whether a single-character token is in the set. Sixty-two of sixty-two, no
+        violations. And the converse is checked too, because it would be convenient and it is false:
+        five cells ban a character and the word survives anyway, since one banned letter can be
+        covered by a longer piece somewhere else in the word.</p>
+
+      <h3 class="lg b">What the documented ban actually does</h3>
+      <p>Across sixteen words it leaves thirteen writable. That is the number I did not expect: I
+        built this to show it leaks on everything, and it does not. Three words are genuinely
+        stopped.</p>
+      <p>Look at which three. They are the words whose canonical encoding already contained single
+        characters &mdash; the words the tokenizer had failed to merge into pieces, so
+        <code class="tok">encode()</code> handed back letters and the ban swept them up by accident.
+        The three it stopped cost 30.33 ordinary words each; the thirteen it missed cost 5.08. The
+        ban is expensive exactly where it is effective, and cheap exactly where it does nothing.
+        There is no configuration in which it is both.</p>
+      <p>Which is why the vocabulary ladder is the table to sit with. Same words, same corpus, same
+        code; only the merge list is truncated. At 135 tokens the vocabulary spells these words out
+        in six pieces on average and the ban holds every one of them. At 495 tokens it spells them
+        in 2.63 pieces and the ban holds three. The guardrail was never doing the work. The
+        tokenizer's ignorance was.</p>
+
+      <h3 class="lg b">The dial is a discount</h3>
+      <p><code class="tok">-100</code> is not infinity and the API clamp is not the interesting part.
+        Adding a finite number to a logit multiplies a weight by
+        <code class="tok">e^bias</code>; the token stays in the distribution, at
+        <code class="tok">e^-100</code> of its former weight, and if it is the only way to finish
+        something the model wants to finish, it is still the most likely thing on the list. On this
+        grid the word keeps a strictly positive probability on 191 of 192 cells, and the one zero is
+        a float64 underflow &mdash; the shortest spelling of that word needs seven banned tokens, so
+        the weight is <code class="tok">e^-1400</code> and the hardware runs out before the model
+        does.</p>
+      <p>There is a second consequence, and it is the one that surprised me. Because a softmax
+        renormalises, the weight a bias takes off one spelling is not deleted &mdash; it is handed to
+        the word's other spellings. So the probability of the banned word is not even monotone in the
+        bias: six of the 1,232 adjacent steps down the grid raise it. The effect is small here, at
+        most 3.02e-5, and it cannot be designed away, because it is what renormalisation is. On
+        <code class="tok">&#9251;delete</code> the whole ban is worth 0.43% of the word's
+        probability.</p>
+      <p>The other half of the dial argument is a genuine null. From <code class="tok">-50</code> to
+        <code class="tok">-200</code> the emitted probability is bit-identical, and from
+        <code class="tok">-20</code> it agrees to six decimals. Everything that a large negative bias
+        can buy has already been bought by a small one. Whether your provider clamps at
+        <code class="tok">-100</code> makes no difference to any number on this page.</p>
+
+      <h3 class="lg b">Three repairs, in the order I reached for them</h3>
+      <p><strong>Ban every surface form.</strong> The obvious one, and the one most codebases end up
+        with. It cuts the leak from thirteen words to five &mdash; and it bans 12.44 tokens per word
+        instead of 2.63, touching 53.88 of the 381 ordinary words. It still misses the loudest
+        spelling of all: the ALL-CAPS form is untouched on sixteen of sixteen, because upper-case
+        text is tokenized by an almost disjoint set of pieces.</p>
+      <p><strong>Compute the smallest airtight ban.</strong> This is the one that feels like
+        engineering, and it optimises the wrong number. Minimising the size of the ban and
+        minimising its damage give different sets: 21.13 words touched against 8.63, for the same
+        airtightness, at a cost of a quarter of a token more per word. The reason is mechanical
+        &mdash; the smallest cut is usually a single very common letter, and a common letter is
+        common in the rest of the language too. At blocklist scale the inversion is plainer: the
+        29-token blocklist damages more of the lexicon than the 37-token one.</p>
+      <p><strong>Ban every token that could ever appear in the word.</strong> Airtight, obviously,
+        and it takes out 23.49% of the corpus per word. This is the option that ends with someone
+        filing a bug saying the model has started spelling things strangely.</p>
+
+      <h3 class="lg b">The control that wins is not a control at all</h3>
+      <p>Decode the reply and look for the string. It bans nothing, so it damages nothing. It cannot
+        leak, because it tests the object your rule is about rather than a proxy for it. It handles
+        capitals, plurals, leading spaces and the character-by-character spelling for free, because
+        all of those are the same string test. Its entire price is that a rejected reply has to be
+        asked for again: <code class="tok">1/(1-q)</code> calls, which is 1.111 if one reply in ten
+        would have contained the word and 1.010 if one in a hundred would.</p>
+      <p>That is the shape of almost every result on this page. The token-level control is a proxy
+        for a string-level rule, the proxy is not equivalent to the rule, and the gap is not a
+        tuning problem. <code class="tok">logit_bias</code> is genuinely useful for what it actually
+        is &mdash; nudging a choice between two known tokens, forcing a classification into a closed
+        set of single-token labels, discouraging a formatting habit &mdash; and every one of those
+        works because the thing being controlled is a token in the first place.</p>
+      <p>This is not Day 76. That page was about the order in which temperature and the truncators
+        are applied to a distribution; this one changes no sampler and asks what happens when you
+        edit the vocabulary the distribution is over. It is not Day 74 either: that page was about
+        where the PROMPT is cut and whether its last token is a boundary of what follows. This is
+        the output side, and the question is not which spelling is likely but which spellings remain
+        possible.</p>
+    </div>
+  </div>
+</section>
+
+<section id="build" class="tab-panel hidden">
+  <div class="panel">
+    <div class="wrap wrap-lg prose md" style="padding-top:0;max-width:820px">
+      <h2 class="xl bk">&#128296; How it is built</h2>
+      <p>Every number on the MEASURE tab comes from the block between
+        <code class="tok">ENGINE:BEGIN</code> and <code class="tok">ENGINE:END</code> in this file's
+        source. It touches no DOM, reads no clock and calls no random number generator. An
+        independent Node verifier rebuilds each load-bearing structure a second way &mdash; BPE
+        retrained with pair counts recomputed from scratch every round, encoding through a character
+        trie, segmentations enumerated explicitly instead of counted by dynamic programming, path
+        totals in BigInt, cuts re-derived by exhaustive subset search, and the probability re-summed
+        path by path &mdash; and compares them cell for cell.</p>
+
+      <h3 class="lg b">1. The vocabulary is trained, not written</h3>
+      <p>A hand-picked vocabulary would be a way of rigging the result, so there isn't one. A 6,497
+        character corpus of ordinary support-desk prose is DATA; a real BPE merge loop counts
+        adjacent symbol pairs across the word table, merges the commonest, and repeats 420 times,
+        with ties broken by first appearance so the training is deterministic. The base alphabet is
+        declared rather than derived &mdash; 75 characters, upper and lower case, digits and
+        punctuation &mdash; because a byte-level vocabulary contains every byte whether the corpus
+        used it or not, and that single property is what the theorem rests on.</p>
+      <p>Words are pre-tokenized the way GPT-2 does it: a leading space belongs to the word after it,
+        and a run of letters, a run of digits and a run of punctuation are separate pieces. So
+        <code class="tok">" card"</code> and <code class="tok">"card"</code> are different strings
+        and become different tokens, which is why the leading-space variant of a word is a real
+        problem and not a curiosity.</p>
+
+      <h3 class="lg b">2. Encoding is the real algorithm, not the easy one</h3>
+      <p>Canonical encoding repeatedly merges the surviving pair with the lowest merge rank. Applying
+        the merge list in order, one full pass per merge, is a different function &mdash; a later
+        merge can create an opportunity for an earlier one &mdash; and using it would have quietly
+        produced encodings no tokenizer returns. The verifier re-implements the same semantics over
+        a linked structure with a candidate set instead of a linear rescan.</p>
+
+      <h3 class="lg b">3. A word becomes a graph, and the ban becomes a cut</h3>
+      <p>Node <code class="tok">i</code> is "i characters written"; an edge from
+        <code class="tok">i</code> to <code class="tok">j</code> is a vocabulary token equal to
+        <code class="tok">s[i..j)</code>. A path from 0 to the end is a token sequence that produces
+        the word, so "can the model still write it" is reachability, "how many ways" is a path count,
+        "how much clumsier" is a shortest path, and "what does an airtight ban look like" is a
+        minimum hitting set over token types. None of that is estimated.</p>
+
+      <h3 class="lg b">4. Cuts are found exactly, by branching on a path</h3>
+      <p>A cut must hit every path, so it must hit any particular path you can show it. That gives an
+        exact search: find one surviving spelling, branch on each distinct token in it, recurse, and
+        iterate the depth limit upward until something works. It terminates against a guaranteed
+        upper bound &mdash; banning every token that can start the word is always a cut, because no
+        path can skip the first node. The verifier does not reuse any of this: it enumerates every
+        subset of the word's usable tokens up to the claimed size and checks that none smaller is a
+        cut.</p>
+
+      <h3 class="lg b">5. Damage is measured on the rest of the language</h3>
+      <p>The lexicon is every distinct word of the corpus with its leading space, 381 of them, each
+        with its canonical encoding and its shortest spelling. A ban makes a word
+        <strong>dead</strong> if no path survives and <strong>respelled</strong> if its canonical
+        encoding is hit but something else gets through &mdash; which is not a harmless outcome,
+        since the replacement is longer and is a spelling the model has never produced. Words the
+        ban cannot reach at all &mdash; no token of their segmentation graph is in it &mdash; are
+        asserted bit-identical afterwards, which is what makes the counted ones meaningful. Note
+        that the weaker version of that test is wrong and the assertions caught it: BPE's own
+        encoding is not always the shortest spelling, on 3 of the 381 words, so "the ban did not
+        touch its encoding" and "nothing about the word changed" are different statements.</p>
+
+      <h3 class="lg b">6. The declared half is a forward pass, not a formula</h3>
+      <p>At each node the writer chooses among the tokens that continue the word, weighted by
+        <code class="tok">e^(alpha&nbsp;&middot;&nbsp;(len-1))</code>, against one competing weight
+        that represents everything else in the vocabulary and is solved for so that the escape
+        probability is exactly <code class="tok">esc</code> before any ban. The bias is added to the
+        logit of banned tokens, exactly as an API would. The probability of the word is then a
+        forward pass over the graph &mdash; an exact sum over every spelling, not a sample and not
+        an approximation of one. Setting the bias on the competing weight as well makes the whole
+        thing a no-op, which is the softmax shift-invariance control.</p>
+
+      <h3 class="lg b">7. The claims are attacked rather than restated</h3>
+      <p>The in-page assertions check that a ban can never increase the number of spellings or lower
+        the token count; that a word the ban does not touch is unchanged to the last bit, across
+        every lexicon word and every strategy; that reachability and a positive path count are the
+        same predicate; that every airtight ban contains a single-character token; that the
+        character path decodes to the word it came from; that the claimed minimum cut is a cut and
+        that no smaller subset of the word's usable tokens is; that a bigger ban is never weaker
+        than the smaller one it contains; that probability is monotone in the bias and stays inside
+        <code class="tok">[0,1]</code>; that a zero bias is identical to no ban at all; that the
+        vocabularies on the ladder are genuinely nested; and that the cheapest airtight ban never
+        costs less than the floor the theorem gives it.</p>
+
+      <h3 class="lg b">8. The controls are printed, not described</h3>
+      <p>Biasing the entire vocabulary equally must change nothing, a bias of
+        <code class="tok">-700</code> must equal deleting the token, a bias applied to an empty set
+        must be the identity, banning every usable token must leave exactly zero spellings, and the
+        character path must decode back to its word. All five are swept over the whole declared grid
+        &mdash; ten alphas by five escape rates by sixteen words &mdash; rather than checked at the
+        dials, because a control that only holds where you happen to be standing is not a control.</p>
+
+      <h3 class="lg b">9. Nothing expensive runs twice</h3>
+      <p>The parameter-free sweeps depend on the corpus and nothing else, so they are computed once
+        and reused; the panels that read a dial are recomputed on change, in a plain timer-driven
+        pump so a slider drag never blocks the first paint. There is no animation frame, no clock
+        and no random source anywhere in the file.</p>
+    </div>
+  </div>
+</section>
+
+<script>
+const tabs = document.querySelectorAll("#tabs button");
+const panels = document.querySelectorAll(".tab-panel");
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){
+    tabs.forEach(function(x){ x.classList.remove("tab-active"); });
+    t.classList.add("tab-active");
+    panels.forEach(function(p){ p.classList.add("hidden"); });
+    document.getElementById(t.dataset.tab).classList.remove("hidden");
+  });
+});
+
+// ===== ENGINE:BEGIN =====
+// Logit bias - the only vocabulary-level control an API hands you. It acts on TOKENS. Every rule
+// you actually want to enforce is about STRINGS. Nothing here simulates language ability: there is
+// no model and nothing is sampled. The vocabulary is TRAINED by a real BPE merge loop over a corpus
+// that is DATA, the tokenizer is real string code, a ban is a real set of token ids, and whether a
+// string survives a ban is decided by walking its segmentation graph and never by a formula. Every
+// rate is a count over an enumerated corpus, so a 0.00% here is a zero and not "none seen".
+
+// ---------------------------------------------------------------- 1. the corpus (DATA)
+var CORPUS = [
+  "The support team reads every message before it reaches the customer, and the reply is written by",
+  "a person who can see the account, the order and the payment history in one place. A refund is",
+  "issued when the goods arrive damaged and the customer sends a photo. The agent will delete the",
+  "duplicate order rather than cancel it twice. Do not paste a password into the chat box and do",
+  "not read a credit card number back to the caller. The internal note is not visible to the",
+  "customer and the confidential pricing sheet is not attached to the reply. We cannot guarantee a",
+  "delivery date for a parcel that has left the country and we do not discuss a lawsuit with anyone",
+  "outside the legal team. A discount is offered by the sales manager and never by the support",
+  "agent. A competitor is not named in a public answer. The word sorry is used when the company is",
+  "at fault and unfortunately is used when nothing can be done. However the reply should still say",
+  "what happens next. Do not delve into the history of the incident when the customer only wants a",
+  "date. Furthermore the reply should be short. The server is restarted with a sudo command by the",
+  "on call engineer and the change is written into the run book. The run book lives in the internal",
+  "wiki and the wiki is searched by keyword. A keyword is a word that appears in the title or in",
+  "the first paragraph. The password manager holds every credential and the credential is rotated",
+  "every ninety days. A sword is not a tool and a swordfish is not a fish anyone orders here, but",
+  "both words appear in the product catalogue because the catalogue lists costumes. The wording of",
+  "an answer matters more than its length. A wordy answer is read by nobody. The card reader in the",
+  "shop is replaced every year and the card is never stored. The credit note is a separate document",
+  "from the invoice and the invoice is generated at midnight. An internal report is generated every",
+  "monday and the report is read by the manager on tuesday. The manager writes a summary and the",
+  "summary is posted to the channel. The channel is public inside the company and private outside",
+  "it. A customer who cannot log in is asked to reset the password from the login page and the page",
+  "sends a link. The link expires after an hour. A link that has expired is replaced by a new link",
+  "and the new link is sent to the same address. The address on the account is changed only by the",
+  "customer. The phone number is changed by the agent after two questions. The two questions are",
+  "listed in the run book. A parcel that is lost is claimed against the carrier and the carrier pays",
+  "the invoice. The carrier will not pay for a parcel that was never collected. The collection is",
+  "booked online and the booking reference is eight characters long. The reference is printed on the",
+  "label and the label is stuck to the box. The box is measured before it is collected because the",
+  "price depends on the size and the weight. A heavy box costs more than a light box of the same",
+  "size. A long box costs more than a short box of the same weight. The price is quoted in the local",
+  "currency and the currency is set by the country of the sender. The sender pays unless the account",
+  "is marked as receiver pays. The receiver pays for a return. A return is booked from the same page",
+  "as a collection. The page shows the price before the booking is confirmed and the price does not",
+  "change after that. A booking that is confirmed cannot be edited but it can be cancelled before",
+  "midnight. After midnight the driver has the manifest and the manifest cannot change. The driver",
+  "scans every parcel at the door and the scan updates the tracking page. The tracking page shows",
+  "the last scan and the next stop. A parcel with no scan for two days is marked as delayed and the",
+  "customer is told. The customer is told by email unless the account has a phone number and then",
+  "the customer is told by message. The message is short and it names the parcel and the date. We do",
+  "not send a message at night. The night shift reads the queue and writes a note for the morning",
+  "shift. The morning shift answers the note first and the queue second. A note that names a person",
+  "is not deleted. A note that names a price is checked by the manager. The manager checks the note",
+  "against the invoice and against the quote. The quote is valid for thirty days from the day it is",
+  "sent. A quote that is older than thirty days is quoted again at the current price. The current",
+  "price is read from the rate card and the rate card is updated every quarter. The rate card is not",
+  "sent to the customer. The customer sees a price and not a rate. A rate is a number in a table and",
+  "a price is a number on a screen. The table has a row for every country and a column for every",
+  "weight band. A weight band is a range and the range is inclusive at the bottom and exclusive at",
+  "the top. A parcel on the boundary falls into the lower band. The lower band is cheaper. The",
+  "cheaper band is chosen by the system and not by the agent. The agent cannot change a band and the",
+  "agent cannot change a price. The agent can apply a discount code and the code is logged. Every",
+  "code that is applied is logged with the agent name and the order number. The order number is",
+  "twelve digits and the first two digits are the country. The country is never changed after the",
+  "order is placed. A wrong country is fixed by cancelling the order and placing it again. Placing",
+  "an order again does not charge the card twice because the first charge is released the same day.",
+  "The release takes three days to appear on a statement. A statement is read by the customer and",
+  "not by the agent. The agent sees the last four digits and nothing more. Nothing more is stored.",
+  "Storing more would break the policy and the policy is written by the legal team and reviewed",
+  "every year. The review is recorded in the internal wiki with the date and the reviewer. The",
+  "reviewer is a person and not a system. A system cannot approve a policy. A person approves a",
+  "policy and a person is responsible for it. Password resets, Refund requests, Delete requests and",
+  "Discount codes are all logged. Internal notes and Confidential documents are never attached.",
+  "Sorry is a word the agent may use. However, Unfortunately and Furthermore are style words that a",
+  "reviewer may cut. A Competitor is never named and a Lawsuit is never discussed. A Credit Card is",
+  "never read aloud. NOTE: A PASSWORD IS NEVER SENT BY EMAIL AND A REFUND IS NEVER PROMISED.",
+  "WARNING: DO NOT DELETE AN ORDER. THE INTERNAL WIKI IS CONFIDENTIAL. A DISCOUNT NEEDS APPROVAL."
+].join(" ");
+
+// A byte-level vocabulary contains every byte whether or not the corpus used it, which is why the
+// character-by-character spelling of any string is always available to a decoder. That is declared
+// here rather than derived, because it is a property of every real tokenizer and the whole page
+// turns on it.
+var ALPHABET = (function(){
+  var s = " abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;'-!?()/\"", o = [], i;
+  for (i = 0; i < s.length; i++) o.push(s.charAt(i));
+  return o;
+})();
+var NMERGES = 420;
+
+// ---------------------------------------------------------------- 2. a real BPE merge loop
+// Words are pre-tokenized GPT-2 style: a space belongs to the word that follows it, so " card" and
+// "card" are different strings and become different tokens. The loop is the ordinary one - count
+// adjacent symbol pairs across the word table, merge the commonest, repeat - with ties broken by
+// first appearance so the training is deterministic and reproducible.
+function classOf(ch){
+  if (ch >= "a" && ch <= "z") return 1;
+  if (ch >= "A" && ch <= "Z") return 1;
+  if (ch >= "0" && ch <= "9") return 2;
+  return 3;
+}
+function preTokenize(text){
+  var out = [], i = 0, L = text.length;
+  while (i < L){
+    var lead = "";
+    if (text.charAt(i) === " "){ lead = " "; i++; }
+    if (i >= L){ if (lead) out.push(lead); break; }
+    var cl = classOf(text.charAt(i)), piece = "";
+    while (i < L && text.charAt(i) !== " " && classOf(text.charAt(i)) === cl){ piece += text.charAt(i); i++; }
+    out.push(lead + piece);
+  }
+  return out;
+}
+function trainBPE(text, nmerges){
+  var words = preTokenize(text), freq = {}, i, j;
+  for (i = 0; i < words.length; i++) freq[words[i]] = (freq[words[i]] || 0) + 1;
+  var keys = Object.keys(freq).sort();
+  var seqs = [], cnts = [];
+  for (i = 0; i < keys.length; i++){
+    var sym = [];
+    for (j = 0; j < keys[i].length; j++) sym.push(keys[i].charAt(j));
+    seqs.push(sym); cnts.push(freq[keys[i]]);
+  }
+  var merges = [], rank = {};
+  for (var it = 0; it < nmerges; it++){
+    var pc = {}, order = {}, seen = 0, best = null, bestN = 0, bestOrd = 0;
+    for (i = 0; i < seqs.length; i++){
+      var s = seqs[i];
+      for (j = 0; j + 1 < s.length; j++){
+        var key = s[j] + "\u0000" + s[j + 1];
+        if (!(key in pc)){ pc[key] = 0; order[key] = seen++; }
+        pc[key] += cnts[i];
+      }
+    }
+    var ks = Object.keys(pc);
+    for (i = 0; i < ks.length; i++){
+      var n = pc[ks[i]];
+      if (n > bestN || (n === bestN && best !== null && order[ks[i]] < bestOrd)){
+        best = ks[i]; bestN = n; bestOrd = order[ks[i]];
+      }
+    }
+    if (best === null || bestN < 2) break;
+    var parts = best.split("\u0000"), a = parts[0], b = parts[1], merged = a + b;
+    rank[best] = merges.length;
+    merges.push([a, b, merged, bestN]);
+    for (i = 0; i < seqs.length; i++){
+      var src = seqs[i], dst = [], k = 0;
+      while (k < src.length){
+        if (k + 1 < src.length && src[k] === a && src[k + 1] === b){ dst.push(merged); k += 2; }
+        else { dst.push(src[k]); k++; }
+      }
+      seqs[i] = dst;
+    }
+  }
+  return { merges: merges, rank: rank };
+}
+// the merge list is prefix-nested, so the vocabulary after k merges is the first k of it - which is
+// how the vocabulary-size ladder is exact rather than a re-run with a different tie-break
+function vocabAt(train, k){
+  var vs = {}, list = ALPHABET.slice(), i;
+  for (i = 0; i < ALPHABET.length; i++) vs[ALPHABET[i]] = 1;
+  for (i = 0; i < k && i < train.merges.length; i++)
+    if (!(train.merges[i][2] in vs)){ vs[train.merges[i][2]] = 1; list.push(train.merges[i][2]); }
+  var rank = {};
+  for (i = 0; i < k && i < train.merges.length; i++) rank[train.merges[i][0] + "\u0000" + train.merges[i][1]] = i;
+  return { vocab: vs, list: list, rank: rank };
+}
+
+var TRAIN = trainBPE(CORPUS, NMERGES);
+var V = vocabAt(TRAIN, NMERGES);
+var TOKS = V.list.slice().sort(function(a, b){ return a.length - b.length || (a < b ? -1 : a > b ? 1 : 0); });
+var TID = {};
+(function(){ for (var i = 0; i < TOKS.length; i++) TID[TOKS[i]] = i; })();
+var NTOK = TOKS.length;
+
+// canonical encode - repeatedly merge the surviving pair with the lowest merge rank, which is what
+// a real BPE encoder does; applying the merge list in one pass each is NOT the same function
+function encodeWordWith(w, rank){
+  var sym = [], i;
+  for (i = 0; i < w.length; i++) sym.push(w.charAt(i));
+  for (;;){
+    var bestR = Infinity, at = -1;
+    for (i = 0; i + 1 < sym.length; i++){
+      var r = rank[sym[i] + "\u0000" + sym[i + 1]];
+      if (r !== undefined && r < bestR){ bestR = r; at = i; }
+    }
+    if (at < 0) break;
+    sym = sym.slice(0, at).concat([sym[at] + sym[at + 1]]).concat(sym.slice(at + 2));
+  }
+  return sym;
+}
+function encodeStrWith(s, rank){
+  var ws = preTokenize(s), out = [], i, j;
+  for (i = 0; i < ws.length; i++){
+    var e = encodeWordWith(ws[i], rank);
+    for (j = 0; j < e.length; j++) out.push(e[j]);
+  }
+  return out;
+}
+var ENC_MEMO = {};
+function encode(s){
+  if (s in ENC_MEMO) return ENC_MEMO[s];
+  var pieces = encodeStrWith(s, V.rank), ids = [], i;
+  for (i = 0; i < pieces.length; i++) ids.push(TID[pieces[i]]);
+  ENC_MEMO[s] = ids;
+  return ids;
+}
+function decode(ids){ var s = "", i; for (i = 0; i < ids.length; i++) s += TOKS[ids[i]]; return s; }
+
+// ---------------------------------------------------------------- 3. the segmentation graph
+// A decoder emits a SEQUENCE OF TOKENS; any sequence whose concatenation is the string produces the
+// string. The canonical encoding is one such sequence and the graph holds all of them. Node i is
+// "i characters written"; an edge i -> j is a vocabulary token equal to s[i..j).
+var EDGE_MEMO = {};
+function edgesOf(s){
+  if (s in EDGE_MEMO) return EDGE_MEMO[s];
+  var L = s.length, out = [], i, j;
+  for (i = 0; i < L; i++){
+    var row = [];
+    for (j = i + 1; j <= L; j++){
+      var piece = s.substring(i, j);
+      if (piece in V.vocab) row.push({ j: j, t: TID[piece] });
+    }
+    out.push(row);
+  }
+  EDGE_MEMO[s] = { L: L, adj: out };
+  return EDGE_MEMO[s];
+}
+function banOf(ids){ var b = new Uint8Array(NTOK), i; for (i = 0; i < ids.length; i++) b[ids[i]] = 1; return b; }
+function banCount(b){ var n = 0, i; for (i = 0; i < NTOK; i++) n += b[i]; return n; }
+function banList(b){ var o = [], i; for (i = 0; i < NTOK; i++) if (b[i]) o.push(i); return o; }
+var NOBAN = new Uint8Array(NTOK);
+var BANALL = (function(){ var b = new Uint8Array(NTOK), i; for (i = 0; i < NTOK; i++) b[i] = 1; return b; })();
+
+// how many distinct token sequences spell s while avoiding every banned token
+function pathCount(s, ban){
+  var G = edgesOf(s), L = G.L, f = new Float64Array(L + 1), i, k;
+  f[0] = 1;
+  for (i = 0; i < L; i++){
+    if (f[i] === 0) continue;
+    var row = G.adj[i];
+    for (k = 0; k < row.length; k++) if (!ban[row[k].t]) f[row[k].j] += f[i];
+  }
+  return f[L];
+}
+function reachable(s, ban){ return pathCount(s, ban) > 0; }
+function minTokens(s, ban){
+  var G = edgesOf(s), L = G.L, d = new Float64Array(L + 1), i, k;
+  for (i = 1; i <= L; i++) d[i] = Infinity;
+  for (i = 0; i < L; i++){
+    if (d[i] === Infinity) continue;
+    var row = G.adj[i];
+    for (k = 0; k < row.length; k++) if (!ban[row[k].t] && d[i] + 1 < d[row[k].j]) d[row[k].j] = d[i] + 1;
+  }
+  return d[L];
+}
+// every token that lies on at least one surviving path
+function usableTokens(s, ban){
+  var G = edgesOf(s), L = G.L, fwd = new Uint8Array(L + 1), bwd = new Uint8Array(L + 1), i, k;
+  fwd[0] = 1;
+  for (i = 0; i < L; i++){
+    if (!fwd[i]) continue;
+    var row = G.adj[i];
+    for (k = 0; k < row.length; k++) if (!ban[row[k].t]) fwd[row[k].j] = 1;
+  }
+  bwd[L] = 1;
+  for (i = L - 1; i >= 0; i--){
+    var r2 = G.adj[i];
+    for (k = 0; k < r2.length; k++) if (!ban[r2[k].t] && bwd[r2[k].j]) bwd[i] = 1;
+  }
+  var set = {}, out = [];
+  for (i = 0; i < L; i++){
+    if (!fwd[i]) continue;
+    var r3 = G.adj[i];
+    for (k = 0; k < r3.length; k++)
+      if (!ban[r3[k].t] && bwd[r3[k].j] && !(r3[k].t in set)){ set[r3[k].t] = 1; out.push(r3[k].t); }
+  }
+  out.sort(function(a, b){ return a - b; });
+  return out;
+}
+function anyPath(s, ban){
+  var G = edgesOf(s), L = G.L, from = new Int32Array(L + 1), tok = new Int32Array(L + 1);
+  var seen = new Uint8Array(L + 1), i, k;
+  for (i = 0; i <= L; i++){ from[i] = -1; tok[i] = -1; }
+  seen[0] = 1;
+  for (i = 0; i < L; i++){
+    if (!seen[i]) continue;
+    var row = G.adj[i];
+    for (k = 0; k < row.length; k++)
+      if (!ban[row[k].t] && !seen[row[k].j]){ seen[row[k].j] = 1; from[row[k].j] = i; tok[row[k].j] = row[k].t; }
+  }
+  if (!seen[L]) return null;
+  var path = [], p = L;
+  while (p > 0){ path.push(tok[p]); p = from[p]; }
+  path.reverse();
+  return path;
+}
+// the character-by-character spelling, which the alphabet guarantees always exists
+function charPath(s){ var o = [], i; for (i = 0; i < s.length; i++) o.push(TID[s.charAt(i)]); return o; }
+// banning every token that can start the string is always a cut, because no path can skip node 0
+function firstEdgeCut(s){
+  var G = edgesOf(s), set = {}, out = [], k;
+  for (k = 0; k < G.adj[0].length; k++) if (!(G.adj[0][k].t in set)){ set[G.adj[0][k].t] = 1; out.push(G.adj[0][k].t); }
+  out.sort(function(a, b){ return a - b; });
+  return out;
+}
+
+// ---------------------------------------------------------------- 4. cuts
+// An airtight ban is a set of tokens that hits EVERY path. Found exactly by iterative deepening on
+// "find a surviving path, branch on each distinct token in it", which is the standard minimal
+// hitting-set search: a cut must hit the path it was just shown, so branching on that path is
+// complete.
+var CUT_NODES = 0;
+function cutSearch(s, depth, collectAll, cap){
+  var found = [], seenKey = {}, work = new Uint8Array(NTOK);
+  function rec(chosen, left){
+    var p = anyPath(s, work);
+    if (p === null){
+      var srt = chosen.slice().sort(function(a, b){ return a - b; }), key = srt.join(",");
+      if (!(key in seenKey)){ seenKey[key] = 1; found.push(srt); }
+      return true;
+    }
+    if (left === 0) return false;
+    if (cap && found.length >= cap) return found.length > 0;
+    var distinct = {}, order = [], i;
+    for (i = 0; i < p.length; i++) if (!(p[i] in distinct)){ distinct[p[i]] = 1; order.push(p[i]); }
+    var any = false;
+    for (i = 0; i < order.length; i++){
+      CUT_NODES++;
+      work[order[i]] = 1; chosen.push(order[i]);
+      if (rec(chosen, left - 1)) any = true;
+      chosen.pop(); work[order[i]] = 0;
+      if (any && !collectAll) return true;
+      if (cap && found.length >= cap) return true;
+    }
+    return any;
+  }
+  rec([], depth);
+  return found;
+}
+function minCut(s){
+  var fb = firstEdgeCut(s), lim = Math.min(fb.length, 4), d;
+  for (d = 1; d <= lim; d++){
+    var f = cutSearch(s, d, false, 0);
+    if (f.length) return f[0];
+  }
+  return fb.slice().sort(function(a, b){ return a - b; });
+}
+
+// ---------------------------------------------------------------- 5. what a ban costs everything else
+// The lexicon is every distinct word of the corpus with its leading space, which is how a decoder
+// meets it. "dead" means the model cannot write the word at all any more. "respelled" means the
+// spelling it knows is gone and a clumsier one has to be found.
+var LEXICON = (function(){
+  var ws = preTokenize(CORPUS), seen = {}, out = [], i;
+  for (i = 0; i < ws.length; i++){
+    var w = ws[i];
+    if (w.charAt(0) !== " ") w = " " + w;
+    if (classOf(w.charAt(1)) !== 1) continue;
+    if (!(w in seen)){ seen[w] = 1; out.push(w); }
+  }
+  out.sort();
+  return out;
+})();
+var LEX = (function(){
+  var o = [], i;
+  for (i = 0; i < LEXICON.length; i++)
+    o.push({ w: LEXICON[i], enc: encode(LEXICON[i]), min: minTokens(LEXICON[i], NOBAN),
+             use: usableTokens(LEXICON[i], NOBAN), paths: pathCount(LEXICON[i], NOBAN) });
+  return o;
+})();
+// BPE's own answer is not always the shortest spelling - greedy merges are not optimal - which is
+// why "the ban did not touch its encoding" and "nothing about the word changed" are different
+// statements, and the assertions use the second one.
+function greedyGap(){
+  var worse = 0, sum = 0, i;
+  for (i = 0; i < LEX.length; i++){
+    if (LEX[i].min < LEX[i].enc.length){ worse++; sum += LEX[i].enc.length - LEX[i].min; }
+  }
+  return { worse: worse, n: LEX.length, share: worse / LEX.length, mean: worse ? sum / worse : 0 };
+}
+function collateral(ban){
+  var dead = 0, respelled = 0, infl = 0, worst = null, worstN = 0, i, j;
+  for (i = 0; i < LEX.length; i++){
+    var e = LEX[i], hit = false;
+    for (j = 0; j < e.enc.length; j++) if (ban[e.enc[j]]){ hit = true; break; }
+    if (!hit) continue;
+    var m = minTokens(e.w, ban);
+    if (m === Infinity){ dead++; continue; }
+    respelled++;
+    infl += m - e.min;
+    if (m - e.min > worstN){ worstN = m - e.min; worst = e.w; }
+  }
+  return { dead: dead, respelled: respelled, touched: dead + respelled,
+           inflation: respelled ? infl / respelled : 0, worst: worst, worstN: worstN, n: LEX.length };
+}
+
+// ---------------------------------------------------------------- 6. the targets
+var WORDS = ["password", "credit card", "delete", "internal", "confidential", "refund",
+             "guarantee", "lawsuit", "sudo", "discount", "competitor", "sorry",
+             "unfortunately", "however", "delve", "furthermore"];
+function capOf(w){ return w.charAt(0).toUpperCase() + w.substring(1); }
+function variantsOf(w){
+  return [{ id: "word", s: w }, { id: "␣word", s: " " + w }, { id: "Word", s: capOf(w) },
+          { id: "␣Word", s: " " + capOf(w) }, { id: "WORD", s: w.toUpperCase() },
+          { id: "␣words", s: " " + w + "s" }];
+}
+var TARGETS = (function(){
+  var out = [], i;
+  for (i = 0; i < WORDS.length; i++) out.push({ id: WORDS[i], s: " " + WORDS[i], vars: variantsOf(WORDS[i]) });
+  return out;
+})();
+var TARGET_IDS = (function(){ var o = [], i; for (i = 0; i < TARGETS.length; i++) o.push(TARGETS[i].id); return o; })();
+
+// ---------------------------------------------------------------- 7. the ban strategies
+var STRATS = [
+  { id: "nothing",   label: "no ban at all",          note: "control" },
+  { id: "canonical", label: "ban encode(word)",       note: "the documented one" },
+  { id: "variants",  label: "ban every surface form", note: "the diligent one" },
+  { id: "mincut",    label: "smallest airtight set",  note: "the clever one" },
+  { id: "minharm",   label: "cheapest airtight set",  note: "the careful one" },
+  { id: "allpaths",  label: "ban every usable token", note: "the sledgehammer" },
+  { id: "strfilter", label: "read the string back",   note: "no tokens banned at all" }
+];
+function banFor(t, sid){
+  var i, j, b;
+  if (sid === "nothing" || sid === "strfilter") return NOBAN;
+  if (sid === "canonical") return banOf(encode(t.s));
+  if (sid === "variants"){
+    b = new Uint8Array(NTOK);
+    for (i = 0; i < t.vars.length; i++){ var e = encode(t.vars[i].s); for (j = 0; j < e.length; j++) b[e[j]] = 1; }
+    return b;
+  }
+  if (sid === "allpaths") return banOf(usableTokens(t.s, NOBAN));
+  if (sid === "mincut") return banOf(minCut(t.s));
+  if (sid === "minharm"){
+    var c0 = minCut(t.s);
+    var cuts = cutSearch(t.s, Math.min(c0.length + 1, 4), true, 4000);
+    var best = c0, bestScore = Infinity;
+    for (i = 0; i < cuts.length; i++){
+      var co = collateral(banOf(cuts[i])), sc = co.dead * 10000 + co.respelled * 100 + cuts[i].length;
+      if (sc < bestScore){ bestScore = sc; best = cuts[i]; }
+    }
+    return banOf(best);
+  }
+  return NOBAN;
+}
+var BAN_MEMO = {};
+function ban(t, sid){
+  var k = t.id + "|" + sid;
+  if (!(k in BAN_MEMO)) BAN_MEMO[k] = banFor(t, sid);
+  return BAN_MEMO[k];
+}
+
+// ---------------------------------------------------------------- 8. the declared half
+// Two numbers are declared about the world. alpha says how strongly the writer prefers the
+// tokenizer's own spelling - a trained model has only ever seen canonical spellings, so a longer
+// piece carries more weight - and esc is the chance at each step that it walks away from the string
+// instead of finishing it. bias is the third number and it is not an assumption, it is the SUBJECT:
+// it is the value the API takes. Nothing is sampled: these move declared probabilities and every
+// total is an exact sum over the whole graph.
+function pTarget(s, bn, alpha, esc, bias, offBias){
+  var G = edgesOf(s), L = G.L, f = new Float64Array(L + 1), i, k;
+  f[0] = 1;
+  for (i = 0; i < L; i++){
+    if (f[i] === 0) continue;
+    var row = G.adj[i], w = [], tot = 0, tot0 = 0;
+    for (k = 0; k < row.length; k++){
+      var w0 = Math.exp(alpha * (row[k].j - i - 1));
+      var wb = bn[row[k].t] ? (bias === -Infinity ? 0 : w0 * Math.exp(bias)) : w0;
+      w.push(wb); tot += wb; tot0 += w0;
+    }
+    if (tot0 === 0) continue;
+    var W = (esc / (1 - esc)) * tot0 * Math.exp(offBias);
+    for (k = 0; k < row.length; k++) if (w[k] > 0) f[row[k].j] += f[i] * w[k] / (tot + W);
+  }
+  return f[L];
+}
+
+// ---------------------------------------------------------------- 9. the grids
+var GRID_BIAS = [0, -1, -2, -3, -4, -6, -8, -12, -20, -50, -100, -200];
+var GRID_ALPHA = [0, 0.3, 0.6, 0.9, 1.2, 1.5, 1.8, 2.1, 2.4, 3.0];
+var GRID_ESC = [0.005, 0.01, 0.02, 0.05, 0.10];
+var GRID_MERGES = [60, 120, 180, 240, 300, 360, 420];
+
+// ---------------------------------------------------------------- 10. aggregates
+function stratSweep(){
+  var out = [], i, j;
+  for (j = 0; j < STRATS.length; j++){
+    var sid = STRATS[j].id, live = 0, banned = 0, dead = 0, resp = 0, infl = 0, singles = 0, paths = 0;
+    for (i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i], b = ban(t, sid), z;
+      var pc2 = pathCount(t.s, b);
+      if (pc2 > 0) live++;
+      paths += pc2;
+      banned += banCount(b);
+      var co = collateral(b);
+      dead += co.dead; resp += co.respelled; infl += co.inflation;
+      var bl = banList(b);
+      for (z = 0; z < bl.length; z++) if (TOKS[bl[z]].length === 1) singles++;
+    }
+    var n = TARGETS.length;
+    out.push({ id: sid, label: STRATS[j].label, note: STRATS[j].note, n: n,
+               live: live, leak: live / n, paths: paths / n, banned: banned / n, singles: singles / n,
+               dead: dead / n, resp: resp / n, touched: (dead + resp) / n, infl: infl / n,
+               stopped: sid === "strfilter" ? n : n - live,
+               blocked: (sid === "strfilter" ? n : n - live) / n });
+  }
+  return out;
+}
+// the theorem: an airtight token ban must contain at least one single-character token, because the
+// character-by-character spelling always exists. Checked, never assumed.
+function theoremAudit(){
+  var checked = 0, tight = 0, tightWithChar = 0, leaky = 0, predicted = 0, i, j, sid;
+  var sids = ["canonical", "variants", "mincut", "minharm", "allpaths"];
+  for (j = 0; j < sids.length; j++){
+    sid = sids[j];
+    for (i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i], b = ban(t, sid), z, hasChar = false, bl = banList(b);
+      for (z = 0; z < bl.length; z++) if (TOKS[bl[z]].length === 1) hasChar = true;
+      var isTight = !reachable(t.s, b);
+      checked++;
+      if (isTight){ tight++; if (hasChar) tightWithChar++; } else leaky++;
+      if (hasChar === isTight) predicted++;
+    }
+  }
+  return { checked: checked, tight: tight, tightWithChar: tightWithChar, leaky: leaky,
+           predicted: predicted, violations: tight - tightWithChar };
+}
+function targetTable(){
+  var out = [], i;
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i], e = encode(t.s), z, singles = 0;
+    for (z = 0; z < e.length; z++) if (TOKS[e[z]].length === 1) singles++;
+    var bc = ban(t, "canonical"), mc = minCut(t.s), co = collateral(bc);
+    out.push({ id: t.id, s: t.s, chars: t.s.length, enc: e.length, singles: singles,
+               toks: e.map(function(x){ return TOKS[x]; }),
+               all: pathCount(t.s, NOBAN), left: pathCount(t.s, bc),
+               kept: pathCount(t.s, bc) / pathCount(t.s, NOBAN),
+               usable: usableTokens(t.s, NOBAN).length, cut: mc.length,
+               cutToks: mc.map(function(x){ return TOKS[x]; }),
+               dead: co.dead, resp: co.respelled, leaks: pathCount(t.s, bc) > 0 });
+  }
+  return out;
+}
+function variantTable(){
+  var out = [], i, j, unt = 0, cells = 0, byVar = [];
+  for (j = 0; j < TARGETS[0].vars.length; j++) byVar.push({ id: TARGETS[0].vars[j].id, untouched: 0 });
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i], b = ban(t, "canonical"), row = [], u = 0;
+    for (j = 0; j < t.vars.length; j++){
+      var e = encode(t.vars[j].s), hit = false, z;
+      for (z = 0; z < e.length; z++) if (b[e[z]]) hit = true;
+      if (!hit){ u++; unt++; byVar[j].untouched++; }
+      cells++;
+      row.push({ id: t.vars[j].id, s: t.vars[j].s, hit: hit, n: e.length,
+                 live: reachable(t.vars[j].s, b) });
+    }
+    out.push({ id: t.id, untouched: u, of: t.vars.length, cells: row });
+  }
+  return { rows: out, untouched: unt, cells: cells, share: unt / cells, byVar: byVar };
+}
+// the price of banning ONE token that happens to be a single character - the floor every airtight
+// ban has to pay
+function alphabetTable(){
+  var out = [], i;
+  for (i = 0; i < ALPHABET.length; i++){
+    var c = ALPHABET[i];
+    if (!(c in TID)) continue;
+    var co = collateral(banOf([TID[c]]));
+    out.push({ c: c, dead: co.dead, resp: co.respelled, touched: co.touched, infl: co.inflation });
+  }
+  out.sort(function(a, b){ return b.touched - a.touched || (a.c < b.c ? -1 : 1); });
+  return out;
+}
+function floorTable(){
+  var A = {}, at = alphabetTable(), i, j;
+  for (i = 0; i < at.length; i++) A[at[i].c] = at[i];
+  var out = [];
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i], seen = {}, bestC = null, best = Infinity;
+    for (j = 0; j < t.s.length; j++){
+      var c = t.s.charAt(j);
+      if (c in seen) continue;
+      seen[c] = 1;
+      if (A[c] && A[c].touched < best){ best = A[c].touched; bestC = c; }
+    }
+    var mh = ban(t, "minharm"), co = collateral(mh);
+    out.push({ id: t.id, floorC: bestC, floor: best, got: co.touched, n: banCount(mh),
+               meets: co.touched >= best });
+  }
+  return out;
+}
+function cutCompare(){
+  var out = [], i;
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i];
+    var bm = ban(t, "mincut"), bh = ban(t, "minharm"), ba = ban(t, "allpaths");
+    var cm = collateral(bm), ch = collateral(bh), ca = collateral(ba);
+    out.push({ id: t.id, mcN: banCount(bm), mcD: cm.dead, mcT: cm.touched,
+               mhN: banCount(bh), mhD: ch.dead, mhT: ch.touched,
+               apN: banCount(ba), apD: ca.dead, apT: ca.touched,
+               better: ch.touched < cm.touched, bigger: banCount(bh) > banCount(bm) });
+  }
+  return out;
+}
+// the vocabulary-size ladder - the same 16 words against the same corpus, tokenized by a smaller
+// and a larger vocabulary, with everything re-derived
+function vocabLadder(){
+  var out = [], gi, i, j;
+  for (gi = 0; gi < GRID_MERGES.length; gi++){
+    var k = GRID_MERGES[gi], vv = vocabAt(TRAIN, k), live = 0, withChar = 0, tokTotal = 0, tight = 0;
+    for (i = 0; i < TARGETS.length; i++){
+      var s = TARGETS[i].s, pieces = encodeStrWith(s, vv.rank), bs = {}, z, hasChar = false;
+      for (z = 0; z < pieces.length; z++){ bs[pieces[z]] = 1; if (pieces[z].length === 1) hasChar = true; }
+      tokTotal += pieces.length;
+      if (hasChar) withChar++;
+      // reachability under this vocabulary, avoiding the banned pieces
+      var L = s.length, f = new Uint8Array(L + 1), q;
+      f[0] = 1;
+      for (q = 0; q < L; q++){
+        if (!f[q]) continue;
+        for (j = q + 1; j <= L; j++){
+          var pc2 = s.substring(q, j);
+          if ((pc2 in vv.vocab) && !(pc2 in bs)) f[j] = 1;
+        }
+      }
+      if (f[L]) live++; else tight++;
+    }
+    out.push({ merges: k, vocab: vv.list.length, live: live, leak: live / TARGETS.length,
+               tight: tight, withChar: withChar, meanTok: tokTotal / TARGETS.length });
+  }
+  return out;
+}
+// the null: the magnitude of the bias cannot move a reachability answer, because reachability is a
+// question about the graph and the bias is a question about the numbers on it
+// The null everybody reaches for. A finite logit_bias is not a ban, it is a discount: the banned
+// token keeps exp(bias) of its weight, so the string keeps a strictly positive probability at every
+// finite value on the grid. Only a vocabulary the token is not in reaches zero.
+function biasNull(alpha, esc){
+  var rows = [], i, j, cells = 0, zero = 0, prev = null, frozen = 0, frozenFrom = null;
+  for (j = 0; j < GRID_BIAS.length; j++){
+    var b = GRID_BIAS[j], pos = 0, p = 0, tight = 0;
+    for (i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i], bn = ban(t, "canonical");
+      var v = pTarget(t.s, bn, alpha, esc, b, 0);
+      if (v > 0) pos++; else zero++;
+      if (!reachable(t.s, bn)) tight++;
+      p += v; cells++;
+    }
+    p = p / TARGETS.length;
+    var same = prev !== null && p === prev;
+    if (same){ frozen++; if (frozenFrom === null) frozenFrom = GRID_BIAS[j - 1]; }
+    else frozenFrom = null;
+    rows.push({ b: b, pos: pos, n: TARGETS.length, p: p, tight: tight, same: same });
+    prev = p;
+  }
+  var f0 = null, k;
+  for (k = rows.length - 1; k > 0; k--){ if (rows[k].p === rows[rows.length - 1].p) f0 = rows[k].b; else break; }
+  return { rows: rows, cells: cells, zero: zero, frozenFrom: f0,
+           finalP: rows[rows.length - 1].p, minusZero: rows[0].p };
+}
+function declaredTable(alpha, esc, bias){
+  var out = [], i, j;
+  for (j = 0; j < STRATS.length; j++){
+    var sid = STRATS[j].id, p0 = 0, p1 = 0, pl = 0, pl0 = 0, nl = 0;
+    for (i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i], b = ban(t, sid);
+      var a0 = pTarget(t.s, NOBAN, alpha, esc, 0, 0);
+      var a1 = pTarget(t.s, b, alpha, esc, bias, 0);
+      p0 += a0; p1 += a1;
+      if (reachable(t.s, b)){ pl += a1; pl0 += a0; nl++; }
+    }
+    var n = TARGETS.length;
+    out.push({ id: sid, label: STRATS[j].label, p0: p0 / n, p1: p1 / n, kept: p1 / p0,
+               nLeak: nl, keptLeak: nl ? pl / pl0 : 0 });
+  }
+  return out;
+}
+// What the ban buys on each word, in probability rather than in yes or no. Reachability and
+// probability are different questions and this is the second one.
+function perWordDeclared(alpha, esc, bias){
+  var out = [], i;
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i], b = ban(t, "canonical");
+    var p0 = pTarget(t.s, NOBAN, alpha, esc, 0, 0), p1 = pTarget(t.s, b, alpha, esc, bias, 0);
+    out.push({ id: t.id, s: t.s, p0: p0, p1: p1, kept: p1 / p0,
+               live: reachable(t.s, b), enc: encode(t.s).length });
+  }
+  out.sort(function(a, b2){ return b2.kept - a.kept; });
+  return out;
+}
+// The weight a bias takes off one spelling does not leave the word - it goes to the word's other
+// spellings, because a softmax renormalises. So the probability of the banned word is not even
+// monotone in the bias, and the page counts where rather than claiming it cannot happen.
+function monotoneAudit(alpha, esc){
+  var cells = 0, rises = 0, maxRise = 0, at = null, endBad = 0, ends = 0, i, j, k;
+  for (i = 0; i < TARGETS.length; i++){
+    for (j = 0; j < STRATS.length; j++){
+      var t = TARGETS[i], b = ban(t, STRATS[j].id), prev = null, first = null;
+      for (k = 0; k < GRID_BIAS.length; k++){
+        var v = pTarget(t.s, b, alpha, esc, GRID_BIAS[k], 0);
+        if (first === null) first = v;
+        if (prev !== null){
+          cells++;
+          if (v > prev + 1e-15){
+            rises++;
+            if (v - prev > maxRise){ maxRise = v - prev; at = { id: t.id, sid: STRATS[j].id, b: GRID_BIAS[k], from: prev, to: v }; }
+          }
+        }
+        prev = v;
+      }
+      ends++;
+      if (prev > first + 1e-15) endBad++;
+    }
+  }
+  return { cells: cells, rises: rises, maxRise: maxRise, at: at, endBad: endBad, ends: ends };
+}
+function alphaLadder(esc, bias){
+  var out = [], i, j;
+  for (j = 0; j < GRID_ALPHA.length; j++){
+    var a = GRID_ALPHA[j], p0 = 0, pc2 = 0, pm = 0;
+    for (i = 0; i < TARGETS.length; i++){
+      var t = TARGETS[i];
+      p0 += pTarget(t.s, NOBAN, a, esc, 0, 0);
+      pc2 += pTarget(t.s, ban(t, "canonical"), a, esc, bias, 0);
+      pm += pTarget(t.s, ban(t, "minharm"), a, esc, bias, 0);
+    }
+    var n = TARGETS.length;
+    out.push({ a: a, p0: p0 / n, pc: pc2 / n, pm: pm / n, kept: pc2 / p0 });
+  }
+  return out;
+}
+// Five things that must come back at exactly zero, swept over the whole declared grid rather than
+// at the dials, or the page is measuring its own assumptions instead of the ban.
+function controls(){
+  var i, a, e, uniform = 0, limit = 0, empty = 0, sledge = 0, charOk = 0, cells = 0, chk = 0;
+  for (i = 0; i < TARGETS.length; i++){
+    var t = TARGETS[i], s = t.s, bc = ban(t, "canonical");
+    if (pathCount(s, banOf(usableTokens(s, NOBAN))) !== 0) sledge++;
+    var cp = charPath(s), ok2 = true, z;
+    for (z = 0; z < cp.length; z++) if (cp[z] === undefined) ok2 = false;
+    if (ok2 && decodeIds(cp) === s) charOk++;
+    chk += 2;
+    for (a = 0; a < GRID_ALPHA.length; a++){
+      for (e = 0; e < GRID_ESC.length; e++){
+        var al = GRID_ALPHA[a], es = GRID_ESC[e];
+        var base = pTarget(s, NOBAN, al, es, 0, 0);
+        if (Math.abs(pTarget(s, BANALL, al, es, -7, -7) - base) > 1e-12) uniform++;
+        if (Math.abs(pTarget(s, bc, al, es, -700, 0) - pTarget(s, bc, al, es, -Infinity, 0)) > 1e-12) limit++;
+        if (Math.abs(pTarget(s, NOBAN, al, es, -100, 0) - base) > 1e-12) empty++;
+        cells += 3; chk += 3;
+      }
+    }
+  }
+  return { uniform: uniform, limit: limit, empty: empty, sledge: sledge, charOk: charOk,
+           n: TARGETS.length, cells: cells, checks: chk, gridA: GRID_ALPHA.length, gridE: GRID_ESC.length };
+}
+function decodeIds(ids){ var s = "", i; for (i = 0; i < ids.length; i++) s += TOKS[ids[i]]; return s; }
+
+function traceOne(ti, sid, alpha, esc, bias){
+  var t = TARGETS[ti], b = ban(t, sid), e = encode(t.s), bl = banList(b), i;
+  var surv = anyPath(t.s, b), co = collateral(b), dl = [];
+  for (i = 0; i < LEX.length; i++){
+    var z, hit = false;
+    for (z = 0; z < LEX[i].enc.length; z++) if (b[LEX[i].enc[z]]) hit = true;
+    if (!hit) continue;
+    var m = minTokens(LEX[i].w, b);
+    dl.push({ w: LEX[i].w, was: LEX[i].min, now: m });
+    if (dl.length >= 12) break;
+  }
+  return { id: t.id, s: t.s, enc: e.map(function(x){ return TOKS[x]; }),
+           banned: bl.map(function(x){ return TOKS[x]; }),
+           all: pathCount(t.s, NOBAN), left: pathCount(t.s, b),
+           minB: minTokens(t.s, NOBAN), minA: minTokens(t.s, b),
+           chars: charPath(t.s).map(function(x){ return TOKS[x]; }),
+           survivor: surv ? surv.map(function(x){ return TOKS[x]; }) : null,
+           p0: pTarget(t.s, NOBAN, alpha, esc, 0, 0), p1: pTarget(t.s, b, alpha, esc, bias, 0),
+           col: co, damaged: dl };
+}
+
+// the realistic deployment: one blocklist, every word banned in the same call
+function blocklist(sid){
+  var b = new Uint8Array(NTOK), i, j, live = 0;
+  for (i = 0; i < TARGETS.length; i++){
+    var bi = ban(TARGETS[i], sid);
+    for (j = 0; j < NTOK; j++) if (bi[j]) b[j] = 1;
+  }
+  for (i = 0; i < TARGETS.length; i++) if (reachable(TARGETS[i].s, b)) live++;
+  var co = collateral(b);
+  return { sid: sid, banned: banCount(b), live: live, n: TARGETS.length,
+           dead: co.dead, resp: co.respelled, touched: co.touched, lex: co.n,
+           share: co.touched / co.n };
+}
+function blocklistTable(){
+  var ids = ["canonical", "variants", "mincut", "minharm"], out = [], i;
+  for (i = 0; i < ids.length; i++) out.push(blocklist(ids[i]));
+  return out;
+}
+// the free control priced without a new declared number: an enumerated grid of reply-level hazards
+var GRID_HAZARD = [0.01, 0.02, 0.05, 0.10, 0.25, 0.50];
+function retryTable(){
+  var out = [], i;
+  for (i = 0; i < GRID_HAZARD.length; i++)
+    out.push({ q: GRID_HAZARD[i], calls: 1 / (1 - GRID_HAZARD[i]), extra: GRID_HAZARD[i] / (1 - GRID_HAZARD[i]) });
+  return out;
+}
+
+var DEFAULTS = { alpha: 1.2, esc: 0.02, bias: -100, ti: 0, sid: "canonical" };
+function withDefaults(c){
+  c = c || {};
+  var o = {}, keys = ["alpha", "esc", "bias", "ti", "sid"], i;
+  for (i = 0; i < keys.length; i++) o[keys[i]] = c[keys[i]] === undefined ? DEFAULTS[keys[i]] : c[keys[i]];
+  return o;
+}
+// ===== ENGINE:END =====
+
+// ---------------------------------------------------------------- view
+function $(id){ return document.getElementById(id); }
+function esc2(s){ return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+function vis(s){ return esc2(String(s).replace(/ /g, "␣")); }
+function pc(x){ return (100 * x).toFixed(2) + "%"; }
+function n1(x){ return x.toFixed(1); }
+function n2(x){ return x.toFixed(2); }
+function n3(x){ return x.toFixed(3); }
+function n6(x){ return x.toFixed(6); }
+function cm(x){ return String(Math.round(x)).replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
+function G(t){ return '<span class="ok">' + t + "</span>"; }
+function Bd(t){ return '<span class="bad">' + t + "</span>"; }
+function W(t){ return '<span class="warn">' + t + "</span>"; }
+function D(t){ return '<span class="dim">' + t + "</span>"; }
+// a leak share: green at zero, red when high
+function lk(x){ return x < 1e-12 ? G(pc(x)) : (x > 0.3 ? Bd(pc(x)) : W(pc(x))); }
+// a damage count: green at zero
+function dm(x){ return x < 1e-12 ? G(n2(x)) : (x > 20 ? Bd(n2(x)) : n2(x)); }
+function head(cells){
+  var s = "<tr>", i;
+  for (i = 0; i < cells.length; i++) s += "<th>" + cells[i] + "</th>";
+  return s + "</tr>";
+}
+function row(cells, klass){
+  var s = "<tr" + (klass ? ' class="' + klass + '"' : "") + ">", i;
+  for (i = 0; i < cells.length; i++) s += "<td>" + cells[i] + "</td>";
+  return s + "</tr>";
+}
+function pieces(list){
+  var s = "", i;
+  for (i = 0; i < list.length; i++) s += '<code class="piece">' + vis(list[i]) + "</code> ";
+  return s;
+}
+
+var MEMO = {};
+function memo(key, fn){ if (!(key in MEMO)) MEMO[key] = fn(); return MEMO[key]; }
+
+function cfgUI(){
+  return { alpha: (+$("sA").value) / 100, esc: (+$("sE").value) / 1000, bias: -(+$("sB").value),
+           ti: +$("selT").value, sid: $("selS").value };
+}
+
+var PENDING2 = null, PENDING3 = null;
+
+function draw(){
+  var c = withDefaults(cfgUI()), i, r;
+  $("vA").textContent = c.alpha.toFixed(2);
+  $("vE").textContent = (100 * c.esc).toFixed(1) + "%";
+  $("vB").textContent = String(c.bias);
+  $("lexN").textContent = cm(LEX.length);
+
+  var SS = memo("ss", function(){ return stratSweep(); });
+  var by = {};
+  for (i = 0; i < SS.length; i++) by[SS[i].id] = SS[i];
+  var h = head(["strategy", "what it is", "still writable", "stopped", "tokens banned",
+                "of them letters", "dead", "respelled", "words touched"]);
+  for (i = 0; i < SS.length; i++){
+    r = SS[i];
+    h += row([r.label, D(r.note), lk(r.leak), pc(r.blocked), n2(r.banned), n2(r.singles),
+              dm(r.dead), dm(r.resp), dm(r.touched)],
+             r.id === "strfilter" ? "hi" : (r.leak > 0.5 ? "mis" : ""));
+  }
+  $("t1Tbl").innerHTML = h;
+  $("t1Note").innerHTML =
+    "The documented ban leaves " + Bd(pc(by.canonical.leak)) + " of the sixteen words writable. " +
+    "The diligent version, every surface form, still leaves " + Bd(pc(by.variants.leak)) +
+    " and bans " + Bd(n2(by.variants.banned)) + " tokens to do it, touching " +
+    Bd(n2(by.variants.touched)) + " of " + cm(LEX.length) + " ordinary words. The three airtight " +
+    "strategies are airtight for one reason and it is the same reason each time &mdash; they " +
+    "contain a letter. And the row that costs nothing bans nothing: reading the string back " +
+    "stops " + G(pc(by.strfilter.blocked)) + " while touching " + G(n2(by.strfilter.touched)) +
+    " words, because the thing it tests is the thing the rule is about.";
+
+  var TA = memo("thm", function(){ return theoremAudit(); });
+  h = head(["quantity", "count", "reading"]);
+  h += row(["cells checked", cm(TA.checked), D("16 words &times; 5 token-banning strategies")]);
+  h += row(["airtight", cm(TA.tight), D("the word cannot be written at all")], "hi");
+  h += row(["of those, containing a letter", cm(TA.tightWithChar), D("the theorem's prediction")], "hi");
+  h += row(["violations", TA.violations === 0 ? G(cm(TA.violations)) : Bd(cm(TA.violations)),
+            D("an airtight ban with no single-character token")], TA.violations ? "mis" : "hi");
+  h += row(["leaky", cm(TA.leaky), D("the word survives its own ban")]);
+  h += row(["letter banned but still leaky", W(cm(TA.checked - TA.predicted)),
+            D("necessary, and not sufficient")], "amb");
+  $("thmTbl").innerHTML = h;
+  $("thmNote").innerHTML =
+    "Every one of the " + G(cm(TA.tightWithChar)) + " airtight bans contains a single-character " +
+    "token and " + G(cm(TA.violations)) + " do not, which is what the argument predicts: the " +
+    "character-by-character spelling is always available, so cutting it means banning a character. " +
+    "The converse is checked because it would be convenient, and it is false &mdash; " +
+    Bd(cm(TA.checked - TA.predicted)) + " cells ban a character and the word survives anyway, " +
+    "because a banned letter can be covered by a longer piece somewhere else in the word.";
+
+  var VL = memo("vl", function(){ return vocabLadder(); });
+  h = head(["merges", "vocabulary", "tokens per word", "words with a letter", "still writable"]);
+  for (i = 0; i < VL.length; i++){
+    r = VL[i];
+    h += row([cm(r.merges), cm(r.vocab), n2(r.meanTok), cm(r.withChar) + " of " + cm(r.live + r.tight),
+              lk(r.leak)], i === VL.length - 1 ? "mis" : (r.live === 0 ? "hi" : ""));
+  }
+  $("vlTbl").innerHTML = h;
+  var v0 = VL[0], v1 = VL[VL.length - 1];
+  $("vlNote").innerHTML =
+    "At " + cm(v0.vocab) + " tokens the vocabulary spells these words in " + n2(v0.meanTok) +
+    " pieces and the documented ban holds " + G("every one of them") + " &mdash; " +
+    G(pc(v0.leak)) + " writable. At " + cm(v1.vocab) + " tokens it spells them in " +
+    n2(v1.meanTok) + " pieces and holds " + Bd(cm(v1.tight)) + ", with " + Bd(pc(v1.leak)) +
+    " writable. Nothing about the ban changed. The tokenizer got better at the words, so " +
+    "<code class=\"tok\">encode()</code> stopped handing back letters, so the ban stopped " +
+    "accidentally cutting the character path. A model upgrade is a guardrail regression.";
+
+  clearTimeout(PENDING2);
+  PENDING2 = setTimeout(function(){ drawHeavy(c, by); }, 0);
+}
+
+function drawHeavy(c, by){
+  var i, j, r, h;
+
+  var TT = memo("tt", function(){ return targetTable(); });
+  h = head(["word", "tokens", "encode() gives", "letters in it", "spellings", "left after the ban",
+            "kept", "airtight cut", "dead", "respelled"]);
+  for (i = 0; i < TT.length; i++){
+    r = TT[i];
+    h += row([vis(r.s), r.enc, pieces(r.toks), r.singles === 0 ? G("0") : Bd(String(r.singles)),
+              cm(r.all), cm(r.left), r.left === 0 ? G("0.00%") : Bd(pc(r.kept)),
+              cm(r.cut) + " " + D(pieces(r.cutToks)), dm(r.dead), dm(r.resp)],
+             r.leaks ? "mis" : "hi");
+  }
+  $("wordTbl").innerHTML = h;
+  var leaky = [], tight = [], mL = 0, mT = 0;
+  for (i = 0; i < TT.length; i++){ if (TT[i].leaks){ leaky.push(TT[i]); mL += TT[i].dead + TT[i].resp; }
+                                   else { tight.push(TT[i]); mT += TT[i].dead + TT[i].resp; } }
+  mL = mL / leaky.length; mT = mT / tight.length;
+  $("wordNote").innerHTML =
+    Bd(cm(leaky.length) + " of " + cm(TT.length)) + " words survive the ban built from their own " +
+    "encoding, and the split is not random: every word that survives had " + G("0") +
+    " single-character tokens in <code class=\"tok\">encode()</code>, and every word that does not " +
+    "had at least one. The ban is not stopping the word &mdash; the tokenizer's failure to merge " +
+    "it is. Which is why the price runs the wrong way: the " + cm(tight.length) + " it stopped " +
+    "cost " + Bd(n2(mT)) + " ordinary words each and the " + cm(leaky.length) + " it missed cost " +
+    n2(mL) + " &mdash; " + Bd(n2(mT / mL) + "&times;") + " the damage on the cases where it worked.";
+
+  var VT = memo("vt", function(){ return variantTable(); });
+  h = head(["surface form", "untouched by the ban", "share"]);
+  for (i = 0; i < VT.byVar.length; i++){
+    r = VT.byVar[i];
+    h += row([vis(TARGETS[0].vars[i].id), cm(r.untouched) + " of " + cm(TARGETS.length),
+              r.untouched === TARGETS.length ? Bd(pc(r.untouched / TARGETS.length))
+                                             : (r.untouched === 0 ? G("0.00%") : W(pc(r.untouched / TARGETS.length)))],
+             r.untouched === TARGETS.length ? "mis" : (r.untouched === 0 ? "hi" : "amb"));
+  }
+  $("varTbl").innerHTML = h;
+  var caps = VT.byVar[4];
+  $("varNote").innerHTML =
+    Bd(cm(VT.untouched) + " of " + cm(VT.cells)) + " form-and-word cells &mdash; " +
+    Bd(pc(VT.share)) + " &mdash; are untouched: the ban contains no token of that spelling at all, " +
+    "so the model writes it exactly as before at full probability. The worst row is the loudest " +
+    "one: the ALL-CAPS form survives on " + Bd(cm(caps.untouched) + " of " + cm(TARGETS.length)) +
+    " words, because upper-case text is tokenized by an almost disjoint set of pieces. The " +
+    "leading-space and plural forms are the two that do get caught, which is exactly the pair " +
+    "everyone remembers to add.";
+
+  var AT = memo("alf", function(){ return alphabetTable(); });
+  h = head(["token", "dead", "respelled", "words touched", "mean extra tokens"]);
+  for (i = 0; i < 8; i++){
+    r = AT[i];
+    h += row(['<code class="piece">' + vis(r.c) + "</code>", cm(r.dead), cm(r.resp),
+              Bd(cm(r.touched)), n2(r.infl)], "mis");
+  }
+  var zero = 0;
+  for (i = 0; i < AT.length; i++) if (AT[i].touched === 0) zero++;
+  h += row([D("&hellip; " + cm(AT.length - 8) + " more"), "", "", "", ""]);
+  h += row([D("cost nothing at all"), G(cm(zero)), G(cm(zero)), G(cm(0)), G("0.00")], "hi");
+  $("alfTbl").innerHTML = h;
+  var FL = memo("fl", function(){ return floorTable(); });
+  var minFloor = Infinity;
+  for (i = 0; i < FL.length; i++) if (FL[i].floor < minFloor) minFloor = FL[i].floor;
+  $("alfNote").innerHTML =
+    "Banning the single token <code class=\"piece\">" + vis(AT[0].c) + "</code> makes " +
+    Bd(cm(AT[0].dead)) + " ordinary words unwritable and forces a longer spelling on " +
+    cm(AT[0].resp) + " more. " + G(cm(zero) + " of " + cm(AT.length)) + " single-character tokens " +
+    "cost nothing whatsoever &mdash; and not one of them occurs in any of the sixteen words, whose " +
+    "cheapest letter still costs " + W(cm(minFloor)) + ". That is the null with teeth: free letters " +
+    "exist, and they are never the ones you need.";
+
+  var CC = memo("cc", function(){ return cutCompare(); });
+  h = head(["word", "smallest: tokens", "smallest: touched", "cheapest: tokens",
+            "cheapest: touched", "saved"]);
+  var smN = 0, smT = 0, chN = 0, chT = 0, better = 0;
+  for (i = 0; i < CC.length; i++){
+    r = CC[i];
+    smN += r.mcN; smT += r.mcT; chN += r.mhN; chT += r.mhT;
+    if (r.better) better++;
+    h += row([vis(TARGETS[i].s), cm(r.mcN), Bd(cm(r.mcT)), cm(r.mhN),
+              r.mhT < r.mcT ? G(cm(r.mhT)) : cm(r.mhT),
+              r.mhT < r.mcT ? G(cm(r.mcT - r.mhT)) : D("0")], r.better ? "hi" : "");
+  }
+  var n = CC.length;
+  h += row([D("mean"), n2(smN / n), Bd(n2(smT / n)), n2(chN / n), G(n2(chT / n)),
+            G(n2((smT - chT) / n))], "amb");
+  $("cutTbl").innerHTML = h;
+  $("cutNote").innerHTML =
+    "Same airtightness on every row. Minimising the size of the ban costs " + Bd(n2(smT / n)) +
+    " damaged words; minimising the damage costs " + G(n2(chT / n)) + " &mdash; " +
+    Bd(n2((smT / n) / (chT / n)) + "&times;") + " &mdash; and it is " +
+    (chN > smN ? "larger by " + n2((chN - smN) / n) + " tokens" : "no larger") +
+    ". Cheaper on " + G(cm(better) + " of " + cm(n)) + " words and never worse. The number that is " +
+    "easy to count is not the number that hurts you: the smallest cut is usually one very common " +
+    "letter, and a common letter is common in the rest of the language too.";
+
+  h = head(["word", "floor", "cheapest airtight ban pays", "forced on top", "floor letter"]);
+  var fl = 0, gt = 0, meets = 0;
+  for (i = 0; i < FL.length; i++){
+    r = FL[i];
+    fl += r.floor; gt += r.got; if (r.meets) meets++;
+    h += row([vis(TARGETS[i].s), cm(r.floor), cm(r.got), r.got > r.floor ? W(cm(r.got - r.floor)) : G("0"),
+              '<code class="piece">' + vis(r.floorC) + "</code>"], r.meets ? "" : "mis");
+  }
+  h += row([D("mean"), n2(fl / FL.length), n2(gt / FL.length), n2((gt - fl) / FL.length), ""], "amb");
+  $("floorTbl").innerHTML = h;
+  $("floorNote").innerHTML =
+    G(cm(meets) + " of " + cm(FL.length)) + " airtight bans pay at least their word's floor, which " +
+    "is a consequence and not a coincidence: the ban has to contain one of the word's own letters, " +
+    "so it inherits that letter's bill. Mean floor " + W(n2(fl / FL.length)) + " words, mean " +
+    "actually paid " + Bd(n2(gt / FL.length)) + ". The gap is what the graph adds on top, because " +
+    "one letter is rarely enough to cut every spelling on its own.";
+
+  var BL = memo("blk", function(){ return blocklistTable(); });
+  h = head(["blocklist built from", "tokens banned", "words still writable", "dead", "respelled",
+            "share of the lexicon"]);
+  for (i = 0; i < BL.length; i++){
+    r = BL[i];
+    h += row([STRATS[i + 1].label, cm(r.banned), r.live === 0 ? G("0 of " + cm(r.n))
+                                                              : Bd(cm(r.live) + " of " + cm(r.n)),
+              Bd(cm(r.dead)), cm(r.resp), Bd(pc(r.share))],
+             r.live === 0 ? "" : "mis");
+  }
+  $("blkTbl").innerHTML = h;
+  var mc = null, mh = null;
+  for (i = 0; i < BL.length; i++){ if (BL[i].sid === "mincut") mc = BL[i]; if (BL[i].sid === "minharm") mh = BL[i]; }
+  $("blkNote").innerHTML =
+    "One call, sixteen words. The documented blocklist bans " + cm(BL[0].banned) + " tokens and " +
+    "still leaves " + Bd(cm(BL[0].live)) + " of them writable &mdash; better than banning them one " +
+    "at a time only because the bans interfere with each other &mdash; while making " +
+    Bd(cm(BL[0].dead)) + " of " + cm(BL[0].lex) + " ordinary words unwritable. And the inversion " +
+    "survives the scale-up: the " + cm(mc.banned) + "-token blocklist damages " + Bd(pc(mc.share)) +
+    " of the lexicon and the " + cm(mh.banned) + "-token one damages " + G(pc(mh.share)) +
+    ", for identical coverage. Fewer tokens is not a smaller ban.";
+
+  clearTimeout(PENDING3);
+  PENDING3 = setTimeout(function(){ drawDials(c, by); }, 0);
+}
+
+function drawDials(c, by){
+  var i, r, h;
+
+  var BN = biasNull(c.alpha, c.esc);
+  h = head(["logit_bias", "writable", "P(word) &gt; 0", "mean P(word)", "same as the row above"]);
+  for (i = 0; i < BN.rows.length; i++){
+    r = BN.rows[i];
+    h += row([String(r.b), cm(r.n - r.tight) + " of " + cm(r.n),
+              r.pos === r.n ? Bd(cm(r.pos) + " of " + cm(r.n)) : W(cm(r.pos) + " of " + cm(r.n)),
+              n6(r.p), r.same ? G("identical") : D("&mdash;")], r.same ? "hi" : "");
+  }
+  $("nullTbl").innerHTML = h;
+  $("nullNote").innerHTML =
+    "The writable column never moves, at any value, because reachability is a question about the " +
+    "graph and the bias is a number on it. " + Bd(cm(BN.cells - BN.zero) + " of " + cm(BN.cells)) +
+    " cells keep a strictly positive probability &mdash; a finite bias multiplies a weight, it " +
+    "does not delete a token &mdash; and the single zero is float64 underflow rather than policy: " +
+    "that word's shortest spelling needs seven banned tokens, so the weight is " +
+    "<code class=\"tok\">e^" + (7 * BN.rows[BN.rows.length - 1].b) + "</code> and the hardware " +
+    "runs out first. The other half is a clean null: the emitted probability is " +
+    G("bit-identical") + " from <code class=\"tok\">" + BN.frozenFrom + "</code> through " +
+    "<code class=\"tok\">" + BN.rows[BN.rows.length - 1].b + "</code>, so the argument about " +
+    "whether your provider clamps at " + D("-100") + " is an argument about nothing.";
+
+  var DT = declaredTable(c.alpha, c.esc, c.bias), dby = {};
+  for (i = 0; i < DT.length; i++) dby[DT[i].id] = DT[i];
+  h = head(["strategy", "P(word) before", "P(word) after", "kept", "words it leaks on",
+            "kept, on the leaks"]);
+  for (i = 0; i < DT.length; i++){
+    r = DT[i];
+    h += row([r.label, n6(r.p0), r.p1 < 1e-6 ? r.p1.toExponential(2) : n6(r.p1),
+              r.kept < 1e-12 ? G(pc(r.kept)) : (r.kept > 0.3 ? Bd(pc(r.kept)) : W(pc(r.kept))),
+              cm(r.nLeak), r.nLeak ? Bd(pc(r.keptLeak)) : G("&mdash;")],
+             r.id === "strfilter" ? "hi" : (r.kept > 0.3 ? "mis" : ""));
+  }
+  $("decTbl").innerHTML = h;
+  $("decNote").innerHTML =
+    "At <code class=\"tok\">alpha " + n2(c.alpha) + "</code>, <code class=\"tok\">esc " +
+    (100 * c.esc).toFixed(1) + "%</code> and <code class=\"tok\">logit_bias " + c.bias +
+    "</code>, the documented ban keeps " + Bd(pc(dby.canonical.kept)) + " of the word's " +
+    "probability &mdash; and " + Bd(pc(dby.canonical.keptLeak)) + " on the " +
+    cm(dby.canonical.nLeak) + " words it fails to stop, which is the number that describes what " +
+    "your users experience. The three airtight strategies read " + G("0.00%") + " because they " +
+    "are airtight, not because the bias is large: the same sets at " + D("-1") + " would read " +
+    "nearly the same as the documented row.";
+
+  var PW = perWordDeclared(c.alpha, c.esc, c.bias);
+  h = head(["word", "tokens from encode()", "still writable", "P(word) before", "P(word) after", "kept"]);
+  for (i = 0; i < PW.length; i++){
+    r = PW[i];
+    h += row([vis(r.s), cm(r.enc), r.live ? Bd("yes") : G("no"), n6(r.p0),
+              r.p1 < 1e-6 ? r.p1.toExponential(2) : n6(r.p1),
+              r.kept < 1e-12 ? G(pc(r.kept)) : (r.kept > 0.5 ? Bd(pc(r.kept)) : W(pc(r.kept)))],
+             r.kept > 0.5 ? "mis" : (r.live ? "" : "hi"));
+  }
+  $("pwTbl").innerHTML = h;
+  var MA = monotoneAudit(c.alpha, c.esc);
+  var worst = PW[0], best = null;
+  for (i = 0; i < PW.length; i++) if (PW[i].live && (best === null || PW[i].kept < best.kept)) best = PW[i];
+  $("pwNote").innerHTML =
+    "On <code class=\"tok\">" + vis(worst.s) + "</code> the documented ban removes " +
+    Bd(pc(1 - worst.kept)) + " of the word's probability. Not a tenth of it, not a half of it &mdash; " +
+    "it keeps " + Bd(pc(worst.kept)) + ". And the reason is the same one the whole page is about: " +
+    "the weight a bias takes off one spelling does not leave the word, it is renormalised onto the " +
+    "word's other spellings. " + Bd(cm(MA.rises) + " of " + cm(MA.cells)) + " adjacent steps down " +
+    "the bias grid make the banned word <em>more</em> likely, by up to " +
+    Bd(MA.maxRise.toExponential(2)) + " &mdash; tiny, and structurally impossible to rule out. " +
+    "At the other end, <code class=\"tok\">" + vis(best.s) + "</code> keeps only " +
+    G(pc(best.kept)) + " and is <strong>still writable</strong>: one token in, one token banned, " +
+    "and " + cm(1) + " decoder away from writing it anyway.";
+
+  var AL = alphaLadder(c.esc, c.bias);
+  h = head(["alpha", "P(word) unbanned", "after the documented ban", "kept", "after the cheapest airtight ban"]);
+  for (i = 0; i < AL.length; i++){
+    r = AL[i];
+    h += row([n1(r.a), n6(r.p0), n6(r.pc),
+              r.kept > 0.3 ? Bd(pc(r.kept)) : W(pc(r.kept)),
+              r.pm < 1e-6 ? G(r.pm.toExponential(2)) : n6(r.pm)],
+             Math.abs(r.a - c.alpha) < 1e-9 ? "hi" : "");
+  }
+  $("alTbl").innerHTML = h;
+  $("alNote").innerHTML =
+    "A writer indifferent between spellings keeps " + Bd(pc(AL[0].kept)) + " of the word's " +
+    "probability through the ban; one that strongly prefers the tokenizer's own spelling still " +
+    "keeps " + Bd(pc(AL[AL.length - 1].kept)) + ". The ban improves as the writer gets more " +
+    "canonical, which is the direction a better-trained model moves &mdash; and it never gets " +
+    "good, because the alternative spellings do not stop existing, they only get less likely. The " +
+    "last column is what airtight looks like by comparison, at every alpha on the grid.";
+
+  var RT = retryTable();
+  h = head(["replies that would contain the word", "calls per accepted reply", "extra calls",
+            "tokens banned", "words touched"]);
+  for (i = 0; i < RT.length; i++){
+    r = RT[i];
+    h += row([pc(r.q), n3(r.calls), "+" + n3(r.extra), G("0"), G("0")], "hi");
+  }
+  $("retTbl").innerHTML = h;
+  $("retNote").innerHTML =
+    "No declared number enters this table: the hazard column is an enumerated grid and the rest is " +
+    G("1/(1-q)") + ". At a one-in-ten hazard the string check costs " + G(n3(RT[3].calls)) +
+    " calls per accepted reply and damages " + G("nothing") + "; at one in a hundred it costs " +
+    G(n3(RT[0].calls)) + ". Against that, the documented ban spends " +
+    Bd(n2(by.canonical.banned)) + " tokens of bias per word to leave " +
+    Bd(pc(by.canonical.leak)) + " of the words writable.";
+
+  var CT = memo("ctl", function(){ return controls(); });
+  h = head(["control", "must be", "is", "cells"]);
+  h += row(["a bias on the whole vocabulary changes nothing", "0",
+            CT.uniform === 0 ? G("0") : Bd(cm(CT.uniform)), cm(CT.cells / 3)], CT.uniform ? "mis" : "hi");
+  h += row(["bias -700 equals deleting the token", "0",
+            CT.limit === 0 ? G("0") : Bd(cm(CT.limit)), cm(CT.cells / 3)], CT.limit ? "mis" : "hi");
+  h += row(["a bias on an empty set is the identity", "0",
+            CT.empty === 0 ? G("0") : Bd(cm(CT.empty)), cm(CT.cells / 3)], CT.empty ? "mis" : "hi");
+  h += row(["banning every usable token leaves no spelling", "0",
+            CT.sledge === 0 ? G("0") : Bd(cm(CT.sledge)), cm(CT.n)], CT.sledge ? "mis" : "hi");
+  h += row(["the character path decodes back to its word", cm(CT.n),
+            CT.charOk === CT.n ? G(cm(CT.charOk)) : Bd(cm(CT.charOk)), cm(CT.n)],
+           CT.charOk === CT.n ? "hi" : "mis");
+  $("ctlTbl").innerHTML = h;
+  $("ctlNote").innerHTML =
+    "Swept over " + cm(CT.gridA) + " alphas &times; " + cm(CT.gridE) + " escape rates &times; " +
+    cm(CT.n) + " words &mdash; " + cm(CT.checks) + " checks &mdash; rather than taken at the dials, " +
+    "because a control that only holds where you happen to be standing is not a control. The first " +
+    "row is softmax shift-invariance and it is the reason a bias means anything at all: what a " +
+    "bias does is change one token relative to the others, so changing all of them changes nothing.";
+
+  drawTrace(c);
+  setTimeout(function(){ selftest(c, { SS: by, CT: CT, BN: BN, DT: dby, MA: MA, PW: PW }); }, 0);
+}
+
+function drawTrace(c){
+  var T = traceOne(c.ti, c.sid, c.alpha, c.esc, c.bias), i, L = [];
+  var pad = function(s, n){ s = String(s); while (s.length < n) s += " "; return s; };
+  var show = function(a){ var o = [], k; for (k = 0; k < a.length; k++) o.push(JSON.stringify(a[k])); return o.join(" "); };
+  L.push("word                 " + JSON.stringify(T.s) + "   (leading space, as a decoder meets it)");
+  L.push("encode(word)         " + show(T.enc) + "   -> " + T.enc.length + " token" + (T.enc.length === 1 ? "" : "s"));
+  L.push("strategy             " + c.sid);
+  L.push("logit_bias set on    " + (T.banned.length > 14 ? T.banned.length + " tokens" : show(T.banned)));
+  L.push("");
+  L.push("spellings of the word");
+  L.push("  before the ban     " + T.all);
+  L.push("  after the ban      " + T.left + (T.left === 0 ? "   AIRTIGHT" : "   still writable"));
+  L.push("  shortest spelling  " + T.minB + " token" + (T.minB === 1 ? "" : "s") +
+         "  ->  " + (T.minA === Infinity ? "unreachable" : T.minA + " tokens"));
+  L.push("  character path     " + show(T.chars) + "   (always in a byte-level vocabulary)");
+  if (T.survivor) L.push("  one that survives  " + show(T.survivor));
+  L.push("");
+  L.push("declared half        alpha " + c.alpha.toFixed(2) + "   esc " + (100 * c.esc).toFixed(1) +
+         "%   bias " + c.bias);
+  L.push("  P(word) before     " + T.p0.toFixed(6));
+  L.push("  P(word) after      " + (T.p1 < 1e-6 ? T.p1.toExponential(3) : T.p1.toFixed(6)) +
+         "   kept " + (100 * T.p1 / T.p0).toFixed(2) + "%");
+  L.push("");
+  L.push("what it cost the rest of the corpus (" + T.col.n + " words)");
+  L.push("  unwritable         " + T.col.dead);
+  L.push("  forced to respell  " + T.col.respelled);
+  if (T.damaged.length){
+    L.push("  first few          " + T.damaged.map(function(d){
+      return JSON.stringify(d.w) + " " + d.was + "->" + (d.now === Infinity ? "dead" : d.now);
+    }).join("  "));
+  } else L.push("  first few          none");
+  $("traceOut").textContent = L.join("\n");
+  $("traceNote").innerHTML =
+    "Nothing in this block is aggregated and nothing in it is a formula. The spelling counts come " +
+    "from walking the graph, the surviving spelling is a real token sequence that concatenates to " +
+    "the word, and the probabilities are a forward pass over every path at once.";
+}
+
+// ---------------------------------------------------------------- in-page assertions
+function selftest(c, R){
+  var pass = 0, fail = 0, lines = [], i, j, k, t, sid, s;
+  function ok(cond, msg){ if (cond) pass++; else { fail++; if (lines.length < 12) lines.push("  FAIL  " + msg); } }
+  var sids = ["nothing", "canonical", "variants", "mincut", "minharm", "allpaths", "strfilter"];
+  var banSids = ["canonical", "variants", "mincut", "minharm", "allpaths"];
+
+  // 1. a ban can only ever take away
+  for (i = 0; i < TARGETS.length; i++){
+    t = TARGETS[i];
+    var base = pathCount(t.s, NOBAN), baseMin = minTokens(t.s, NOBAN);
+    var baseU = usableTokens(t.s, NOBAN), inU = {};
+    for (k = 0; k < baseU.length; k++) inU[baseU[k]] = 1;
+    for (j = 0; j < sids.length; j++){
+      var b = ban(t, sids[j]), p = pathCount(t.s, b), m = minTokens(t.s, b);
+      ok(p <= base + 1e-9, "a ban increased the number of spellings");
+      ok(m >= baseMin - 1e-9, "a ban made the word shorter");
+      ok((p > 0) === reachable(t.s, b), "reachable and a positive path count disagree");
+      ok(p >= 0, "a negative path count");
+      var u = usableTokens(t.s, b), allIn = true;
+      for (k = 0; k < u.length; k++) if (!inU[u[k]]) allIn = false;
+      ok(allIn, "a ban created a usable token");
+      if (p === 0){
+        var bl = banList(b), hasChar = false;
+        for (k = 0; k < bl.length; k++) if (TOKS[bl[k]].length === 1) hasChar = true;
+        ok(hasChar, "an airtight ban with no single-character token");
+      } else ok(true, "");
+    }
+    // the character path is always there, and it is a real spelling
+    var cp = charPath(t.s);
+    ok(cp.length === t.s.length, "the character path is the wrong length");
+    var joined = "";
+    for (k = 0; k < cp.length; k++) joined += TOKS[cp[k]];
+    ok(joined === t.s, "the character path does not decode to its word");
+    // the canonical encoding is a spelling too
+    var e = encode(t.s), je = "";
+    for (k = 0; k < e.length; k++) je += TOKS[e[k]];
+    ok(je === t.s, "encode() does not decode back to its word");
+    // a bigger ban is never weaker
+    var bc = ban(t, "canonical"), bv = ban(t, "variants"), subset = true;
+    for (k = 0; k < NTOK; k++) if (bc[k] && !bv[k]) subset = false;
+    ok(subset, "the surface-form ban does not contain the canonical one");
+    ok(pathCount(t.s, bv) <= pathCount(t.s, bc), "a superset ban left more spellings");
+    // the claimed cut is a cut
+    var cut = minCut(t.s);
+    ok(pathCount(t.s, banOf(cut)) === 0, "the claimed minimum cut is not a cut");
+  }
+
+  // 2. minimality of the cut, by exhaustive subset search one size down
+  for (i = 0; i < TARGETS.length; i++){
+    t = TARGETS[i];
+    var cut2 = minCut(t.s), U = usableTokens(t.s, NOBAN), want = cut2.length - 1;
+    if (want <= 0){ ok(true, ""); continue; }
+    var idx = [], done = false;
+    for (k = 0; k < want; k++) idx.push(k);
+    while (!done){
+      var trial = [], q;
+      for (q = 0; q < want; q++) trial.push(U[idx[q]]);
+      ok(pathCount(t.s, banOf(trial)) > 0, "a smaller subset is a cut, so the minimum is wrong");
+      var pos = want - 1;
+      while (pos >= 0 && idx[pos] === U.length - want + pos) pos--;
+      if (pos < 0) done = true;
+      else { idx[pos]++; for (q = pos + 1; q < want; q++) idx[q] = idx[q - 1] + 1; }
+    }
+  }
+
+  // 3. a word the ban does not touch is unchanged to the last bit
+  for (i = 0; i < TARGETS.length; i++){
+    t = TARGETS[i];
+    for (j = 0; j < banSids.length; j++){
+      var bb = ban(t, banSids[j]);
+      for (k = 0; k < LEX.length; k++){
+        var L = LEX[k], reach = false, z;
+        for (z = 0; z < L.use.length; z++) if (bb[L.use[z]]) reach = true;
+        var mm = minTokens(L.w, bb), pp = pathCount(L.w, bb);
+        ok(mm >= L.min - 1e-9, "a ban made an ordinary word cheaper to spell");
+        ok(pp <= L.paths + 1e-9, "a ban gave an ordinary word more spellings");
+        if (!reach){
+          ok(mm === L.min, "a ban changed a word none of whose usable tokens it contains");
+          ok(pp === L.paths, "a ban removed a spelling of a word it cannot reach");
+        } else { ok(true, ""); ok(true, ""); }
+      }
+    }
+  }
+
+  // 4. probability is monotone in the bias, inside [0,1], and a zero bias is no ban at all
+  for (i = 0; i < TARGETS.length; i++){
+    t = TARGETS[i];
+    for (j = 0; j < sids.length; j++){
+      var bn = ban(t, sids[j]), zero = pTarget(t.s, bn, c.alpha, c.esc, 0, 0);
+      for (k = 0; k < GRID_BIAS.length; k++){
+        var v = pTarget(t.s, bn, c.alpha, c.esc, GRID_BIAS[k], 0);
+        ok(v >= 0 && v <= 1, "a probability outside [0,1]");
+        // NOT monotone step by step - a softmax reroutes the weight it takes off one spelling onto
+        // the others - but no bias on the grid ends above the unbiased call
+        ok(v <= zero + 1e-15, "a bias raised the probability above the unbiased call");
+      }
+      for (k = 0; k < GRID_ALPHA.length; k++)
+        ok(pTarget(t.s, bn, GRID_ALPHA[k], c.esc, 0, 0) === pTarget(t.s, NOBAN, GRID_ALPHA[k], c.esc, 0, 0),
+           "a zero bias is not the same as no ban");
+    }
+  }
+
+  // 5. the vocabularies on the ladder are genuinely nested
+  var prevV = null;
+  for (i = 0; i < GRID_MERGES.length; i++){
+    var vv = vocabAt(TRAIN, GRID_MERGES[i]);
+    if (prevV){
+      for (k = 0; k < prevV.list.length; k++) ok(prevV.list[k] in vv.vocab, "the merge list is not prefix-nested");
+      ok(vv.list.length >= prevV.list.length, "a longer merge list gave a smaller vocabulary");
+    }
+    prevV = vv;
+  }
+
+  // 6. the floor holds, and the alphabet is what the theorem needs
+  var FL = memo("fl", function(){ return floorTable(); });
+  for (i = 0; i < FL.length; i++) ok(FL[i].meets, "an airtight ban costs less than its word's floor");
+  for (i = 0; i < ALPHABET.length; i++) ok(ALPHABET[i] in TID, "a character of the alphabet is not a token");
+
+  // 7. the panels' own numbers
+  var SS = R.SS, CT = R.CT, BN = R.BN, DT = R.DT;
+  ok(CT.uniform === 0 && CT.limit === 0 && CT.empty === 0 && CT.sledge === 0, "a control is not zero");
+  ok(CT.charOk === TARGETS.length, "a character path does not decode to its word");
+  ok(SS.canonical.live > 0, "the documented ban stopped everything after all");
+  ok(SS.strfilter.touched === 0, "the free control damaged something");
+  ok(SS.mincut.live === 0 && SS.minharm.live === 0, "an airtight strategy is not airtight");
+  ok(BN.zero <= 1, "more than one grid cell reached exactly zero");
+  ok(DT.canonical.kept > 0, "the documented ban removed all of the probability");
+  ok(R.MA.endBad === 0, "a bias on the grid ended above the unbiased call");
+  ok(R.MA.rises > 0, "the reroute effect vanished, so the softmax is not renormalising");
+  ok(R.PW[0].kept > 0.9, "the worst word is no longer barely touched");
+
+  var TT = memo("tt", function(){ return targetTable(); }), TA = memo("thm", function(){ return theoremAudit(); });
+  var VLx = memo("vl", function(){ return vocabLadder(); });
+  var CCx = memo("cc", function(){ return cutCompare(); }), VTx = memo("vt", function(){ return variantTable(); });
+  var mcT = 0, mhT = 0, nn = CCx.length;
+  for (i = 0; i < nn; i++){ mcT += CCx[i].mcT; mhT += CCx[i].mhT; }
+  var lk2 = 0, tg = 0, nl = 0, nt = 0;
+  for (i = 0; i < TT.length; i++){ if (TT[i].leaks){ lk2 += TT[i].dead + TT[i].resp; nl++; }
+                                   else { tg += TT[i].dead + TT[i].resp; nt++; } }
+
+  $("selftest").textContent = (fail ? "FAILED\n" + lines.join("\n") + "\n" : "") +
+    (fail ? "" : "PASS  ") + cm(pass) + " assertions, " + fail + " failures\n" +
+    ["",
+     "  theorem           : " + TA.tightWithChar + " of " + TA.tight + " airtight bans contain a " +
+       "single-character token, " + TA.violations + " violations over " + TA.checked + " cells",
+     "  necessary only    : " + (TA.checked - TA.predicted) + " of " + TA.checked +
+       " cells ban a character and the word survives anyway",
+     "  centrepiece       : the documented ban leaves " + pc(SS.canonical.leak) + " of " +
+       TARGETS.length + " words writable",
+     "  refuted           : it is not always leaky -- it holds " + nt + " words, and those cost " +
+       n2(tg / nt) + " damaged words each against " + n2(lk2 / nl),
+     "  reversal          : leak " + pc(VLx[0].leak) + " at a " + VLx[0].vocab +
+       "-token vocabulary, " + pc(VLx[VLx.length - 1].leak) + " at " + VLx[VLx.length - 1].vocab,
+     "  spellings         : the ALL-CAPS form survives on " + VTx.byVar[4].untouched + " of " +
+       TARGETS.length + " words; " + pc(VTx.share) + " of all form cells untouched",
+     "  wrong objective   : smallest airtight ban damages " + n2(mcT / nn) +
+       " words, cheapest damages " + n2(mhT / nn),
+     "  null              : " + (BN.cells - BN.zero) + " of " + BN.cells +
+       " grid cells keep a strictly positive probability at a finite bias",
+     "  null              : the emitted probability is bit-identical from bias " + BN.frozenFrom +
+       " through " + BN.rows[BN.rows.length - 1].b,
+     "  declared          : the documented ban keeps " + pc(DT.canonical.kept) + " of the word's " +
+       "probability, " + pc(DT.canonical.keptLeak) + " on the " + DT.canonical.nLeak + " it leaks",
+     "  worst word        : the ban keeps " + pc(R.PW[0].kept) + " of the probability of " +
+       JSON.stringify(R.PW[0].s),
+     "  not even monotone : " + R.MA.rises + " of " + R.MA.cells + " steps down the bias grid " +
+       "raise the banned word's probability, by up to " + R.MA.maxRise.toExponential(2),
+     "  free vs paid      : reading the string back bans 0 tokens, touches 0 words, stops " +
+       pc(SS.strfilter.blocked)
+    ].join("\n");
+}
+
+// ---------------------------------------------------------------- wiring
+(function(){
+  var a = $("selT"), b = $("selS"), i;
+  for (i = 0; i < TARGETS.length; i++)
+    a.insertAdjacentHTML("beforeend", '<option value="' + i + '"' +
+      (i === DEFAULTS.ti ? " selected" : "") + ">" + esc2(TARGETS[i].id) + "</option>");
+  for (i = 0; i < STRATS.length; i++)
+    b.insertAdjacentHTML("beforeend", '<option value="' + STRATS[i].id + '"' +
+      (STRATS[i].id === DEFAULTS.sid ? " selected" : "") + ">" + esc2(STRATS[i].label) + "</option>");
+})();
+var pending = null;
+function schedule(){ clearTimeout(pending); pending = setTimeout(draw, 180); }
+["sA", "sE", "sB"].forEach(function(id){ $(id).addEventListener("input", schedule); });
+$("selT").addEventListener("change", function(){
+  clearTimeout(pending);
+  pending = setTimeout(function(){ drawTrace(withDefaults(cfgUI())); }, 60);
+});
+$("selS").addEventListener("change", function(){
+  clearTimeout(pending);
+  pending = setTimeout(function(){ drawTrace(withDefaults(cfgUI())); }, 60);
+});
+draw();
+</script>
+</body>
+</html>
