@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 82 &mdash; Multi-persona prompting</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#b45309; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#f0fdfa; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl input[type=range] { flex:1; min-width:150px; }
+  .ctl input[type=number] { width:74px; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:7px; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 82</p>
+    <h1>
+      Multi-persona prompting &mdash; at 60% shared context, five experts are worth fewer than two, and no number of them fixes a shared bias.
+    </h1>
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">Look</button>
+      <button id="tabUnd" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="look" class="stack">
+  <div class="card">
+    <h2>Five personas, and how many of them are really there</h2>
+    <p>
+      &ldquo;You are a panel of five experts. Debate, then agree.&rdquo; The
+      pitch is five viewpoints for one call. But the personas share a prompt, a
+      context window and a model &mdash; so their mistakes are correlated, and
+      correlated voices do not average.
+    </p>
+    <div class="tblwrap"><table class="num" id="tShare"></table></div>
+    <p class="note" id="shareNote"></p>
+  </div>
+</section>
+
+<section id="und" class="stack hidden">
+  <div class="card">
+    <h2>The floor you cannot get under by adding voices</h2>
+    <p>
+      <code>Var(mean) = &sigma;<sup>2</sup>(&rho; + (1&minus;&rho;)/n)</code>.
+      The second term shrinks with n. The first does not shrink at all.
+    </p>
+    <div class="tblwrap"><table class="num" id="tN"></table></div>
+    <p class="note" id="nNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>And averaging is not a bias correction</h2>
+    <p>
+      If every persona is wrong in the same direction &mdash; which is exactly
+      what a shared system prompt produces &mdash; no number of them helps.
+    </p>
+    <div class="tblwrap"><table class="num" id="tBias"></table></div>
+    <p class="note">
+      Fifty personas, all two units high, give an answer two units high. The
+      only thing that matters is the <b>mean</b> bias.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Which aggregation rule, and what it costs</h2>
+    <p>
+      The rule is usually left implicit &mdash; &ldquo;then agree&rdquo;. It
+      matters most in the case worth planning for: one persona confidently
+      wrong.
+    </p>
+    <div class="tblwrap"><table class="num" id="tRules"></table></div>
+    <p class="note" id="rulesNote"></p>
+  </div>
+</section>
+
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>The panel, with correlation as an explicit knob</h2>
+    <p>
+      The <code>sqrt</code> weights are deliberate: they hold each persona's
+      total variance fixed while <code>share</code> moves, so the comparison
+      isolates correlation instead of confounding it with noise.
+    </p>
+    <pre id="codePanel"></pre>
+  </div>
+  <div class="card">
+    <h2>And the two closed forms the simulation is checked against</h2>
+    <pre id="codeRules"></pre>
+  </div>
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as the tables above.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      PromptFromZero &middot; Day 82 &middot; Multi-persona prompting.
+      Tomorrow: self-consistency, and why it needs the sampling it is usually run without.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ======================================================================
+// MULTI-PERSONA PROMPTING - "you are a panel of three experts; debate,
+// then agree". It is sold as a way to get several viewpoints for the
+// price of one call.
+//
+// The question this page asks is narrower and answerable: given that the
+// personas share a context window, HOW MUCH INDEPENDENCE is left, and
+// what does the aggregation rule do with what remains?
+//
+// The model here is deliberately simple and fully determined - no network,
+// no sampling from a real model. Each persona has a competence and a bias,
+// and personas that read each other's answers CORRELATE. That correlation
+// is the whole finding, and it is a mathematical fact about averaging,
+// not a claim about any particular LLM.
+// ======================================================================
+const ENGINE = (() => {
+
+  function lcg(seed) {
+    let s = (seed >>> 0) || 1;
+    return () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  }
+
+  // Box-Muller from a seeded uniform, so every number on this page is
+  // reproducible. Two normals per call, the second cached.
+  function gaussian(rnd) {
+    let spare = null;
+    return () => {
+      if (spare !== null) { const v = spare; spare = null; return v; }
+      let u = 0, v = 0;
+      while (u === 0) u = rnd();
+      while (v === 0) v = rnd();
+      const r = Math.sqrt(-2 * Math.log(u)), th = 2 * Math.PI * v;
+      spare = r * Math.sin(th);
+      return r * Math.cos(th);
+    };
+  }
+
+  // --------------------------------------------------------- the model
+  // A question has a true answer. Each persona returns true + bias + noise.
+  //
+  // `share` is how much of each persona's noise is COMMON to the panel -
+  // the part that comes from the shared prompt, the shared context, and the
+  // fact that one model is playing every role. share = 0 is a panel of
+  // genuinely independent experts; share = 1 is one expert in three hats.
+  function panel(opts) {
+    const { n, truth, biases, sigma, share, seed } = opts;
+    if (!(n >= 1)) throw new Error("a panel needs at least one persona");
+    if (biases.length !== n) throw new Error("one bias per persona");
+    if (!(sigma >= 0)) throw new Error("sigma must be non-negative");
+    if (!(share >= 0 && share <= 1)) throw new Error("share must be in [0,1]");
+    const g = gaussian(lcg(seed));
+    const common = g();                                  // drawn ONCE for the panel
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const own = g();
+      // sqrt weights keep the TOTAL variance fixed as share moves, so the
+      // comparison isolates correlation rather than confounding it with noise
+      const noise = sigma * (Math.sqrt(share) * common + Math.sqrt(1 - share) * own);
+      out.push(truth + biases[i] + noise);
+    }
+    return out;
+  }
+
+  // ---------------------------------------------------- aggregation rules
+  const mean = (a) => a.reduce((p, c) => p + c, 0) / a.length;
+
+  function median(a) {
+    const b = a.slice().sort((x, y) => x - y);
+    const m = b.length >> 1;
+    return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2;
+  }
+
+  // "the chair summarises" - one persona's answer is taken, the others are
+  // decoration. This is what a panel prompt degenerates to when the model
+  // simply agrees with whichever voice it wrote first.
+  const chair = (a) => a[0];
+
+  // trimmed mean - drop the extreme on each side
+  function trimmed(a) {
+    if (a.length <= 2) return mean(a);
+    const b = a.slice().sort((x, y) => x - y);
+    return mean(b.slice(1, b.length - 1));
+  }
+
+  const RULES = { mean, median, chair, trimmed };
+
+  // ----------------------------------------------------- the experiment
+  function trial(rule, opts) {
+    const answers = panel(opts);
+    return RULES[rule](answers) - opts.truth;
+  }
+
+  function rmse(rule, opts, trials) {
+    let s = 0;
+    for (let k = 0; k < trials; k++) {
+      const e = trial(rule, { ...opts, seed: opts.seed + k * 7919 });
+      s += e * e;
+    }
+    return Math.sqrt(s / trials);
+  }
+
+  // The closed form, so the simulation has something to be checked against.
+  //
+  // For the MEAN of n personas each with the same sigma, correlation rho:
+  //   Var = sigma^2 * (rho + (1 - rho)/n)
+  // Plus the squared mean bias, which averaging does not touch at all.
+  function meanRmseClosedForm(opts) {
+    const { n, biases, sigma, share } = opts;
+    const b = mean(biases);
+    const varPart = sigma * sigma * (share + (1 - share) / n);
+    return Math.sqrt(varPart + b * b);
+  }
+
+  // the floor averaging can never go below, however many personas you add
+  function floorRmse(opts) {
+    const b = mean(opts.biases);
+    return Math.sqrt(opts.sigma * opts.sigma * opts.share + b * b);
+  }
+
+  // measured correlation between two personas across many panels
+  function measuredCorrelation(opts, trials) {
+    const xs = [], ys = [];
+    for (let k = 0; k < trials; k++) {
+      const a = panel({ ...opts, seed: opts.seed + k * 7919 });
+      xs.push(a[0]); ys.push(a[1]);
+    }
+    const mx = mean(xs), my = mean(ys);
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let i = 0; i < xs.length; i++) {
+      sxy += (xs[i] - mx) * (ys[i] - my);
+      sxx += (xs[i] - mx) * (xs[i] - mx);
+      syy += (ys[i] - my) * (ys[i] - my);
+    }
+    return sxy / Math.sqrt(sxx * syy);
+  }
+
+  // how many INDEPENDENT personas a correlated panel of n is worth
+  // n_eff = n / (1 + (n-1) rho)
+  function effectiveN(n, rho) { return n / (1 + (n - 1) * rho); }
+
+  return { lcg, gaussian, panel, RULES, mean, median, chair, trimmed,
+           trial, rmse, meanRmseClosedForm, floorRmse, measuredCorrelation, effectiveN };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const BASE = { n: 5, truth: 10, biases: [0, 0, 0, 0, 0], sigma: 3, share: 0, seed: 20260082 };
+
+// ---------------------------------------------------------------- LOOK
+{
+  const rows = [];
+  for (const share of [0, 0.15, 0.35, 0.6, 0.85, 1.0]) {
+    const o = { ...BASE, share };
+    const meas = ENGINE.rmse("mean", o, 4000);
+    rows.push({ cls: share === 0 ? "here" : "", cells: [
+      share.toFixed(2),
+      ENGINE.measuredCorrelation(o, 4000).toFixed(3),
+      ENGINE.effectiveN(5, share).toFixed(2),
+      meas.toFixed(4),
+      ENGINE.meanRmseClosedForm(o).toFixed(4)
+    ]});
+  }
+  table("tShare", ["shared context", "measured correlation", "effective personas",
+    "RMSE, measured", "RMSE, closed form"], rows);
+  el("shareNote").innerHTML =
+    "Five personas, identical competence, no bias &mdash; only how much of their reasoning is " +
+    "<b>common</b> changes. At full independence five voices are worth five. At 0.6 they are " +
+    "worth <b>" + ENGINE.effectiveN(5, 0.6).toFixed(2) + "</b>. At 1.0 they are worth " +
+    "<b>one</b>, and the extra four calls bought nothing but tokens.";
+}
+
+// --------------------------------------------------------- UNDERSTAND
+{
+  const rows = [];
+  for (const n of [1, 2, 3, 5, 9, 15, 50]) {
+    const o = { ...BASE, n, biases: new Array(n).fill(0), share: 0.4 };
+    rows.push({ cls: n === 5 ? "here" : "", cells: [
+      n,
+      ENGINE.effectiveN(n, 0.4).toFixed(2),
+      ENGINE.rmse("mean", o, 2500).toFixed(4),
+      ENGINE.meanRmseClosedForm(o).toFixed(4),
+      ENGINE.floorRmse(o).toFixed(4)
+    ]});
+  }
+  table("tN", ["personas", "effective personas", "RMSE measured", "RMSE closed form",
+    "floor at n = infinity"], rows);
+  el("nNote").innerHTML =
+    "At 40% shared context the panel converges to a hard floor of <b>" +
+    ENGINE.floorRmse({ ...BASE, share: 0.4 }).toFixed(4) + "</b>. Going from 5 personas to 50 " +
+    "moves the error by almost nothing, because the shared component never averages away. " +
+    "Adding voices buys progressively less, and then nothing.";
+}
+
+{
+  const rows = [];
+  const BIAS = { ...BASE, biases: [2, 2, 2, 2, 2], share: 0.2 };
+  for (const n of [1, 3, 5, 15, 50]) {
+    const o = { ...BIAS, n, biases: new Array(n).fill(2) };
+    rows.push({ cls: "", cells: [
+      n, ENGINE.rmse("mean", o, 2500).toFixed(4),
+      ENGINE.meanRmseClosedForm(o).toFixed(4),
+      Math.abs(ENGINE.mean(o.biases)).toFixed(4)
+    ]});
+  }
+  table("tBias", ["personas", "RMSE measured", "RMSE closed form", "the shared bias"], rows);
+}
+
+{
+  const rows = [];
+  const OUT = { ...BASE, n: 5, biases: [0, 0, 0, 0, 12], share: 0.1 };
+  for (const rule of ["mean", "median", "trimmed", "chair"]) {
+    const clean = ENGINE.rmse(rule, { ...BASE, share: 0.1 }, 3000);
+    const withOutlier = ENGINE.rmse(rule, OUT, 3000);
+    rows.push({ cls: rule === "chair" ? "dim" : "", cells: [
+      rule, clean.toFixed(4), withOutlier.toFixed(4),
+      (withOutlier / clean).toFixed(2) + "x"
+    ]});
+  }
+  table("tRules", ["aggregation", "RMSE, panel agrees", "RMSE, one persona is 12 off",
+    "damage"], rows);
+  el("rulesNote").innerHTML =
+    "One confidently wrong persona out of five. The <b>mean</b> hands it a full fifth of the " +
+    "answer; the <b>median</b> and the <b>trimmed mean</b> barely notice. " +
+    "<b>chair</b> &mdash; take the first persona and let the rest decorate &mdash; is what a " +
+    "panel prompt collapses to when the model simply agrees with whatever it wrote first, and " +
+    "it is unaffected here only because the outlier happens to sit last.";
+}
+
+// --------------------------------------------------------------- BUILD
+el("codePanel").textContent = String(ENGINE.panel);
+el("codeRules").textContent = [
+  "// n_eff = n / (1 + (n-1) rho)",
+  String(ENGINE.effectiveN), "",
+  "// Var(mean) = sigma^2 (rho + (1-rho)/n), plus bias^2 which never averages away",
+  String(ENGINE.meanRmseClosedForm)
+].join("\n");
+
+selfCheckPanel((t) => {
+  // --- the generator is sane
+  t("with sigma = 0 every persona returns truth plus its own bias", (() => {
+    const a = ENGINE.panel({ ...BASE, sigma: 0, biases: [1, -1, 0, 2, -2] });
+    return a.every((v, i) => Math.abs(v - (10 + [1, -1, 0, 2, -2][i])) < 1e-12);
+  })());
+
+  t("the same seed gives the same panel, twice", (() => {
+    const a = ENGINE.panel(BASE).join(","), b = ENGINE.panel(BASE).join(",");
+    return a === b;
+  })(), "nothing on this page depends on Math.random");
+
+  t("a different seed gives a different panel", (() => {
+    return ENGINE.panel(BASE).join(",") !== ENGINE.panel({ ...BASE, seed: 5 }).join(",");
+  })());
+
+  t("total spread does not change as share moves", (() => {
+    // the sqrt weighting is there for exactly this - otherwise the
+    // correlation comparison would be confounded with the noise level
+    const sd = (share) => {
+      const vals = [];
+      for (let k = 0; k < 3000; k++) vals.push(ENGINE.panel({ ...BASE, share, seed: 11 + k * 7919 })[0]);
+      const m = ENGINE.mean(vals);
+      return Math.sqrt(ENGINE.mean(vals.map((v) => (v - m) * (v - m))));
+    };
+    return Math.abs(sd(0) - sd(1)) < 0.25;
+  })(), "share changes CORRELATION, not how noisy any one persona is");
+
+  // --- correlation
+  t("share = 0 produces near-zero correlation", (() => {
+    return Math.abs(ENGINE.measuredCorrelation({ ...BASE, share: 0 }, 4000)) < 0.06;
+  })());
+
+  t("share = 1 produces correlation 1", (() => {
+    return ENGINE.measuredCorrelation({ ...BASE, share: 1 }, 2000) > 0.999;
+  })(), "one expert in five hats");
+
+  t("measured correlation tracks the share parameter", (() => {
+    for (const s of [0.2, 0.5, 0.8]) {
+      if (Math.abs(ENGINE.measuredCorrelation({ ...BASE, share: s }, 5000) - s) > 0.06) return false;
+    }
+    return true;
+  })(), "the knob means what it says it means");
+
+  // --- the closed form, against the simulation
+  t("simulation matches the closed form within 4%", (() => {
+    for (const share of [0, 0.3, 0.7, 1]) {
+      for (const n of [2, 5, 9]) {
+        const o = { ...BASE, n, biases: new Array(n).fill(0), share };
+        const m = ENGINE.rmse("mean", o, 6000), c = ENGINE.meanRmseClosedForm(o);
+        if (Math.abs(m - c) / c > 0.04) return false;
+      }
+    }
+    return true;
+  })(), "two independent routes to the same number");
+
+  t("n_eff = n at zero correlation, and 1 at full correlation", (() => {
+    return Math.abs(ENGINE.effectiveN(7, 0) - 7) < 1e-12 &&
+           Math.abs(ENGINE.effectiveN(7, 1) - 1) < 1e-12;
+  })());
+
+  t("INVERSION: at 60% shared context, 5 personas are worth under 2", (() => {
+    return ENGINE.effectiveN(5, 0.6) < 2;
+  })(), "n_eff = " + ENGINE.effectiveN(5, 0.6).toFixed(2) + " - the other three are decoration");
+
+  t("INVERSION: adding personas cannot pass the floor", (() => {
+    const o = { ...BASE, share: 0.4 };
+    const f = ENGINE.floorRmse(o);
+    for (const n of [5, 50, 500]) {
+      const c = ENGINE.meanRmseClosedForm({ ...o, n, biases: new Array(n).fill(0) });
+      if (c < f - 1e-12) return false;
+    }
+    return true;
+  })(), "sigma^2 * rho never averages away, at any n");
+
+  t("CONTROL: with NO shared context the floor is zero and n does pay", (() => {
+    const o = { ...BASE, share: 0 };
+    const a = ENGINE.meanRmseClosedForm({ ...o, n: 5, biases: new Array(5).fill(0) });
+    const b = ENGINE.meanRmseClosedForm({ ...o, n: 500, biases: new Array(500).fill(0) });
+    return ENGINE.floorRmse(o) < 1e-12 && b < a / 5;
+  })(), "the floor is a property of the CORRELATION, not of averaging");
+
+  t("a shared bias survives any number of personas", (() => {
+    const mk = (n) => ({ ...BASE, n, biases: new Array(n).fill(2), share: 0 });
+    const big = ENGINE.meanRmseClosedForm(mk(1000));
+    return Math.abs(big - 2) < 0.02;
+  })(), "1000 personas, all 2 high, still 2 high - averaging is not a bias correction");
+
+  t("CONTROL: biases that cancel DO average away", (() => {
+    const n = 500, biases = [];
+    for (let i = 0; i < n; i++) biases.push(i % 2 ? 2 : -2);
+    const o = { ...BASE, n, biases, share: 0 };
+    return ENGINE.meanRmseClosedForm(o) < 0.2;
+  })(), "it is the MEAN bias that matters, not whether there is any bias");
+
+  // --- the aggregation rules
+  t("mean, median and trimmed agree on a symmetric panel", (() => {
+    const a = [1, 2, 3, 4, 5];
+    return Math.abs(ENGINE.mean(a) - 3) < 1e-12 &&
+           Math.abs(ENGINE.median(a) - 3) < 1e-12 &&
+           Math.abs(ENGINE.trimmed(a) - 3) < 1e-12;
+  })());
+
+  t("the median has an even-length case and it is handled", (() => {
+    return Math.abs(ENGINE.median([1, 2, 3, 4]) - 2.5) < 1e-12;
+  })());
+
+  t("the median does not mutate its input", (() => {
+    const a = [5, 1, 3];
+    ENGINE.median(a);
+    return a.join(",") === "5,1,3";
+  })(), "sorting in place would silently reorder the panel for every later rule");
+
+  t("INVERSION: the mean is the WORST rule when one persona is far out", (() => {
+    const OUT = { ...BASE, n: 5, biases: [0, 0, 0, 0, 12], share: 0.1 };
+    const m = ENGINE.rmse("mean", OUT, 3000);
+    return m > ENGINE.rmse("median", OUT, 3000) && m > ENGINE.rmse("trimmed", OUT, 3000);
+  })(), "averaging hands a confidently wrong voice a full 1/n of the answer");
+
+  t("CONTROL: and the best rule when the panel agrees", (() => {
+    const o = { ...BASE, share: 0.1 };
+    return ENGINE.rmse("mean", o, 4000) <= ENGINE.rmse("median", o, 4000) * 1.02;
+  })(), "there is no rule that wins both ways - that is the choice");
+
+  t("trimmed falls back to the mean on tiny panels", (() => {
+    return Math.abs(ENGINE.trimmed([4, 8]) - 6) < 1e-12;
+  })(), "dropping both extremes of two leaves nothing to average");
+
+  // --- input validation
+  t("a bias list of the wrong length throws", (() => {
+    try { ENGINE.panel({ ...BASE, biases: [0, 0] }); return false; } catch { return true; }
+  })());
+
+  t("share outside [0,1] throws", (() => {
+    try { ENGINE.panel({ ...BASE, share: 1.5 }); return false; } catch { return true; }
+  })());
+
+  t("an empty panel throws", (() => {
+    try { ENGINE.panel({ ...BASE, n: 0, biases: [] }); return false; } catch { return true; }
+  })());
+});
+</script>
+</body>
+</html>
