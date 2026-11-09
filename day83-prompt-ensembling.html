@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 83 &mdash; Prompt Ensembling</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#b45309; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#f0fdfa; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl input[type=range] { flex:1; min-width:150px; }
+  .ctl input[type=number] { width:98px; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:7px; }
+  .ctl select { font:inherit; font-size:13px; padding:5px 7px; border:1px solid var(--line); border-radius:7px; background:#fff; }
+  .ctl span.k { font-size:12px; font-weight:800; letter-spacing:.06em; color:#64748b; min-width:112px; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 83</p>
+    <h1>
+      Prompt ensembling &mdash; five <i>different</i> prompts take 70.8% to 87.5%; five
+      <i>rewordings</i> of one prompt take it to 66.7%, for the identical five-times bill.
+    </h1>
+    <div class="tabs">
+      <button id="tabUnd" class="tab-active" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+      <button id="tabDemo" onclick="showTab('demo')">Demo</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<!-- ================================================== UNDERSTAND -->
+<section id="und" class="stack">
+
+  <div class="card">
+    <h2>Step 1 &mdash; This is not self-consistency, and the difference is the whole topic</h2>
+    <p>
+      Day 3 built self-consistency: send <b>one</b> prompt <b>k</b> times at a temperature
+      above zero, and take the answer that comes back most often. Every one of those k
+      samples read the identical words, so they differ only by the dice the sampler rolled.
+      Prompt ensembling sends <b>k different prompts</b> &mdash; a different phrasing, a
+      different output format, the options listed in a different order &mdash; and
+      aggregates their answers. That one change is why an ensemble can beat its own best
+      member and self-consistency cannot: members that read different words can disagree
+      for a <i>reason</i>, and a vote only buys you something when the voters can disagree
+      for a reason. Below, both methods are given the same five-call budget on the same
+      24 questions.
+    </p>
+    <div class="tblwrap"><table class="num" id="tVs"></table></div>
+    <p class="note" id="vsNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 2 &mdash; The members, and where each one is blind</h2>
+    <p>
+      A member here is a prompt variant with a profile: how strongly it is drawn to the
+      true answer, how strongly it falls for each of three traps (an off-by-one, a
+      digit-swap, a rounded figure), and how strongly it is drawn to whatever is listed
+      first. Each of the 24 questions is tempting for one particular trap, so a member
+      goes wrong where its weakness meets a matching question. That is the whole
+      mechanism, and it matters because it is what makes two members fail on
+      <i>different</i> questions rather than the same ones. Read the right-hand column as
+      a blind spot, not a score: <code>terse</code> is the worst member on the sheet and
+      it is still carrying information the other four do not have.
+    </p>
+    <div class="tblwrap"><table class="num" id="tMembers"></table></div>
+    <p class="note" id="membersNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 3 &mdash; Plurality vote: one member, one vote</h2>
+    <p>
+      The simplest rule, and the one almost everybody means by &ldquo;ensemble&rdquo;: count
+      how many members chose each option and take the option with the most votes. It
+      throws away two things &mdash; how sure each member was, and everything below each
+      member&rsquo;s first choice &mdash; and it is still enough to move the sheet a long
+      way here. What you are paying for is in the last column: five calls instead of one,
+      every time, for every question, whether or not the members were going to disagree.
+      Hold on to that column; by step 10 it is the only one that decides anything.
+    </p>
+    <div class="tblwrap"><table class="num" id="tPlurality"></table></div>
+    <p class="note" id="pluralityNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 4 &mdash; Ties are common, and the tie-break is usually an accident</h2>
+    <p>
+      Five members over four options tie more often than people expect, and with an even
+      number of members it is routine. Somebody has to decide, and in most code nobody
+      decided: a loop that keeps a running maximum silently returns whichever tied option
+      the <i>first</i> member happened to vote for, which makes the ensemble&rsquo;s answer
+      depend on the order you listed the members in. That is not a style complaint &mdash;
+      it means the same ensemble, same seed, same questions, returns a different answer if
+      somebody reorders an array. The fix costs nothing: break ties on a canonical property
+      of the <i>options</i> (their listed position, their summed confidence, their Borda
+      score), never on the order of the voters.
+    </p>
+    <div class="tblwrap"><table class="num" id="tTies"></table></div>
+    <p class="note" id="tiesNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 5 &mdash; Confidence-weighted voting: one member, one vote worth its own certainty</h2>
+    <p>
+      If a member can tell you how sure it is, you can let a sure member count for more
+      than an unsure one. When the members who are right are also the ones who are sure,
+      this is strictly better than counting heads. When they are not, it is strictly worse,
+      and it is worse in the specific way that hurts: a small number of very confident
+      members can outvote a larger number of hesitant ones. Below, three members at around
+      0.40 confidence are overruled by two at around 0.98 &mdash; which is exactly what the
+      rule is for, and exactly what goes wrong when the loud ones are the wrong ones.
+      Nothing in a confidence number makes it a measure of being right.
+    </p>
+    <div class="tblwrap"><table class="num" id="tWeighted"></table></div>
+    <p class="note" id="weightedNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 6 &mdash; Borda: aggregate the rankings, not just the winners</h2>
+    <p>
+      Ask each member to rank all the options instead of naming one, give an option ranked
+      r-th out of m a score of (m &minus; 1 &minus; r), and add the scores up. Borda is the
+      only rule here that can elect an option <i>nobody</i> put first, which is precisely
+      the case a plurality vote cannot see: a split field where the real answer is everyone's
+      solid second choice. It is also the only rule here with a real extra cost, and it is
+      not in the call count &mdash; a ranked answer is more output tokens per call than a
+      one-word answer, and a member that will not rank reliably cannot be in a Borda
+      ensemble at all.
+    </p>
+    <div class="tblwrap"><table class="num" id="tBorda"></table></div>
+    <p class="note" id="bordaNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 7 &mdash; The finding: an ensemble only pays when the errors are uncorrelated</h2>
+    <p>
+      Here is the same machinery, the same five members and the same 24 questions, with one
+      dial turned: each member&rsquo;s profile is blended toward the first member&rsquo;s, so
+      the set slides from five genuinely different prompts to five rewordings of one prompt.
+      Nothing else changes &mdash; same seed, same rule, same cost. The gain over the best
+      single member does not merely shrink, it crosses zero and goes negative. This is the
+      number to measure before you ship an ensemble, and the one that is almost never
+      measured: not &ldquo;are my prompts different?&rdquo; but &ldquo;do my prompts fail on
+      different questions?&rdquo;
+    </p>
+    <div class="tblwrap"><table class="num" id="tBlend"></table></div>
+    <p class="note" id="blendNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 8 &mdash; A majority of biased members is confidently wrong</h2>
+    <p>
+      The last column of step 7 is the part that should worry you. As the members get more
+      alike, the ensemble does not just stop helping &mdash; its wrong answers start arriving
+      with near-unanimous agreement. A diverse ensemble that is wrong is usually wrong 3-to-2
+      and looks shaky; a correlated ensemble that is wrong is wrong 5-to-0 and looks certain.
+      If you are using the vote margin as a confidence signal, or routing high-agreement
+      answers past human review, correlation does not merely waste the money you spent on
+      extra calls &mdash; it actively converts a visible disagreement into an invisible one.
+    </p>
+    <div class="tblwrap"><table class="num" id="tAgree"></table></div>
+    <p class="note" id="agreeNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 9 &mdash; The limit case: five calls of the identical prompt</h2>
+    <p>
+      At temperature zero, sending the same prompt five times returns the same answer five
+      times. It is an obvious statement and it is worth making the measurement anyway,
+      because this is what an ensemble degrades into when the &ldquo;variants&rdquo; are
+      politeness edits. Every aggregation rule and every tie-break policy returns exactly the
+      single prompt&rsquo;s own sheet &mdash; there is no rule clever enough to extract a
+      second opinion from a voter who has only one. The bill is still five times. This is
+      also the exact point where self-consistency and ensembling separate: self-consistency
+      turns the temperature up so the five calls <i>can</i> differ, which fixes sampling
+      noise and leaves the prompt&rsquo;s bias untouched.
+    </p>
+    <div class="tblwrap"><table class="num" id="tClones"></table></div>
+    <p class="note" id="clonesNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 10 &mdash; The bill, and why k is not a slider you push right</h2>
+    <p>
+      k prompts cost k times as much: k times the input tokens, k times the output tokens,
+      k times the rate-limit budget, and a latency equal to the slowest member unless you
+      fan out in parallel. Against that, the gain is not even monotone &mdash; adding a
+      member can lose you accuracy, because a weak member&rsquo;s votes land somewhere, and
+      an even k turns a large share of your questions into tie-breaks. The honest way to
+      pick k is the table below, run on your own evaluation set, and the honest answer is
+      often 1. Note that the best k here is not the biggest one on every rule.
+    </p>
+    <div class="tblwrap"><table class="num" id="tK"></table></div>
+    <p class="note" id="kNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Step 11 &mdash; Which rule, for which failure</h2>
+    <p>
+      There is no rule that wins everywhere, and the ordering between them is not even
+      stable across seeds. Below is the same comparison on seven different seeds of the
+      same engine: plurality beats confidence-weighted on some and loses on others, which
+      is a useful thing to know before quoting a single number from a single run. What is
+      stable here is the shape of each rule&rsquo;s failure, and that is what you should
+      pick on.
+    </p>
+    <div class="tblwrap"><table class="num" id="tSeeds"></table></div>
+    <p class="note" id="seedsNote"></p>
+    <div class="tblwrap" style="margin-top:14px"><table class="num" id="tChoose"></table></div>
+  </div>
+</section>
+
+<!-- ======================================================== BUILD -->
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>The member: a prompt variant, scored</h2>
+    <p>
+      No model and no network. A member is a profile over the four listed options; a
+      question carries the trap it is tempting for; an error happens where the two meet.
+      The noise term is a <b>hash</b> of (seed, member, question, option) rather than a
+      stream, which is what makes reordering the members provably unable to change what
+      any member answers.
+    </p>
+    <pre id="codeScore"></pre>
+  </div>
+
+  <div class="card">
+    <h2>The three aggregation rules</h2>
+    <p>
+      All three return the same shape, so they are interchangeable at the call site and the
+      measurement panel can swap them without knowing which is which.
+    </p>
+    <pre id="codeRules"></pre>
+  </div>
+
+  <div class="card">
+    <h2>The tie-break policies, including the broken one</h2>
+    <p>
+      <code>firstSeen</code> is kept in the code deliberately: it is the policy you get by
+      accident, and the self-check proves it is order-dependent rather than asserting it.
+    </p>
+    <pre id="codeTie"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Self-consistency, for the contrast</h2>
+    <p>
+      One member, k samples drawn at temperature T from that member&rsquo;s own
+      distribution, plurality over the samples. As k grows this converges to that
+      member&rsquo;s own argmax &mdash; which is the ceiling, and the reason it is a
+      different tool from ensembling rather than a cheaper version of it.
+    </p>
+    <pre id="codeSC"></pre>
+  </div>
+
+  <div class="card">
+    <h2>Doing this against a real API</h2>
+    <pre id="codeRecipe"></pre>
+    <p class="note">
+      The measurement step is not optional decoration. Steps 7 to 10 are all cases where
+      the ensemble cost k times as much and returned the same answer or a worse one, and
+      not one of them is visible without an evaluation set.
+    </p>
+  </div>
+
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as every table on this page.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<!-- ========================================================= DEMO -->
+<section id="demo" class="stack hidden">
+  <div class="card">
+    <h2>The simulator</h2>
+    <p class="note" style="margin:0 0 14px">
+      Everything is recomputed from the seed, offline. Move the member set to
+      <b>rewordings</b> or <b>identical calls</b> and watch the gain column go to zero and
+      then negative while the cost column does not move.
+    </p>
+    <div class="ctl">
+      <span class="k">MEMBER SET</span>
+      <select id="selSet">
+        <option value="diverse">5 different prompts</option>
+        <option value="correlated">5 rewordings of one prompt</option>
+        <option value="clones">5 identical calls (T = 0)</option>
+      </select>
+      <span class="k">AGGREGATION</span>
+      <select id="selRule">
+        <option value="plurality">plurality vote</option>
+        <option value="weighted">confidence-weighted</option>
+        <option value="borda">Borda (rank aggregation)</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <span class="k">TIE-BREAK</span>
+      <select id="selTie">
+        <option value="lowestIndex">lowest listed position</option>
+        <option value="confidence">highest summed confidence</option>
+        <option value="borda">highest Borda score</option>
+        <option value="firstSeen">first member seen (order-dependent)</option>
+      </select>
+      <span class="k">SEED</span>
+      <input type="number" id="inSeed" value="20260083" step="1" />
+    </div>
+    <div class="ctl">
+      <span class="k" id="kLbl">MEMBERS k = 5</span>
+      <input type="range" id="inK" min="1" max="5" step="1" value="5" />
+    </div>
+    <div class="ctl">
+      <span class="k" id="noiseLbl">NOISE 0.90</span>
+      <input type="range" id="inNoise" min="0" max="200" step="5" value="90" />
+    </div>
+    <div class="grid2">
+      <div>
+        <p class="lbl">ENSEMBLE</p>
+        <p class="big" id="statEns">&mdash;</p>
+        <p class="note" id="statEnsNote"></p>
+      </div>
+      <div>
+        <p class="lbl">BEST SINGLE MEMBER</p>
+        <p class="big" id="statBest">&mdash;</p>
+        <p class="note" id="statBestNote"></p>
+      </div>
+      <div>
+        <p class="lbl">COST MULTIPLIER</p>
+        <p class="big" id="statCost">&mdash;</p>
+        <p class="note" id="statCostNote"></p>
+      </div>
+      <div>
+        <p class="lbl">MEAN PAIRWISE ERROR CORRELATION</p>
+        <p class="big" id="statRho">&mdash;</p>
+        <p class="note" id="statRhoNote"></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Every member, and the ensemble, on the same 24 questions</h2>
+    <div class="tblwrap"><table class="num" id="tSim"></table></div>
+    <p class="note" id="simNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Question by question</h2>
+    <div class="tblwrap"><table class="num" id="tPerQ"></table></div>
+    <p class="note">
+      <code>votes</code> is the listed position each member picked. A row with a
+      <span class="pill bad">tie</span> was decided by the tie-break policy, not by the vote.
+    </p>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      PromptFromZero &middot; Day 83 &middot; Prompt ensembling. Day 3 was self-consistency:
+      one prompt, k samples, a vote over the dice. This was k prompts, one sample each, and
+      a vote over the disagreements &mdash; which only exists when the prompts fail on
+      different questions.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== DATA:BEGIN =====
+// 24 arithmetic questions. The `correct` field is the true value of `ask`,
+// and the self-check re-evaluates every one of them rather than trusting it.
+// The three wrong options are a fixed kind each: an off-by-one, a digit swap,
+// and a rounded figure. `slots` is the order the prompt lists them in;
+// `lure` is the trap THIS question is especially tempting for.
+const QUESTIONS = [
+  { id: "Q01", ask: "17 × 24", correct: 408, offbyone: 407, swapped: 480, rounded: 410,
+    slots: ["correct", "offbyone", "swapped", "rounded"], lure: "offbyone", lureStrength: 1.22 },
+  { id: "Q02", ask: "38 × 26", correct: 988, offbyone: 989, swapped: 898, rounded: 990,
+    slots: ["offbyone", "correct", "rounded", "swapped"], lure: "swapped", lureStrength: 1.22 },
+  { id: "Q03", ask: "49 × 13", correct: 637, offbyone: 636, swapped: 673, rounded: 640,
+    slots: ["swapped", "rounded", "correct", "offbyone"], lure: "rounded", lureStrength: 1.22 },
+  { id: "Q04", ask: "23 × 31", correct: 713, offbyone: 714, swapped: 731, rounded: 710,
+    slots: ["rounded", "correct", "offbyone", "swapped"], lure: "offbyone", lureStrength: 1.22 },
+  { id: "Q05", ask: "56 × 18", correct: 1008, offbyone: 1007, swapped: 1080, rounded: 1010,
+    slots: ["correct", "rounded", "swapped", "offbyone"], lure: "swapped", lureStrength: 1.22 },
+  { id: "Q06", ask: "74 × 12", correct: 888, offbyone: 889, swapped: 899, rounded: 890,
+    slots: ["offbyone", "swapped", "rounded", "correct"], lure: "rounded", lureStrength: 1.22 },
+  { id: "Q07", ask: "29 × 27", correct: 783, offbyone: 782, swapped: 738, rounded: 780,
+    slots: ["swapped", "rounded", "correct", "offbyone"], lure: "offbyone", lureStrength: 1.22 },
+  { id: "Q08", ask: "63 × 14", correct: 882, offbyone: 883, swapped: 828, rounded: 880,
+    slots: ["rounded", "swapped", "offbyone", "correct"], lure: "swapped", lureStrength: 1.22 },
+  { id: "Q09", ask: "347 + 586", correct: 933, offbyone: 932, swapped: 393, rounded: 930,
+    slots: ["correct", "offbyone", "swapped", "rounded"], lure: "rounded", lureStrength: 1.12 },
+  { id: "Q10", ask: "829 + 467", correct: 1296, offbyone: 1297, swapped: 1269, rounded: 1300,
+    slots: ["offbyone", "swapped", "rounded", "correct"], lure: "offbyone", lureStrength: 1.12 },
+  { id: "Q11", ask: "756 + 398", correct: 1154, offbyone: 1153, swapped: 1145, rounded: 1150,
+    slots: ["swapped", "offbyone", "correct", "rounded"], lure: "swapped", lureStrength: 1.12 },
+  { id: "Q12", ask: "284 + 679", correct: 963, offbyone: 964, swapped: 936, rounded: 960,
+    slots: ["rounded", "correct", "offbyone", "swapped"], lure: "rounded", lureStrength: 1.12 },
+  { id: "Q13", ask: "913 + 528", correct: 1441, offbyone: 1440, swapped: 1414, rounded: 1447,
+    slots: ["correct", "offbyone", "swapped", "rounded"], lure: "offbyone", lureStrength: 1.12 },
+  { id: "Q14", ask: "467 + 845", correct: 1312, offbyone: 1313, swapped: 1321, rounded: 1310,
+    slots: ["offbyone", "correct", "rounded", "swapped"], lure: "swapped", lureStrength: 1.12 },
+  { id: "Q15", ask: "672 + 259", correct: 931, offbyone: 930, swapped: 913, rounded: 937,
+    slots: ["swapped", "rounded", "correct", "offbyone"], lure: "rounded", lureStrength: 1.12 },
+  { id: "Q16", ask: "538 + 794", correct: 1332, offbyone: 1333, swapped: 1323, rounded: 1330,
+    slots: ["rounded", "correct", "offbyone", "swapped"], lure: "offbyone", lureStrength: 1.12 },
+  { id: "Q17", ask: "1284 - 637", correct: 647, offbyone: 646, swapped: 674, rounded: 650,
+    slots: ["correct", "rounded", "swapped", "offbyone"], lure: "swapped", lureStrength: 1.32 },
+  { id: "Q18", ask: "1903 - 748", correct: 1155, offbyone: 1156, swapped: 1515, rounded: 1160,
+    slots: ["offbyone", "swapped", "rounded", "correct"], lure: "rounded", lureStrength: 1.32 },
+  { id: "Q19", ask: "1526 - 889", correct: 637, offbyone: 636, swapped: 673, rounded: 640,
+    slots: ["swapped", "rounded", "correct", "offbyone"], lure: "offbyone", lureStrength: 1.32 },
+  { id: "Q20", ask: "2041 - 976", correct: 1065, offbyone: 1066, swapped: 1056, rounded: 1070,
+    slots: ["rounded", "swapped", "offbyone", "correct"], lure: "swapped", lureStrength: 1.32 },
+  { id: "Q21", ask: "1375 - 586", correct: 789, offbyone: 788, swapped: 798, rounded: 790,
+    slots: ["correct", "offbyone", "swapped", "rounded"], lure: "rounded", lureStrength: 1.32 },
+  { id: "Q22", ask: "1812 - 935", correct: 877, offbyone: 878, swapped: 787, rounded: 880,
+    slots: ["offbyone", "swapped", "rounded", "correct"], lure: "offbyone", lureStrength: 1.32 },
+  { id: "Q23", ask: "1649 - 758", correct: 891, offbyone: 890, swapped: 819, rounded: 897,
+    slots: ["swapped", "offbyone", "correct", "rounded"], lure: "swapped", lureStrength: 1.32 },
+  { id: "Q24", ask: "2130 - 1284", correct: 846, offbyone: 847, swapped: 864, rounded: 850,
+    slots: ["rounded", "correct", "offbyone", "swapped"], lure: "rounded", lureStrength: 1.32 }
+];
+
+// A member is a PROMPT VARIANT. pull is [offbyone, swapped, rounded].
+const DIVERSE = [
+  { id: "plain",    label: "Plain ask",                  skill: 1.00, pull: [1.18, 0.45, 0.30], posPull:  0.00 },
+  { id: "table",    label: "Options as a table",         skill: 1.00, pull: [0.40, 1.14, 0.35], posPull:  0.16 },
+  { id: "stepwise", label: "Work it out step by step",   skill: 1.04, pull: [0.35, 0.40, 1.10], posPull:  0.00 },
+  { id: "terse",    label: "Answer with the value only", skill: 0.96, pull: [0.98, 0.92, 0.40], posPull:  0.10 },
+  { id: "reorder",  label: "Same ask, options reversed", skill: 1.00, pull: [0.45, 0.50, 1.00], posPull: -0.12 }
+];
+const CORRELATED = [
+  { id: "c1", label: "Plain ask",              skill: 1.00, pull: [1.18, 0.45, 0.30], posPull: 0.00 },
+  { id: "c2", label: "Plain ask, politely",    skill: 1.00, pull: [1.16, 0.46, 0.31], posPull: 0.01 },
+  { id: "c3", label: "Plain ask, with please", skill: 0.99, pull: [1.19, 0.44, 0.30], posPull: 0.00 },
+  { id: "c4", label: "Plain ask, reworded",    skill: 1.01, pull: [1.17, 0.45, 0.29], posPull: 0.02 },
+  { id: "c5", label: "Plain ask, shorter",     skill: 1.00, pull: [1.18, 0.47, 0.30], posPull: 0.00 }
+];
+// The limit case: the SAME prompt five times at temperature zero. They share a
+// noiseKey, so they are literally the same call, which is the point.
+const CLONES = [1, 2, 3, 4, 5].map(function (i) {
+  return { id: "k" + i, label: "The identical prompt, call #" + i,
+           skill: 1.00, pull: [1.18, 0.45, 0.30], posPull: 0.00, noiseKey: "plain" };
+});
+// ===== DATA:END =====
+</script>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ======================================================================
+// PROMPT ENSEMBLING - ask k DIFFERENT prompts the same question and
+// aggregate their answers.
+//
+// NOT self-consistency (Day 3). Self-consistency sends ONE prompt k times
+// at a temperature and votes over the samples; every sample inherits that
+// one prompt's framing, so the vote cancels sampling noise and nothing
+// else. Ensembling sends k DIFFERENT phrasings, formats and orderings;
+// the members can disagree for a REASON, which is the only way a vote can
+// beat its own best member.
+//
+// Nothing here simulates language ability. The question set is DATA with
+// a true arithmetic answer beside each row; a "prompt variant" is a
+// scoring profile over the four listed options; and every number on this
+// page is produced by running that scorer, never sampled from a model.
+// The whole engine is a pure function of the seed.
+// ======================================================================
+const ENGINE = (() => {
+
+  const KINDS = ["correct", "offbyone", "swapped", "rounded"];
+  const TRAPS = ["offbyone", "swapped", "rounded"];
+
+  // ----------------------------------------------------------- the RNG
+  // A HASH, not a stream. Every draw is a pure function of
+  // (seed, member, question, option), so nothing here depends on the
+  // ORDER the draws are taken in - reordering the members cannot quietly
+  // change what any member answers.
+  function hash32(str) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 16777619) >>> 0;
+    }
+    return h >>> 0;
+  }
+
+  function u01(seed, key) {
+    let h = (hash32(key) ^ (seed >>> 0)) >>> 0;
+    h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 3266489909) >>> 0;
+    h = (h ^ (h >>> 16)) >>> 0;
+    return h / 4294967296;
+  }
+
+  // ------------------------------------------------------- the options
+  // Four options per question, in the order the prompt lists them.
+  function optionsOf(q) {
+    return q.slots.map((kind, pos) => ({ kind, pos, value: q[kind] }));
+  }
+  const correctPos = (q) => q.slots.indexOf("correct");
+
+  // -------------------------------------------------------- one member
+  // A member is a PROMPT VARIANT: a phrasing, a format, an option order.
+  // It is described by what it is good at and what it falls for:
+  //   skill    - how strongly it is drawn to the true answer
+  //   pull     - how strongly it is drawn to each of the three traps
+  //   posPull  - how strongly it is drawn to whatever is listed FIRST
+  // Each question carries a `lure`: the trap THAT question is tempting
+  // for. A member errs where its pull meets the matching lure, which is
+  // why members with different pull vectors fail on DIFFERENT questions -
+  // and why members with the same pull vector fail on the same ones.
+  const OFF_LURE = 0.30;   // a trap this question does not especially invite
+
+  function scoreOptions(member, q, opts) {
+    const { seed, noise } = opts;
+    const key = member.noiseKey || member.id;
+    return optionsOf(q).map((o) => {
+      let s = 0;
+      if (o.kind === "correct") s += member.skill;
+      else {
+        const pull = member.pull[TRAPS.indexOf(o.kind)];
+        s += pull * (q.lure === o.kind ? q.lureStrength : OFF_LURE);
+      }
+      if (o.pos === 0) s += member.posPull;
+      s += noise * (u01(seed, key + "|" + q.id + "|" + o.pos) - 0.5);
+      return s;
+    });
+  }
+
+  function softmax(xs, T) {
+    if (!(T > 0)) throw new Error("temperature must be > 0");
+    const m = Math.max.apply(null, xs);
+    const e = xs.map((x) => Math.exp((x - m) / T));
+    const z = e.reduce((p, c) => p + c, 0);
+    return e.map((x) => x / z);
+  }
+
+  // Rank the options best-first. Ties break on the LISTED position, so a
+  // ranking is a function of the scores alone and never of sort stability.
+  function rankOf(scores) {
+    return scores.map((s, i) => [s, i])
+      .sort((a, b) => (b[0] - a[0]) || (a[1] - b[1]))
+      .map((p) => p[1]);
+  }
+
+  // One ballot from one prompt variant, at temperature zero: the answer it
+  // picks, how confident it is, and its FULL ranking of the options - which
+  // is what rank aggregation needs and what a plain vote throws away.
+  function ballot(member, q, opts) {
+    const scores = scoreOptions(member, q, opts);
+    const probs = softmax(scores, opts.confTemp);
+    const ranking = rankOf(scores);
+    const pick = ranking[0];
+    return { id: member.id, pick, conf: probs[pick], probs, scores, ranking };
+  }
+
+  function ballots(members, q, opts) {
+    return members.map((m) => ballot(m, q, opts));
+  }
+
+  // ------------------------------------------------- tie-break policies
+  // A vote by 5 members over 4 options ties often, and the tie-break is
+  // almost never stated out loud. `firstSeen` is what you get for free
+  // from a loop that keeps a running maximum - and it depends on the ORDER
+  // the members were listed in, so the same ensemble returns two different
+  // answers depending on how the array was spelled.
+  const TIEBREAKS = {
+    firstSeen: (tied, ctx) => {
+      for (const b of ctx.ballots) if (tied.indexOf(b.pick) >= 0) return b.pick;
+      return tied[0];
+    },
+    lowestIndex: (tied) => tied.slice().sort((a, b) => a - b)[0],
+    confidence: (tied, ctx) => {
+      let best = tied[0], bestV = -Infinity;
+      for (const o of tied.slice().sort((a, b) => a - b)) {
+        let v = 0;
+        for (const b of ctx.ballots) if (b.pick === o) v += b.conf;
+        if (v > bestV) { bestV = v; best = o; }
+      }
+      return best;
+    },
+    borda: (tied, ctx) => {
+      const pts = bordaPoints(ctx.ballots, ctx.nOptions);
+      let best = tied[0], bestV = -Infinity;
+      for (const o of tied.slice().sort((a, b) => a - b)) {
+        if (pts[o] > bestV) { bestV = pts[o]; best = o; }
+      }
+      return best;
+    }
+  };
+
+  function resolve(tally, tie, ctx) {
+    const best = Math.max.apply(null, tally);
+    const tied = tally.map((v, i) => [v, i])
+      .filter((p) => Math.abs(p[0] - best) < 1e-12).map((p) => p[1]);
+    const rule = TIEBREAKS[tie];
+    if (!rule) throw new Error("unknown tie-break policy: " + tie);
+    return { pick: tied.length === 1 ? tied[0] : rule(tied, ctx), tally, tied };
+  }
+
+  // -------------------------------------------------- aggregation rules
+  // PLURALITY: one member, one vote. Throws away the confidence and
+  // everything below each member's first choice.
+  function plurality(bs, nOptions, tie) {
+    const tally = new Array(nOptions).fill(0);
+    for (const b of bs) tally[b.pick] += 1;
+    return resolve(tally, tie, { ballots: bs, nOptions });
+  }
+
+  // CONFIDENCE-WEIGHTED: one member, one vote worth its own confidence.
+  // Better when the members who are right are the ones who are sure, and
+  // worse when the loudest member in the room is the wrong one.
+  function weighted(bs, nOptions, tie) {
+    const tally = new Array(nOptions).fill(0);
+    for (const b of bs) tally[b.pick] += b.conf;
+    return resolve(tally, tie, { ballots: bs, nOptions });
+  }
+
+  // BORDA: rank aggregation. An option ranked r-th of m by one member
+  // scores (m - 1 - r). It is the only rule here that can return an option
+  // NOBODY put first - the universal second choice.
+  function bordaPoints(bs, nOptions) {
+    const pts = new Array(nOptions).fill(0);
+    for (const b of bs) {
+      b.ranking.forEach((opt, r) => { pts[opt] += (nOptions - 1 - r); });
+    }
+    return pts;
+  }
+  function borda(bs, nOptions, tie) {
+    return resolve(bordaPoints(bs, nOptions), tie, { ballots: bs, nOptions });
+  }
+
+  const RULES = { plurality, weighted, borda };
+
+  // ------------------------------------------------------- measurement
+  function singleAccuracy(member, questions, opts) {
+    let hits = 0;
+    const wrong = [];
+    for (const q of questions) {
+      const b = ballot(member, q, opts);
+      if (b.pick === correctPos(q)) hits += 1; else wrong.push(q.id);
+    }
+    return { id: member.id, label: member.label, hits, n: questions.length,
+             acc: hits / questions.length, wrong };
+  }
+
+  function ensembleRun(members, questions, opts, rule, tie) {
+    if (!members.length) throw new Error("an ensemble needs at least one member");
+    const fn = RULES[rule];
+    if (!fn) throw new Error("unknown aggregation rule: " + rule);
+    let hits = 0, ties = 0, agreeWrong = 0, agreeRight = 0, nWrong = 0;
+    const perQ = [];
+    for (const q of questions) {
+      const bs = ballots(members, q, opts);
+      const r = fn(bs, q.slots.length, tie);
+      const ok = r.pick === correctPos(q);
+      const share = bs.filter((b) => b.pick === r.pick).length / bs.length;
+      if (ok) { hits += 1; agreeRight += share; } else { nWrong += 1; agreeWrong += share; }
+      if (r.tied.length > 1) ties += 1;
+      perQ.push({ id: q.id, pick: r.pick, ok, tally: r.tally, tied: r.tied,
+                  share, votes: bs.map((b) => b.pick) });
+    }
+    const n = questions.length;
+    return { hits, n, acc: hits / n, ties, perQ, k: members.length, cost: members.length,
+             agreeWrong: nWrong ? agreeWrong / nWrong : 0,
+             agreeRight: hits ? agreeRight / hits : 0 };
+  }
+
+  // How correlated are the members' MISTAKES? This is the number that
+  // decides whether an ensemble can pay for itself. phi over the two
+  // binary error vectors: 0 = independent blind spots, 1 = the same one.
+  function errorCorrelation(a, b, questions, opts) {
+    const ea = questions.map((q) => (ballot(a, q, opts).pick === correctPos(q) ? 0 : 1));
+    const eb = questions.map((q) => (ballot(b, q, opts).pick === correctPos(q) ? 0 : 1));
+    const n = questions.length;
+    const ma = ea.reduce((p, c) => p + c, 0) / n, mb = eb.reduce((p, c) => p + c, 0) / n;
+    let sab = 0, saa = 0, sbb = 0;
+    for (let i = 0; i < n; i++) {
+      sab += (ea[i] - ma) * (eb[i] - mb);
+      saa += (ea[i] - ma) * (ea[i] - ma);
+      sbb += (eb[i] - mb) * (eb[i] - mb);
+    }
+    if (saa === 0 || sbb === 0) return 0;   // a member that never errs has no correlation
+    return sab / Math.sqrt(saa * sbb);
+  }
+
+  function meanErrorCorrelation(members, questions, opts) {
+    let s = 0, c = 0;
+    for (let i = 0; i < members.length; i++) {
+      for (let j = i + 1; j < members.length; j++) {
+        s += errorCorrelation(members[i], members[j], questions, opts); c += 1;
+      }
+    }
+    return c ? s / c : 0;
+  }
+
+  // A dial from "five genuinely different prompts" to "five rewordings of
+  // one prompt": blend every member's profile toward the first member's.
+  // t = 0 leaves the set alone; t = 1 gives every member the same blind
+  // spot, which is what rewording rather than rethinking produces.
+  function blendSet(members, t) {
+    if (!(t >= 0 && t <= 1)) throw new Error("blend must be in [0,1]");
+    const a = members[0];
+    const mix = (x, y) => x + (y - x) * t;
+    return members.map((m, i) => (i === 0 ? { ...m } : {
+      ...m,
+      skill: mix(m.skill, a.skill),
+      posPull: mix(m.posPull, a.posPull),
+      pull: m.pull.map((p, j) => mix(p, a.pull[j]))
+    }));
+  }
+
+  // --------------------------------------------------- SELF-CONSISTENCY
+  // The thing this page is NOT about, implemented so the difference can be
+  // MEASURED instead of asserted. ONE member, k samples drawn at
+  // temperature T from that one member's own distribution, plurality over
+  // the samples. The members cannot disagree for a reason, because there
+  // is only one member.
+  function selfConsistency(member, q, opts, k, T) {
+    if (!(k >= 1)) throw new Error("k must be at least 1");
+    const scores = scoreOptions(member, q, opts);
+    const p = softmax(scores, T);
+    const tally = new Array(scores.length).fill(0);
+    const bs = [];
+    const key = member.noiseKey || member.id;
+    for (let i = 0; i < k; i++) {
+      const u = u01(opts.seed + 7919 * (i + 1), key + "|" + q.id + "|sample" + i);
+      let acc = 0, pick = p.length - 1;
+      for (let o = 0; o < p.length; o++) { acc += p[o]; if (u < acc) { pick = o; break; } }
+      tally[pick] += 1;
+      bs.push({ pick, conf: p[pick], ranking: rankOf(scores) });
+    }
+    return resolve(tally, "lowestIndex", { ballots: bs, nOptions: scores.length });
+  }
+
+  function selfConsistencyRun(member, questions, opts, k, T) {
+    let hits = 0;
+    for (const q of questions) {
+      if (selfConsistency(member, q, opts, k, T).pick === correctPos(q)) hits += 1;
+    }
+    return { hits, n: questions.length, acc: hits / questions.length, k, cost: k };
+  }
+
+  return { KINDS, TRAPS, OFF_LURE, hash32, u01, optionsOf, correctPos, scoreOptions,
+           softmax, rankOf, ballot, ballots, TIEBREAKS, resolve, plurality, weighted,
+           bordaPoints, borda, RULES, singleAccuracy, ensembleRun, errorCorrelation,
+           meanErrorCorrelation, blendSet, selfConsistency, selfConsistencyRun };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["und", "build", "demo"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+  document.getElementById("tabDemo").classList.toggle("tab-active", name === "demo");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const OPTS = { seed: 20260083, noise: 0.9, confTemp: 0.3 };
+const N = QUESTIONS.length;
+const pct = (h) => (100 * h / N).toFixed(1) + "%";
+const frac = (h) => h + "/" + N;
+const singles = (set, o) => set.map((m) => ENGINE.singleAccuracy(m, QUESTIONS, o || OPTS));
+const bestSingle = (set, o) => Math.max.apply(null, singles(set, o).map((s) => s.hits));
+const run = (set, rule, tie, o) => ENGINE.ensembleRun(set, QUESTIONS, o || OPTS, rule, tie || "lowestIndex");
+
+// ------------------------------------------------- STEP 1: the contrast
+{
+  const best = bestSingle(DIVERSE);
+  const ens = run(DIVERSE, "plurality");
+  const sc5 = ENGINE.selfConsistencyRun(DIVERSE[0], QUESTIONS, OPTS, 5, 0.3);
+  const scBig = ENGINE.selfConsistencyRun(DIVERSE[0], QUESTIONS, OPTS, 301, 0.3);
+  const greedy = ENGINE.singleAccuracy(DIVERSE[0], QUESTIONS, OPTS).hits;
+  table("tVs", ["method", "what varies", "calls", "correct", "accuracy"], [
+    { cells: ["one prompt, one call", "nothing", "1&times;", frac(greedy), pct(greedy)] },
+    { cells: ["self-consistency, k = 5, T = 0.3", "the sampler's dice", "5&times;", frac(sc5.hits), pct(sc5.hits)] },
+    { cells: ["self-consistency, k = 301, T = 0.3", "the sampler's dice", "301&times;", frac(scBig.hits), pct(scBig.hits)] },
+    { cls: "here", cells: ["<b>ensemble of 5 prompts, plurality</b>", "the prompt itself", "5&times;", frac(ens.hits), pct(ens.hits)] }
+  ]);
+  el("vsNote").innerHTML =
+    "Same five-call budget, same questions, same engine. Self-consistency lands at <b>" +
+    frac(sc5.hits) + "</b> and the ensemble at <b>" + frac(ens.hits) + "</b>. Push k to 301 " +
+    "and self-consistency converges to <b>" + frac(scBig.hits) + "</b> &mdash; which is exactly " +
+    "the single prompt's own answer sheet, because the plurality over samples converges to that " +
+    "prompt's most likely answer. That is the ceiling, and it is a property of the method, not of k.";
+}
+
+// ----------------------------------------------- STEP 2: the members
+{
+  const rows = singles(DIVERSE).map((s, i) => ({
+    cells: [ "<code>" + s.id + "</code> " + DIVERSE[i].label,
+      DIVERSE[i].pull.map((p) => p.toFixed(2)).join(" / "),
+      DIVERSE[i].posPull.toFixed(2),
+      frac(s.hits), pct(s.hits), s.wrong.length ]
+  }));
+  table("tMembers", ["prompt variant", "pull: off-by-one / swap / round", "first-option pull",
+    "correct", "accuracy", "misses"], rows);
+  const rho = ENGINE.meanErrorCorrelation(DIVERSE, QUESTIONS, OPTS);
+  const union = new Set();
+  for (const s of singles(DIVERSE)) for (const w of s.wrong) union.add(w);
+  el("membersNote").innerHTML =
+    "Best single member: <b>" + frac(bestSingle(DIVERSE)) + "</b>. Between them the five miss " +
+    "<b>" + union.size + "</b> distinct questions, but no single question is missed by all five " +
+    "&mdash; mean pairwise error correlation <b>" + rho.toFixed(3) + "</b>. That negative number " +
+    "is the entire reason the next step works.";
+}
+
+// --------------------------------------------- STEP 3: plurality vote
+{
+  const best = bestSingle(DIVERSE);
+  const ens = run(DIVERSE, "plurality");
+  const rows = singles(DIVERSE).map((s) => ({ cls: "dim",
+    cells: ["<code>" + s.id + "</code>", frac(s.hits), pct(s.hits), "1&times;", "&mdash;"] }));
+  rows.push({ cls: "here", cells: ["<b>plurality over all five</b>", frac(ens.hits), pct(ens.hits),
+    ens.cost + "&times;", "<span class='pill good'>+" + (ens.hits - best) + "</span>"] });
+  table("tPlurality", ["answer source", "correct", "accuracy", "calls per question",
+    "vs best single"], rows);
+  el("pluralityNote").innerHTML =
+    "Four questions rescued, for four extra calls on every one of the " + N + " &mdash; " +
+    "<b>" + (ens.cost * N) + "</b> calls against <b>" + N + "</b>, to move " +
+    pct(best) + " to " + pct(ens.hits) + ". Whether that trade is worth making is a question " +
+    "about your bill and your error cost, and it cannot be answered without this table.";
+}
+
+// -------------------------------------------------- STEP 4: tie-break
+{
+  const fwd = run(DIVERSE, "plurality", "firstSeen");
+  const rev = ENGINE.ensembleRun(DIVERSE.slice().reverse(), QUESTIONS, OPTS, "plurality", "firstSeen");
+  const fwdL = run(DIVERSE, "plurality", "lowestIndex");
+  const revL = ENGINE.ensembleRun(DIVERSE.slice().reverse(), QUESTIONS, OPTS, "plurality", "lowestIndex");
+  const flips = [];
+  for (const q of QUESTIONS) {
+    const bs = ENGINE.ballots(DIVERSE, q, OPTS);
+    const r = ENGINE.plurality(bs, 4, "lowestIndex");
+    if (r.tied.length > 1) {
+      const a = ENGINE.plurality(bs, 4, "firstSeen").pick;
+      const b = ENGINE.plurality(ENGINE.ballots(DIVERSE.slice().reverse(), q, OPTS), 4, "firstSeen").pick;
+      flips.push({ q, tally: r.tally, tied: r.tied, a, b, correct: ENGINE.correctPos(q) });
+    }
+  }
+  table("tTies", ["tie-break policy", "members as listed", "members reversed", "same answer?",
+    "depends on voter order"], [
+    { cls: "here", cells: ["<code>firstSeen</code> (the accidental default)", frac(fwd.hits), frac(rev.hits),
+      fwd.hits === rev.hits ? "same score" : "<b class='warn'>no</b>", "<span class='pill bad'>YES</span>"] },
+    { cells: ["<code>lowestIndex</code>", frac(fwdL.hits), frac(revL.hits), "<b class='ok'>yes</b>",
+      "<span class='pill good'>no</span>"] },
+    { cells: ["<code>confidence</code>", frac(run(DIVERSE, "plurality", "confidence").hits),
+      frac(ENGINE.ensembleRun(DIVERSE.slice().reverse(), QUESTIONS, OPTS, "plurality", "confidence").hits),
+      "<b class='ok'>yes</b>", "<span class='pill good'>no</span>"] },
+    { cells: ["<code>borda</code>", frac(run(DIVERSE, "plurality", "borda").hits),
+      frac(ENGINE.ensembleRun(DIVERSE.slice().reverse(), QUESTIONS, OPTS, "plurality", "borda").hits),
+      "<b class='ok'>yes</b>", "<span class='pill good'>no</span>"] }
+  ]);
+  const f = flips.find((x) => x.a !== x.b);
+  el("tiesNote").innerHTML =
+    "<b>" + flips.length + "</b> of " + N + " questions tie at k = 5. " +
+    (f ? "On <b>" + f.q.id + "</b> the tally is [" + f.tally.join(", ") + "] and the correct option " +
+      "is position <b>" + f.correct + "</b>: <code>firstSeen</code> returns <b>" + f.a + "</b> with the " +
+      "members listed as written and <b>" + f.b + "</b> with the same five members reversed. One of " +
+      "those is right. Nothing about the model, the prompts or the seed changed &mdash; only the " +
+      "order of an array." : "") +
+    " The three canonical policies return the identical answer in both orders.";
+}
+
+// ---------------------------------------- STEP 5: confidence-weighted
+{
+  const loud = [
+    { pick: 0, conf: 0.40, ranking: [0, 1, 2, 3] },
+    { pick: 0, conf: 0.38, ranking: [0, 1, 3, 2] },
+    { pick: 0, conf: 0.41, ranking: [0, 2, 1, 3] },
+    { pick: 1, conf: 0.99, ranking: [1, 0, 2, 3] },
+    { pick: 1, conf: 0.97, ranking: [1, 0, 3, 2] }
+  ];
+  const p = ENGINE.plurality(loud, 4, "lowestIndex");
+  const w = ENGINE.weighted(loud, 4, "lowestIndex");
+  const bestD = bestSingle(DIVERSE), bestC = bestSingle(CORRELATED);
+  table("tWeighted", ["case", "plurality picks", "confidence-weighted picks", "weighted tally"], [
+    { cls: "here", cells: ["3 members at ~0.40 vs 2 at ~0.98", "option " + p.pick + " (3 votes)",
+      "option " + w.pick + " (" + w.tally[w.pick].toFixed(2) + ")", "[" + w.tally.map((x) => x.toFixed(2)).join(", ") + "]"] }
+  ]);
+  el("weightedNote").innerHTML =
+    "Over the real 24-question sheet: plurality <b>" + frac(run(DIVERSE, "plurality").hits) +
+    "</b>, confidence-weighted <b>" + frac(run(DIVERSE, "weighted").hits) + "</b> on the diverse set " +
+    "(best single " + frac(bestD) + "), and <b>" + frac(run(CORRELATED, "plurality").hits) +
+    "</b> against <b>" + frac(run(CORRELATED, "weighted").hits) + "</b> on the reworded set " +
+    "(best single " + frac(bestC) + "). Step 11 shows the ordering between these two rules flipping " +
+    "with nothing but the seed, which is why one run is not a result.";
+}
+
+// ---------------------------------------------------- STEP 6: Borda
+{
+  const split = [
+    { pick: 0, conf: 0.5, ranking: [0, 2, 1, 3] },
+    { pick: 0, conf: 0.5, ranking: [0, 2, 3, 1] },
+    { pick: 1, conf: 0.5, ranking: [1, 2, 0, 3] },
+    { pick: 1, conf: 0.5, ranking: [1, 2, 3, 0] },
+    { pick: 3, conf: 0.5, ranking: [3, 2, 0, 1] }
+  ];
+  const p = ENGINE.plurality(split, 4, "lowestIndex");
+  const pts = ENGINE.bordaPoints(split, 4);
+  const b = ENGINE.borda(split, 4, "lowestIndex");
+  table("tBorda", ["rule", "what it sees", "picks", "tally"], [
+    { cells: ["plurality", "first choices only", "option " + p.pick, "[" + p.tally.join(", ") + "]"] },
+    { cls: "here", cells: ["<b>Borda</b>", "all " + split.length + " full rankings",
+      "<b>option " + b.pick + "</b>", "[" + pts.join(", ") + "]"] }
+  ]);
+  const firsts = new Set(split.map((x) => x.pick));
+  el("bordaNote").innerHTML =
+    "Five members, first choices 0, 0, 1, 1, 3 &mdash; option <b>" + b.pick + "</b> is nobody's " +
+    "first choice and <b>every single member's second</b>, and Borda is the only rule here that " +
+    "can return it (" + (firsts.has(b.pick) ? "" : "it received <b>0</b> first-place votes") + "). " +
+    "On the real sheet Borda reaches <b>" + frac(run(DIVERSE, "borda").hits) + "</b> against plurality's <b>" +
+    frac(run(DIVERSE, "plurality").hits) + "</b> &mdash; at the price of asking all five members for a " +
+    "ranked answer rather than a one-word one.";
+}
+
+// ------------------------------------- STEP 7: the correlation dial
+{
+  const rows = [];
+  for (const t of [0, 0.2, 0.4, 0.6, 0.8, 1.0]) {
+    const set = ENGINE.blendSet(DIVERSE, t);
+    const rho = ENGINE.meanErrorCorrelation(set, QUESTIONS, OPTS);
+    const best = bestSingle(set);
+    const e = ENGINE.ensembleRun(set, QUESTIONS, OPTS, "plurality", "lowestIndex");
+    const gain = e.hits - best;
+    rows.push({ cls: t === 0 ? "here" : (gain <= 0 ? "dim" : ""), cells: [
+      t === 0 ? "0.0 &mdash; five different prompts" : (t === 1 ? "1.0 &mdash; five rewordings of one" : t.toFixed(1)),
+      rho.toFixed(3), frac(best), frac(e.hits),
+      (gain > 0 ? "<span class='pill good'>+" + gain + "</span>"
+                : gain === 0 ? "0" : "<span class='pill bad'>" + gain + "</span>"),
+      e.cost + "&times;", (100 * e.agreeWrong).toFixed(1) + "%"
+    ]});
+  }
+  table("tBlend", ["blend toward one prompt", "mean error correlation", "best single", "ensemble",
+    "gain", "cost", "agreement when wrong"], rows);
+  const z = ENGINE.blendSet(DIVERSE, 0), o = ENGINE.blendSet(DIVERSE, 1);
+  const ez = ENGINE.ensembleRun(z, QUESTIONS, OPTS, "plurality", "lowestIndex");
+  const eo = ENGINE.ensembleRun(o, QUESTIONS, OPTS, "plurality", "lowestIndex");
+  el("blendNote").innerHTML =
+    "At correlation <b>" + ENGINE.meanErrorCorrelation(z, QUESTIONS, OPTS).toFixed(3) + "</b> the " +
+    "ensemble is <b>" + (ez.hits - bestSingle(z)) + "</b> questions ahead of its best member. At <b>" +
+    ENGINE.meanErrorCorrelation(o, QUESTIONS, OPTS).toFixed(3) + "</b> it is <b>" +
+    (eo.hits - bestSingle(o)) + "</b> behind it. Identical cost, identical rule, identical seed. " +
+    "An ensemble does not average away a bias the members share &mdash; it ratifies it.";
+}
+
+// ------------------------------ STEP 8: confidently wrong when correlated
+{
+  const rows = [];
+  for (const [name, set] of [["5 different prompts", DIVERSE], ["5 rewordings of one prompt", CORRELATED],
+                             ["5 identical calls", CLONES]]) {
+    const e = ENGINE.ensembleRun(set, QUESTIONS, OPTS, "plurality", "lowestIndex");
+    rows.push({ cls: name.indexOf("different") >= 0 ? "here" : "", cells: [
+      name, ENGINE.meanErrorCorrelation(set, QUESTIONS, OPTS).toFixed(3),
+      frac(bestSingle(set)), frac(e.hits),
+      (100 * e.agreeRight).toFixed(1) + "%", (100 * e.agreeWrong).toFixed(1) + "%"
+    ]});
+  }
+  table("tAgree", ["member set", "mean error correlation", "best single", "ensemble",
+    "agreement when RIGHT", "agreement when WRONG"], rows);
+  const d = ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex");
+  const c = ENGINE.ensembleRun(CORRELATED, QUESTIONS, OPTS, "plurality", "lowestIndex");
+  el("agreeNote").innerHTML =
+    "The diverse ensemble's wrong answers carry <b>" + (100 * d.agreeWrong).toFixed(1) + "%</b> " +
+    "agreement &mdash; close to a 3-to-2 split, which a reviewer would read as a flag. The reworded " +
+    "ensemble's wrong answers carry <b>" + (100 * c.agreeWrong).toFixed(1) + "%</b>, which reads as " +
+    "near-unanimous. The more correlated set is less accurate <i>and</i> more convincing about it, " +
+    "so any gate built on the vote margin fails in the same direction as the ensemble does.";
+}
+
+// --------------------------------------------------- STEP 9: clones
+{
+  const single = ENGINE.singleAccuracy(CLONES[0], QUESTIONS, OPTS).hits;
+  const rows = [];
+  for (const rule of ["plurality", "weighted", "borda"]) {
+    for (const tie of ["lowestIndex", "confidence", "borda", "firstSeen"]) {
+      const e = ENGINE.ensembleRun(CLONES, QUESTIONS, OPTS, rule, tie);
+      rows.push({ cls: e.hits === single ? "dim" : "here", cells: [
+        rule + " + " + tie, frac(e.hits), pct(e.hits), e.cost + "&times;",
+        e.hits === single ? "<span class='pill bad'>0</span>" : "<b>" + (e.hits - single) + "</b>" ]});
+    }
+  }
+  table("tClones", ["aggregation + tie-break", "correct", "accuracy", "cost", "gain over 1 call"], rows);
+  el("clonesNote").innerHTML =
+    "All <b>" + rows.length + "</b> combinations return <b>" + frac(single) + "</b>, the single " +
+    "prompt's own sheet, for <b>5&times;</b> the bill &mdash; mean error correlation exactly " +
+    "<b>" + ENGINE.meanErrorCorrelation(CLONES, QUESTIONS, OPTS).toFixed(3) + "</b>. If your " +
+    "&ldquo;variants&rdquo; differ only in politeness, this row is what you bought.";
+}
+
+// ----------------------------------------------- STEP 10: the bill
+{
+  const rows = [];
+  for (let k = 1; k <= DIVERSE.length; k++) {
+    const sub = DIVERSE.slice(0, k);
+    const p = ENGINE.ensembleRun(sub, QUESTIONS, OPTS, "plurality", "lowestIndex");
+    const b = ENGINE.ensembleRun(sub, QUESTIONS, OPTS, "borda", "lowestIndex");
+    rows.push({ cls: k === 5 ? "here" : "", cells: [
+      "k = " + k + " (" + sub.map((m) => m.id).join(", ") + ")",
+      k + "&times;", frac(p.hits), frac(b.hits), p.ties,
+      (p.hits - 17 >= 0 ? "+" : "") + (p.hits - ENGINE.singleAccuracy(DIVERSE[0], QUESTIONS, OPTS).hits)
+    ]});
+  }
+  table("tK", ["ensemble", "cost", "plurality", "Borda", "questions decided by tie-break",
+    "plurality vs k = 1"], rows);
+  const p = [1, 2, 3, 4, 5].map((k) =>
+    ENGINE.ensembleRun(DIVERSE.slice(0, k), QUESTIONS, OPTS, "plurality", "lowestIndex"));
+  const drops = p.filter((x, i) => i > 0 && x.hits < p[i - 1].hits).length;
+  el("kNote").innerHTML =
+    "Plurality across k: " + p.map((x) => x.hits).join(" &rarr; ") + ". It goes <b>down " + drops +
+    " time" + (drops === 1 ? "" : "s") + "</b> &mdash; adding a member is not a safe move. And the " +
+    "even values of k pay for it twice: k = 2 sends <b>" + p[1].ties + "</b> of " + N + " questions " +
+    "to the tie-break and k = 4 sends <b>" + p[3].ties + "</b>, against <b>" + p[4].ties +
+    "</b> at k = 5. If you are going to ensemble, use an odd k.";
+}
+
+// --------------------------------------------- STEP 11: which rule
+{
+  const rows = [];
+  let pWins = 0, wWins = 0, bWins = 0;
+  for (const seed of [20260083, 7, 101, 4242, 90210, 31337, 555]) {
+    const o = { ...OPTS, seed };
+    const best = bestSingle(DIVERSE, o);
+    const r = ["plurality", "weighted", "borda"].map((x) =>
+      ENGINE.ensembleRun(DIVERSE, QUESTIONS, o, x, "lowestIndex").hits);
+    if (r[0] > r[1]) pWins += 1; else if (r[1] > r[0]) wWins += 1;
+    if (r[2] >= Math.max(r[0], r[1])) bWins += 1;
+    rows.push({ cls: seed === 20260083 ? "here" : "", cells: [
+      String(seed), frac(best), frac(r[0]), frac(r[1]), frac(r[2]),
+      ["plurality", "weighted", "borda"][r.indexOf(Math.max.apply(null, r))]
+    ]});
+  }
+  table("tSeeds", ["seed", "best single", "plurality", "confidence-weighted", "Borda", "winner"], rows);
+  el("seedsNote").innerHTML =
+    "Across these seven seeds plurality beats confidence-weighted <b>" + pWins + "</b> times and " +
+    "loses <b>" + wWins + "</b> &mdash; the ordering is not stable, so a single run does not " +
+    "establish one. Borda is at least as good as both on <b>" + bWins + " of 7</b>, which is the " +
+    "strongest claim this page will make for any rule, and it still costs ranked output from " +
+    "every member.";
+  table("tChoose", ["if your failure looks like&hellip;", "use", "because"], [
+    { cells: ["members fail on different questions", "plurality", "cheapest rule that can beat its best member"] },
+    { cells: ["one member is reliably weak", "Borda or trimmed voting", "a weak member's second choices still carry signal"] },
+    { cells: ["members report usable confidence", "confidence-weighted", "a sure majority should outweigh a hesitant one"] },
+    { cells: ["the field splits and no one leads", "Borda", "only rule that can elect the universal second choice"] },
+    { cells: ["members share a framing", "k = 1", "the ensemble ratifies the shared bias at k&times; the price"] },
+    { cells: ["errors are sampling noise, not framing", "self-consistency (Day 3)", "one prompt, k samples; the ceiling is that prompt"] }
+  ]);
+}
+
+// ----------------------------------------------------------- BUILD tab
+el("codeScore").textContent = [String(ENGINE.scoreOptions), "", String(ENGINE.ballot)].join("\n");
+el("codeRules").textContent = [String(ENGINE.plurality), "", String(ENGINE.weighted), "",
+  String(ENGINE.bordaPoints), "", String(ENGINE.borda)].join("\n");
+el("codeTie").textContent = "const TIEBREAKS = " + (() => {
+  const parts = [];
+  for (const k of Object.keys(ENGINE.TIEBREAKS)) parts.push("  " + k + ": " + String(ENGINE.TIEBREAKS[k]));
+  return "{\n" + parts.join(",\n") + "\n};";
+})() + "\n\n" + String(ENGINE.resolve);
+el("codeSC").textContent = String(ENGINE.selfConsistency);
+el("codeRecipe").textContent = [
+  "// 1. WRITE VARIANTS THAT FAIL DIFFERENTLY, not variants that read differently.",
+  "//    Change the FORMAT (prose / table / JSON), the ORDER of the options, and",
+  "//    the REASONING demanded (answer only / show the work). Politeness edits",
+  "//    produce the step-9 row: k times the bill, zero change.",
+  "const variants = [askPlain, askAsTable, askStepwise, askTerse, askReversed];",
+  "",
+  "// 2. Fan out in parallel, or the latency is k times too.",
+  "const ballots = await Promise.all(variants.map((v) => call(v(question))));",
+  "",
+  "// 3. Aggregate with a rule you CHOSE, and a tie-break you WROTE DOWN.",
+  "const winner = plurality(ballots, nOptions, 'lowestIndex');",
+  "",
+  "// 4. MEASURE, on a held-out set, before shipping:",
+  "//      a. every single variant's accuracy  -> is the ensemble beating the best one?",
+  "//      b. pairwise error correlation       -> do they fail on the same questions?",
+  "//      c. agreement on the WRONG answers   -> is a high margin still a safe gate?",
+  "//      d. accuracy at k = 1, 3, 5          -> it is not monotone",
+  "//    If (a) is no or (b) is high, ship k = 1 and keep the money."
+].join("\n");
+
+// -------------------------------------------------------------- DEMO
+const SETS = { diverse: DIVERSE, correlated: CORRELATED, clones: CLONES };
+function demo() {
+  const set = SETS[el("selSet").value];
+  const k = Number(el("inK").value);
+  const rule = el("selRule").value, tie = el("selTie").value;
+  const o = { seed: Number(el("inSeed").value) >>> 0, noise: Number(el("inNoise").value) / 100,
+              confTemp: OPTS.confTemp };
+  const sub = set.slice(0, k);
+  el("kLbl").textContent = "MEMBERS k = " + k;
+  el("noiseLbl").textContent = "NOISE " + o.noise.toFixed(2);
+
+  const ss = sub.map((m) => ENGINE.singleAccuracy(m, QUESTIONS, o));
+  const best = Math.max.apply(null, ss.map((s) => s.hits));
+  const e = ENGINE.ensembleRun(sub, QUESTIONS, o, rule, tie);
+  const rho = ENGINE.meanErrorCorrelation(sub, QUESTIONS, o);
+  const gain = e.hits - best;
+
+  el("statEns").innerHTML = frac(e.hits) + " <span style='font-size:15px;color:#64748b'>" + pct(e.hits) + "</span>";
+  el("statEnsNote").innerHTML = rule + " + " + tie + ", " + e.ties + " of " + N + " decided by tie-break.";
+  el("statBest").innerHTML = frac(best) + " <span style='font-size:15px;color:#64748b'>" + pct(best) + "</span>";
+  el("statBestNote").innerHTML = "gain " + (gain > 0 ? "<span class='pill good'>+" + gain + "</span>"
+    : gain === 0 ? "<span class='pill bad'>0</span>" : "<span class='pill bad'>" + gain + "</span>") +
+    " &mdash; " + (gain > 0 ? "the ensemble is ahead of its best member."
+                            : "the ensemble is not ahead of its best member.");
+  el("statCost").textContent = e.cost + "×";
+  el("statCostNote").innerHTML = (e.cost * N) + " calls for " + N + " questions" +
+    (gain > 0 ? ", " + (e.cost * N - N) + " extra for " + gain + " question" + (gain === 1 ? "" : "s") + " gained."
+              : ", bought nothing.");
+  el("statRho").textContent = rho.toFixed(3);
+  el("statRhoNote").innerHTML = rho > 0.3 ? "high &mdash; the members share a blind spot."
+    : rho > 0.05 ? "middling &mdash; some shared blind spot."
+    : "low &mdash; the members fail on different questions.";
+
+  const rows = ss.map((s) => ({ cls: "dim", cells: ["<code>" + s.id + "</code> " + s.label,
+    frac(s.hits), pct(s.hits), "1&times;", "&mdash;", "&mdash;"] }));
+  rows.push({ cls: "here", cells: ["<b>ensemble &mdash; " + rule + "</b>", frac(e.hits), pct(e.hits),
+    e.cost + "&times;", (100 * e.agreeRight).toFixed(1) + "%", (100 * e.agreeWrong).toFixed(1) + "%"] });
+  const sc = ENGINE.selfConsistencyRun(sub[0], QUESTIONS, o, k, 0.3);
+  rows.push({ cells: ["self-consistency on <code>" + sub[0].id + "</code>, k = " + k + ", T = 0.3",
+    frac(sc.hits), pct(sc.hits), sc.cost + "&times;", "&mdash;", "&mdash;"] });
+  table("tSim", ["answer source", "correct", "accuracy", "cost", "agreement when right",
+    "agreement when wrong"], rows);
+  el("simNote").innerHTML = "Mean pairwise error correlation <b>" + rho.toFixed(3) + "</b>. " +
+    "The self-consistency row spends the same " + sc.cost + "&times; on one prompt instead of " +
+    k + " different ones.";
+
+  table("tPerQ", ["question", "true answer", "votes", "tally", "ensemble picks", "result"],
+    e.perQ.map((r, i) => {
+      const q = QUESTIONS[i];
+      return { cls: r.ok ? "" : "dim", cells: [
+        "<code>" + q.id + "</code> " + q.ask, q.correct,
+        "[" + r.votes.join(", ") + "]",
+        "[" + r.tally.map((x) => (Math.round(x) === x ? x : x.toFixed(2))).join(", ") + "]",
+        q[q.slots[r.pick]] + (r.tied.length > 1 ? " <span class='pill bad'>tie</span>" : ""),
+        r.ok ? "<span class='pill good'>right</span>" : "<span class='pill bad'>wrong</span>"
+      ]};
+    }));
+}
+for (const id of ["selSet", "selRule", "selTie", "inSeed", "inK", "inNoise"]) {
+  el(id).addEventListener("input", demo);
+  el(id).addEventListener("change", demo);
+}
+demo();
+
+// ------------------------------------------------------- SELF-CHECK
+selfCheckPanel((t) => {
+  // --- the question data is real arithmetic ---------------------------
+  t("the question set is " + N + " rows and every option value is distinct", (() => {
+    if (QUESTIONS.length !== 24) return false;
+    return QUESTIONS.every((q) => new Set(ENGINE.KINDS.map((k) => q[k])).size === 4);
+  })());
+
+  t("every row lists all four option kinds exactly once", (() => {
+    return QUESTIONS.every((q) => q.slots.length === 4 &&
+      ENGINE.KINDS.every((k) => q.slots.filter((s) => s === k).length === 1));
+  })());
+
+  t("the arithmetic in every row is TRUE, re-evaluated here", (() => {
+    for (const q of QUESTIONS) {
+      const p = q.ask.split(" ");
+      const a = Number(p[0]), b = Number(p[2]);
+      const v = p[1] === "×" ? a * b : p[1] === "+" ? a + b : a - b;
+      if (v !== q.correct) return false;
+    }
+    return true;
+  })(), "the data is not trusted, it is recomputed");
+
+  t("every row's lure is one of the three trap kinds", (() => {
+    return QUESTIONS.every((q) => ENGINE.TRAPS.indexOf(q.lure) >= 0);
+  })());
+
+  // --- the seeded model -----------------------------------------------
+  t("u01 stays inside [0,1) over 5000 keys", (() => {
+    for (let i = 0; i < 5000; i++) {
+      const v = ENGINE.u01(OPTS.seed, "k" + i);
+      if (!(v >= 0 && v < 1)) return false;
+    }
+    return true;
+  })());
+
+  t("u01 is a pure function of (seed, key)", (() => {
+    return ENGINE.u01(7, "a|b|0") === ENGINE.u01(7, "a|b|0") &&
+           ENGINE.u01(7, "a|b|0") !== ENGINE.u01(8, "a|b|0");
+  })());
+
+  t("the seeded model reproduces an identical run, twice", (() => {
+    const a = JSON.stringify(ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex"));
+    const b = JSON.stringify(ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex"));
+    return a === b;
+  })(), "nothing on this page depends on Math.random");
+
+  t("a different seed gives a different run", (() => {
+    const a = JSON.stringify(ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex").perQ);
+    const b = JSON.stringify(ENGINE.ensembleRun(DIVERSE, QUESTIONS, { ...OPTS, seed: 5 },
+      "plurality", "lowestIndex").perQ);
+    return a !== b;
+  })());
+
+  t("a member's ballot does NOT depend on where it sits in the array", (() => {
+    const q = QUESTIONS[3];
+    const fwd = ENGINE.ballots(DIVERSE, q, OPTS);
+    const rev = ENGINE.ballots(DIVERSE.slice().reverse(), q, OPTS);
+    return DIVERSE.every((m, i) => fwd[i].pick === rev[DIVERSE.length - 1 - i].pick &&
+      Math.abs(fwd[i].conf - rev[DIVERSE.length - 1 - i].conf) < 1e-15);
+  })(), "the noise is a hash of its inputs, not a stream");
+
+  t("softmax sums to 1 and refuses a non-positive temperature", (() => {
+    const p = ENGINE.softmax([1, 2, 3, 4], 0.3);
+    if (Math.abs(p.reduce((x, y) => x + y, 0) - 1) > 1e-12) return false;
+    try { ENGINE.softmax([1, 2], 0); return false; } catch { return true; }
+  })());
+
+  t("rankOf is a permutation, sorted descending, ties on listed position", (() => {
+    const r = ENGINE.rankOf([3, 9, 9, 1]);
+    return r.join(",") === "1,2,0,3" && new Set(ENGINE.rankOf([5, 2, 8, 8])).size === 4;
+  })());
+
+  t("a ballot's pick is the top of its own ranking", (() => {
+    return QUESTIONS.every((q) => DIVERSE.every((m) => {
+      const b = ENGINE.ballot(m, q, OPTS);
+      return b.pick === b.ranking[0];
+    }));
+  })());
+
+  // --- vote counting ---------------------------------------------------
+  t("plurality counts votes correctly on a handmade ballot set", (() => {
+    const bs = [{ pick: 2, conf: .5, ranking: [2, 0, 1, 3] }, { pick: 2, conf: .5, ranking: [2, 1, 0, 3] },
+                { pick: 0, conf: .5, ranking: [0, 2, 1, 3] }];
+    const r = ENGINE.plurality(bs, 4, "lowestIndex");
+    return r.tally.join(",") === "1,0,2,0" && r.pick === 2 && r.tied.length === 1;
+  })());
+
+  t("the plurality tally always sums to the number of members", (() => {
+    return QUESTIONS.every((q) => {
+      const r = ENGINE.plurality(ENGINE.ballots(DIVERSE, q, OPTS), 4, "lowestIndex");
+      return Math.abs(r.tally.reduce((a, b) => a + b, 0) - DIVERSE.length) < 1e-12;
+    });
+  })());
+
+  t("the weighted tally sums to the total confidence on the ballots", (() => {
+    return QUESTIONS.every((q) => {
+      const bs = ENGINE.ballots(DIVERSE, q, OPTS);
+      const r = ENGINE.weighted(bs, 4, "lowestIndex");
+      const want = bs.reduce((a, b) => a + b.conf, 0);
+      return Math.abs(r.tally.reduce((a, b) => a + b, 0) - want) < 1e-12;
+    });
+  })());
+
+  t("a 2-2 split is DETECTED as a tie rather than silently resolved", (() => {
+    const bs = [{ pick: 1, conf: .5, ranking: [1, 0, 2, 3] }, { pick: 1, conf: .5, ranking: [1, 2, 0, 3] },
+                { pick: 3, conf: .5, ranking: [3, 0, 1, 2] }, { pick: 3, conf: .5, ranking: [3, 2, 1, 0] }];
+    const r = ENGINE.plurality(bs, 4, "lowestIndex");
+    return r.tied.length === 2 && r.tied.join(",") === "1,3";
+  })());
+
+  // --- tie-break determinism ------------------------------------------
+  t("lowestIndex is INVARIANT to the order the members are listed in", (() => {
+    return QUESTIONS.every((q) =>
+      ENGINE.plurality(ENGINE.ballots(DIVERSE, q, OPTS), 4, "lowestIndex").pick ===
+      ENGINE.plurality(ENGINE.ballots(DIVERSE.slice().reverse(), q, OPTS), 4, "lowestIndex").pick);
+  })());
+
+  t("confidence and borda tie-breaks are invariant to member order too", (() => {
+    for (const tie of ["confidence", "borda"]) {
+      for (const q of QUESTIONS) {
+        if (ENGINE.plurality(ENGINE.ballots(DIVERSE, q, OPTS), 4, tie).pick !==
+            ENGINE.plurality(ENGINE.ballots(DIVERSE.slice().reverse(), q, OPTS), 4, tie).pick) return false;
+      }
+    }
+    return true;
+  })());
+
+  t("DEFECT: firstSeen IS order-dependent, on a handmade tie", (() => {
+    const bs = [{ pick: 1, conf: .5, ranking: [1, 0, 2, 3] }, { pick: 1, conf: .5, ranking: [1, 2, 0, 3] },
+                { pick: 3, conf: .5, ranking: [3, 0, 1, 2] }, { pick: 3, conf: .5, ranking: [3, 2, 1, 0] }];
+    return ENGINE.plurality(bs, 4, "firstSeen").pick !==
+           ENGINE.plurality(bs.slice().reverse(), 4, "firstSeen").pick;
+  })(), "kept in the code because it is the policy you get by accident");
+
+  t("DEFECT: firstSeen flips a REAL question when the members are reordered", (() => {
+    for (const q of QUESTIONS) {
+      const a = ENGINE.plurality(ENGINE.ballots(DIVERSE, q, OPTS), 4, "firstSeen").pick;
+      const b = ENGINE.plurality(ENGINE.ballots(DIVERSE.slice().reverse(), q, OPTS), 4, "firstSeen").pick;
+      if (a !== b) return true;
+    }
+    return false;
+  })(), "same seed, same prompts, different array order, different answer");
+
+  t("an unknown tie-break policy throws instead of guessing", (() => {
+    try { ENGINE.plurality([{ pick: 0, conf: .5, ranking: [0, 1, 2, 3] }], 4, "nope"); return false; }
+    catch { return true; }
+  })());
+
+  // --- Borda -----------------------------------------------------------
+  t("Borda points match an independent recomputation on every question", (() => {
+    return QUESTIONS.every((q) => {
+      const bs = ENGINE.ballots(DIVERSE, q, OPTS);
+      const got = ENGINE.bordaPoints(bs, 4);
+      const want = [0, 0, 0, 0];
+      for (const b of bs) for (let o = 0; o < 4; o++) want[o] += (3 - b.ranking.indexOf(o));
+      return got.join(",") === want.join(",");
+    });
+  })(), "indexOf from the other side of the ranking");
+
+  t("Borda points total k*m*(m-1)/2 on every question", (() => {
+    const want = DIVERSE.length * 4 * 3 / 2;
+    return QUESTIONS.every((q) =>
+      ENGINE.bordaPoints(ENGINE.ballots(DIVERSE, q, OPTS), 4).reduce((a, b) => a + b, 0) === want);
+  })());
+
+  t("Borda can elect an option NOBODY put first", (() => {
+    const bs = [{ pick: 0, conf: .5, ranking: [0, 2, 1, 3] }, { pick: 0, conf: .5, ranking: [0, 2, 3, 1] },
+                { pick: 1, conf: .5, ranking: [1, 2, 0, 3] }, { pick: 1, conf: .5, ranking: [1, 2, 3, 0] },
+                { pick: 3, conf: .5, ranking: [3, 2, 0, 1] }];
+    const b = ENGINE.borda(bs, 4, "lowestIndex").pick;
+    return b === 2 && !bs.some((x) => x.pick === 2);
+  })(), "the universal second choice, invisible to a plurality vote");
+
+  t("Borda on unanimous ballots agrees with the unanimous pick", (() => {
+    const bs = [0, 1, 2].map(() => ({ pick: 1, conf: .5, ranking: [1, 0, 2, 3] }));
+    return ENGINE.borda(bs, 4, "lowestIndex").pick === 1 &&
+           ENGINE.plurality(bs, 4, "lowestIndex").pick === 1;
+  })());
+
+  t("confidence weighting really can overrule a numeric majority", (() => {
+    const bs = [{ pick: 0, conf: 0.40, ranking: [0, 1, 2, 3] }, { pick: 0, conf: 0.38, ranking: [0, 1, 3, 2] },
+                { pick: 0, conf: 0.41, ranking: [0, 2, 1, 3] }, { pick: 1, conf: 0.99, ranking: [1, 0, 2, 3] },
+                { pick: 1, conf: 0.97, ranking: [1, 0, 3, 2] }];
+    return ENGINE.plurality(bs, 4, "lowestIndex").pick === 0 &&
+           ENGINE.weighted(bs, 4, "lowestIndex").pick === 1;
+  })(), "which is the feature, and the failure, in one line");
+
+  // --- the ensemble ----------------------------------------------------
+  t("an ensemble of ONE is exactly that member, under all three rules", (() => {
+    const one = ENGINE.singleAccuracy(DIVERSE[2], QUESTIONS, OPTS).hits;
+    return ["plurality", "weighted", "borda"].every((r) =>
+      ENGINE.ensembleRun([DIVERSE[2]], QUESTIONS, OPTS, r, "lowestIndex").hits === one);
+  })());
+
+  t("an empty ensemble and an unknown rule both throw", (() => {
+    let a = false, b = false;
+    try { ENGINE.ensembleRun([], QUESTIONS, OPTS, "plurality", "lowestIndex"); } catch { a = true; }
+    try { ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "nope", "lowestIndex"); } catch { b = true; }
+    return a && b;
+  })());
+
+  t("the cost multiplier is exactly the member count", (() => {
+    return [1, 2, 3, 4, 5].every((k) =>
+      ENGINE.ensembleRun(DIVERSE.slice(0, k), QUESTIONS, OPTS, "plurality", "lowestIndex").cost === k);
+  })(), "k prompts cost k times, with no discount for agreement");
+
+  t("CONTROL: with UNCORRELATED errors the ensemble beats its best member", (() => {
+    const best = bestSingle(DIVERSE);
+    return ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex").hits > best;
+  })(), "best single " + frac(bestSingle(DIVERSE)) + ", ensemble " +
+        frac(ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex").hits));
+
+  t("INVERSION: with CORRELATED errors the ensemble does NOT beat its best member", (() => {
+    const best = bestSingle(CORRELATED);
+    return ["plurality", "weighted", "borda"].every((r) =>
+      ENGINE.ensembleRun(CORRELATED, QUESTIONS, OPTS, r, "lowestIndex").hits <= best);
+  })(), "true for all three aggregation rules, at 5x the cost");
+
+  t("INVERSION: and it is wrong with HIGHER agreement than the diverse one", (() => {
+    const d = ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex");
+    const c = ENGINE.ensembleRun(CORRELATED, QUESTIONS, OPTS, "plurality", "lowestIndex");
+    return c.agreeWrong > d.agreeWrong + 0.2;
+  })(), "a majority of biased members is confidently wrong");
+
+  t("INVERSION: five identical calls return the single prompt's sheet, every rule", (() => {
+    const one = ENGINE.singleAccuracy(CLONES[0], QUESTIONS, OPTS).hits;
+    for (const r of ["plurality", "weighted", "borda"]) {
+      for (const tie of ["lowestIndex", "confidence", "borda", "firstSeen"]) {
+        if (ENGINE.ensembleRun(CLONES, QUESTIONS, OPTS, r, tie).hits !== one) return false;
+      }
+    }
+    return true;
+  })(), "12 of 12 combinations, 5x the bill, zero change");
+
+  t("clone error correlation is exactly 1", (() => {
+    return Math.abs(ENGINE.meanErrorCorrelation(CLONES, QUESTIONS, OPTS) - 1) < 1e-12;
+  })());
+
+  t("the blend dial moves correlation UP and the gain DOWN", (() => {
+    let lastRho = -Infinity, firstGain = null, lastGain = null;
+    for (const x of [0, 0.2, 0.4, 0.6, 0.8, 1]) {
+      const set = ENGINE.blendSet(DIVERSE, x);
+      const rho = ENGINE.meanErrorCorrelation(set, QUESTIONS, OPTS);
+      if (rho < lastRho - 1e-9) return false;
+      lastRho = rho;
+      const g = ENGINE.ensembleRun(set, QUESTIONS, OPTS, "plurality", "lowestIndex").hits - bestSingle(set);
+      if (firstGain === null) firstGain = g;
+      lastGain = g;
+    }
+    return firstGain > 0 && lastGain < 0;
+  })(), "correlation rises monotonically; the gain goes from positive to negative");
+
+  t("blendSet(set, 0) changes nothing and a blend outside [0,1] throws", (() => {
+    const z = ENGINE.blendSet(DIVERSE, 0);
+    const same = z.every((m, i) => m.skill === DIVERSE[i].skill &&
+      m.pull.join(",") === DIVERSE[i].pull.join(","));
+    try { ENGINE.blendSet(DIVERSE, 1.5); return false; } catch { return same; }
+  })());
+
+  t("adding a member is NOT monotone - accuracy goes down at least once", (() => {
+    const h = [1, 2, 3, 4, 5].map((k) =>
+      ENGINE.ensembleRun(DIVERSE.slice(0, k), QUESTIONS, OPTS, "plurality", "lowestIndex").hits);
+    return h.some((x, i) => i > 0 && x < h[i - 1]);
+  })(), [1, 2, 3, 4, 5].map((k) =>
+    ENGINE.ensembleRun(DIVERSE.slice(0, k), QUESTIONS, OPTS, "plurality", "lowestIndex").hits).join(" -> "));
+
+  t("an EVEN k sends far more questions to the tie-break than an odd k", (() => {
+    const ties = [1, 2, 3, 4, 5].map((k) =>
+      ENGINE.ensembleRun(DIVERSE.slice(0, k), QUESTIONS, OPTS, "plurality", "lowestIndex").ties);
+    return ties[1] > ties[2] && ties[3] > ties[4];
+  })());
+
+  // --- self-consistency is a DIFFERENT method --------------------------
+  t("self-consistency converges to the single prompt's own answer on " + N + "/" + N, (() => {
+    return QUESTIONS.every((q) =>
+      ENGINE.selfConsistency(DIVERSE[0], q, OPTS, 301, 0.3).pick === ENGINE.ballot(DIVERSE[0], q, OPTS).pick);
+  })(), "k buys sampling stability, never a second point of view");
+
+  t("INVERSION: at the SAME 5x budget, self-consistency loses to the ensemble", (() => {
+    const sc = ENGINE.selfConsistencyRun(DIVERSE[0], QUESTIONS, OPTS, 5, 0.3).hits;
+    const ens = ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex").hits;
+    return sc < ens;
+  })(), ENGINE.selfConsistencyRun(DIVERSE[0], QUESTIONS, OPTS, 5, 0.3).hits + "/" + N + " against " +
+        ENGINE.ensembleRun(DIVERSE, QUESTIONS, OPTS, "plurality", "lowestIndex").hits + "/" + N);
+
+  t("and even at k = 301 it cannot pass the prompt it is sampling", (() => {
+    const greedy = ENGINE.singleAccuracy(DIVERSE[0], QUESTIONS, OPTS).hits;
+    return ENGINE.selfConsistencyRun(DIVERSE[0], QUESTIONS, OPTS, 301, 0.3).hits === greedy;
+  })(), "the ceiling is the prompt, not the sample count");
+
+  t("self-consistency refuses k < 1", (() => {
+    try { ENGINE.selfConsistency(DIVERSE[0], QUESTIONS[0], OPTS, 0, 0.3); return false; } catch { return true; }
+  })());
+});
+</script>
+</body>
+</html>

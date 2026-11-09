@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 80 &mdash; Prefix caching</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#0369a1; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 80</p>
+    <h1>
+      &#128190; Prefix caching &mdash; the provider caches your prompt by <strong>exact token-prefix
+      match</strong>, so what you get back is the longest common prefix between this request and the
+      cached one, and nothing after the first difference. <strong>Nothing here simulates language</strong>:
+      the engine is an ordered list of segments with declared token lengths, a longest-common-prefix
+      measured in tokens, and a stated price model &mdash; a cache write costs <strong>1.25&times;</strong>
+      a fresh input token, a cache read <strong>0.10&times;</strong>. Take one 14-token line,
+      <code>Current date: &hellip;</code>, which is <strong>0.16%</strong> of an 8,514-token system prompt,
+      and walk it through all seven insertion points. &#128308; <strong>Placed last, the hit is 8,500
+      tokens and the steady bill is <span id="hMulLast">&mdash;</span> the uncached price, paying back its
+      write premium on request <span id="hBeLast">&mdash;</span>. Placed first, the hit is exactly 0 and the
+      bill is <span id="hMulFirst">&mdash;</span> &mdash; above 1.000&times;, so caching now costs more than
+      not caching, and it never breaks even at any request count.</strong> That is
+      <span id="hRatio">&mdash;</span> between two prompts with identical tokens in a different order.
+      &#128308; <strong>The field's size is not the variable.</strong> Hit length does not depend on the
+      volatile segment's token count at all &mdash; 1 token or 800, at position 0 the hit is still 0 &mdash;
+      so shortening the timestamp saves nothing and moving it saves everything. &#128308; And the general
+      rule falls straight out of the price model rather than out of the fixture: a cached prefix under
+      <strong><span id="hFrac">&mdash;</span> of the cacheable prompt</strong> never pays back its own
+      write, at any number of repeats. Vanilla JavaScript, one file, no build step.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>The price model is a stated parameter, not a vendor promise.</strong> Providers publish
+      their own multipliers and change them; this page fixes read at 0.10&times; and write at 1.25&times;
+      a fresh input token and derives everything from those two numbers, so if yours differ you change
+      two constants and every figure below moves with them. The prompt is invented. The arithmetic is
+      exact &mdash; there is no sampling anywhere on this page.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">BILL, VOLATILE FIELD FIRST</p><p class="big warn" id="kFirst">&mdash;</p>
+      <p class="note">&times; the uncached price, forever</p></div>
+    <div class="card"><p class="lbl">BILL, THE SAME FIELD LAST</p><p class="big ok" id="kLast">&mdash;</p>
+      <p class="note">identical tokens, different order</p></div>
+    <div class="card"><p class="lbl">BREAK-EVEN, PLACED LAST</p><p class="big" id="kBe">&mdash;</p>
+      <p class="note">requests, after which caching is ahead</p></div>
+    <div class="card"><p class="lbl">DIFFERENCE PER 100,000 REQUESTS</p><p class="big warn" id="kUsd">&mdash;</p>
+      <p class="note" id="kUsdNote">at a stated input price</p></div>
+  </div>
+
+  <div class="card">
+    <h2>One field, seven places to put it</h2>
+    <p class="note" style="margin-top:0">
+      The system prompt is six stable segments. The volatile field goes in front of one of them, or after
+      all of them. Nothing else changes &mdash; same tokens, same content, same order otherwise.
+    </p>
+    <div class="grid2" style="margin:12px 0">
+      <label class="f">Requests served from this cache entry: <b id="nv">10</b>
+        <input type="range" id="nreq" min="0" max="6" value="3" />
+      </label>
+      <label class="f">Size of the volatile field, in tokens: <b id="vv">14</b>
+        <input type="range" id="vtok" min="0" max="7" value="2" />
+      </label>
+    </div>
+    <div class="tblwrap"><table class="num" id="tMain"></table></div>
+    <p class="note" id="mainNote"></p>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. The hit length is a cumulative sum, and that is the whole mechanism</h3>
+    <p>
+      A prefix cache compares tokens from position zero and stops at the first one that differs. So the
+      hit is not &ldquo;most of the prompt minus the changed bit&rdquo; &mdash; it is
+      <em>everything before the changed bit, and none of what follows</em>, however stable that tail is.
+      Put the volatile field at index <code>p</code> and the hit is exactly the cumulative token count of
+      segments 0&hellip;p&minus;1. The table below is measured by running the matcher, and the last column
+      is that cumulative sum computed separately; they agree at every position.
+    </p>
+    <div class="tblwrap"><table class="num" id="tCliff"></table></div>
+    <p class="note">
+      Which makes the monotonicity assertion the real content of the page: <strong>moving the field one
+      segment earlier can never increase the hit</strong>, and the engine checks that over every
+      insertion point of a 48-segment prompt as well as this one, not over a few sampled slots.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. Caching is a loan, and the break-even is closed-form</h3>
+    <p>
+      The first request pays 1.25&times; for the privilege of writing the entry. Every later one pays
+      0.10&times; for what it hits. So there is an <em>N</em> at which the discount has repaid the
+      surcharge, and it is worth deriving rather than guessing. With hit <code>H</code>, cacheable
+      prompt <code>T<sub>a</sub></code>, and the three multipliers <code>w</code>, <code>r</code>,
+      <code>b</code>:
+    </p>
+    <pre id="preBe">&mdash;</pre>
+    <p class="note">
+      The tail &mdash; the user's actual turn &mdash; cancels out of the ratio entirely, which is why it
+      does not appear. And the denominator is where the interesting part lives: it goes negative when the
+      hit is small, and a negative denominator means <em>no</em> number of requests ever repays the write.
+    </p>
+    <div class="tblwrap"><table class="num" id="tBe"></table></div>
+    <p class="note" id="beNote"></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. The threshold that does not depend on the prompt</h3>
+    <p>
+      Set that denominator to zero and the fixture drops out. What is left is a pure property of the
+      price model: caching repays only if the hit is at least
+      <code>(w &minus; b) / (w &minus; r)</code> of the cacheable prompt &mdash; <strong>21.74%</strong> at
+      the stated multipliers, whatever the prompt is made of. The row below is computed from the formula,
+      and the self-check pins the printed figure to it.
+    </p>
+    <div class="tblwrap"><table class="num" id="tFrac"></table></div>
+    <p class="note" id="fracNote"></p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">4. Two fixes that look equivalent, and one of them does nothing</h3>
+    <p>
+      Faced with a cache that never hits, the instinct is to make the volatile thing smaller &mdash; a
+      shorter date format, an id instead of a name, drop the seconds. Measured against moving it:
+    </p>
+    <div class="tblwrap"><table class="num" id="tShrink"></table></div>
+    <p class="note">
+      &#128308; <strong>The hit length column is flat.</strong> It is not approximately flat &mdash; hit
+      length is independent of the volatile field's token count by construction, because the matcher stops
+      at the first differing token and the field's own length is entirely on the far side of that stop.
+      An 800-token volatile block at position 0 and a 1-token one cost the same hit: zero.
+    </p>
+    <h3>&hellip;and several volatile fields are only as bad as the earliest one</h3>
+    <div class="tblwrap"><table class="num" id="tMulti"></table></div>
+    <p class="note">
+      So the audit is not &ldquo;how many volatile things are in my prompt&rdquo;. It is
+      <strong>&ldquo;what is the earliest one&rdquo;</strong> &mdash; everything after it is already free
+      to change, and tidying those is worth exactly nothing.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What this measures and what it does not</h3>
+      <p class="note" style="margin-top:0">
+        <strong>Not this page:</strong> <a href="day71-prompt-caching.html">Day 71 &mdash; prompt caching</a> covers cache
+        <em>breakpoints</em>, TTL, minimum-prefix tiers and concurrency. All of those are held fixed here. This page varies
+        exactly one thing &mdash; <em>where</em> the volatile field sits in the prefix &mdash; and prices the consequence.
+      </p>
+    <p class="note" style="margin-top:0">
+      Real: the prefix matcher, the cumulative arithmetic, the break-even algebra and its agreement with a
+      request-by-request simulation, every count. Declared: the three price multipliers and the input
+      dollar rate, so every multiple is a property of those numbers &mdash; and the one inequality worth
+      stating separately is that a cache read is never dearer than fresh input of the same length under
+      this model, which the engine asserts across the whole sweep rather than assuming.
+      <strong>Not modelled, deliberately</strong>: cache lifetime and eviction, minimum cacheable prefix
+      lengths, explicit breakpoints, concurrency, and the question of which prefix the provider actually
+      keeps when several are live. Those are a different page's subject &mdash; this one holds them all
+      fixed so the position of a single field is the only thing that moves.
+      <strong>Also not this page:</strong> nothing here is about which instruction wins when two conflict.
+      Segment order changes the <em>bill</em>; it is not an argument about precedence or authority, and no
+      claim on this page depends on a model obeying anything.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <pre>// a prefix cache stops at the first differing token, so the hit is a running sum
+function lcpTokens(a, b) {
+  let t = 0;
+  for (let i = 0; i &lt; Math.min(a.length, b.length); i++) {
+    if (a[i].sig !== b[i].sig || a[i].tokens !== b[i].tokens) break;
+    t += a[i].tokens;
+  }
+  return t;
+}
+
+// and the bill for one served call is three terms and no branches
+cost = H * PRICE.read + (Ta - H) * PRICE.write + Tb * PRICE.base;</pre>
+    <p class="note">
+      A segment with zero tokens is never put into the stream at all, which is the only special case: an
+      empty field is not in the token sequence, so it cannot break a prefix. That is also the identity the
+      self-check uses &mdash; with the volatile field at zero tokens, every position must return the full
+      hit.
+    </p>
+    <h3>Self-check</h3>
+    <p class="note">
+      Runs on load. The monotonicity and identity checks below are exhaustive over every insertion point
+      of both fixtures, and the break-even check compares the closed form against a request-by-request
+      simulation at each one rather than trusting either.
+    </p>
+    <div class="sc" id="selftest"></div>
+    <p style="margin-top:20px"><a href="../promptfromzero.php">&larr; PromptFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Prefix caching, and the one field that destroys it.
+//
+// A provider caches a prompt by EXACT token-prefix match. The length of the
+// cache hit on a new request is the length of the longest common prefix, in
+// tokens, between it and the cached one - and stops dead at the first token
+// that differs, however stable everything after it is.
+//
+// Nothing here simulates language. A prompt is an ordered list of segments with
+// declared token lengths and a signature that says what makes them vary. The
+// price model is STATED, not promised by anyone: a cache write costs 1.25x a
+// fresh input token and a cache read 0.10x. Every figure is exact arithmetic.
+//
+// DOM-free, clock-free, Math.random-free. No sampling anywhere.
+// ---------------------------------------------------------------------------
+
+// The stated price model, in units of ONE FRESH INPUT TOKEN.
+const PRICE = { base: 1.00, write: 1.25, read: 0.10 };
+const USD_PER_MTOK = 3.00;   // stated input price, for turning multiples into money
+const EPS = 1e-9;
+
+// The fixture: an agent's system prompt, six stable segments.
+const SYSTEM = [
+  { name: "tool definitions (11 tools)", tokens: 3120 },
+  { name: "operating rules",            tokens: 1840 },
+  { name: "output schema",              tokens:  560 },
+  { name: "house style guide",          tokens:  410 },
+  { name: "worked examples (4)",        tokens: 2240 },
+  { name: "escalation policy",          tokens:  330 },
+];
+// The user's turn is never cacheable - it is different on every request by
+// definition, and it sits after the cache breakpoint.
+const TAIL = { name: "the user's turn", tokens: 90 };
+const VOLATILE_TOKENS = 14;   // "Current date: 2026-09-17T11:04:22Z"
+
+// ---------------------------------------------------------------------------
+// Building one request's token stream.
+//
+// `sig` is what the matcher compares: two segments are the same token sequence
+// only if their signature AND their length agree. The volatile field and the
+// user's turn carry the request number in their signature, so they differ on
+// every request; the stable segments do not.
+//
+// A zero-token segment is not appended at all. That is physics, not a special
+// case: an empty string contributes nothing to the token sequence, so it cannot
+// break a prefix.
+// ---------------------------------------------------------------------------
+function buildRequest(n, opts) {
+  const o = opts || {};
+  const stable = o.stable || SYSTEM;
+  const vtok = o.volatileTokens === undefined ? VOLATILE_TOKENS : o.volatileTokens;
+  const tailTok = o.tailTokens === undefined ? TAIL.tokens : o.tailTokens;
+  const raw = o.pos === undefined ? [stable.length] : o.pos;
+  const at = (typeof raw === "number" ? [raw] : raw).slice().sort(function (a, b) { return a - b; });
+
+  const segs = [];
+  const push = function (sig, tokens, name, cacheable) {
+    if (tokens > 0) segs.push({ sig: sig, tokens: tokens, name: name, cacheable: cacheable });
+  };
+  for (let i = 0; i <= stable.length; i++) {
+    for (let k = 0; k < at.length; k++) {
+      if (at[k] === i) push("vol" + k + "@" + n, vtok, "volatile field", true);
+    }
+    if (i < stable.length) push("s" + i, stable[i].tokens, stable[i].name, true);
+  }
+  push("turn@" + n, tailTok, TAIL.name, false);
+  return segs;
+}
+
+function tokensOf(segs) { let t = 0; for (let i = 0; i < segs.length; i++) t += segs[i].tokens; return t; }
+function cacheableTokens(segs) { let t = 0; for (let i = 0; i < segs.length; i++) if (segs[i].cacheable) t += segs[i].tokens; return t; }
+
+// The matcher itself: walk both streams from position zero, add up tokens while
+// they agree, stop at the first difference.
+function lcpTokens(a, b) {
+  let t = 0;
+  const m = Math.min(a.length, b.length);
+  for (let i = 0; i < m; i++) {
+    if (a[i].sig !== b[i].sig || a[i].tokens !== b[i].tokens) break;
+    t += a[i].tokens;
+  }
+  return t;
+}
+
+// Cumulative token counts of a stable segment list, independently of the
+// matcher - used to check that the hit really is "everything before it".
+function cumTokens(stable) {
+  const out = [0];
+  let t = 0;
+  for (let i = 0; i < stable.length; i++) { t += stable[i].tokens; out.push(t); }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// The bill for one served call. Three terms, no branches:
+//   H tokens are read from the cache        at PRICE.read
+//   (Ta - H) cacheable tokens are written   at PRICE.write
+//   Tb tokens past the breakpoint are fresh at PRICE.base
+// ---------------------------------------------------------------------------
+function priceCall(H, Ta, Tb, P) {
+  P = P || PRICE;
+  const readTok = H, writeTok = Ta - H, freshTok = Tb;
+  return {
+    readTok: readTok, writeTok: writeTok, freshTok: freshTok,
+    readCost: readTok * P.read, writeCost: writeTok * P.write, freshCost: freshTok * P.base,
+    cost: readTok * P.read + writeTok * P.write + freshTok * P.base,
+  };
+}
+function uncachedCost(Ta, Tb, P) { P = P || PRICE; return (Ta + Tb) * P.base; }
+
+// N requests: the first writes the whole cacheable prompt, the rest hit H.
+function totalOverN(H, Ta, Tb, N, P) {
+  if (N <= 0) return 0;
+  return priceCall(0, Ta, Tb, P).cost + (N - 1) * priceCall(H, Ta, Tb, P).cost;
+}
+function amortizedMultiple(H, Ta, Tb, N, P) {
+  if (N <= 0) return 0;
+  return totalOverN(H, Ta, Tb, N, P) / (N * uncachedCost(Ta, Tb, P));
+}
+
+// Break-even, simulated: the smallest N at which the cached run has cost no
+// more than the uncached one. Counted, one request at a time.
+function breakEvenSim(H, Ta, Tb, P, maxN) {
+  maxN = maxN || 20000;
+  const plain = uncachedCost(Ta, Tb, P);
+  for (let N = 1; N <= maxN; N++) {
+    if (totalOverN(H, Ta, Tb, N, P) <= N * plain + EPS) return N;
+  }
+  return Infinity;
+}
+
+// Break-even, derived. With cold = Ta*w + Tb*b and warm = H*r + (Ta-H)*w + Tb*b:
+//   cold + (N-1)*warm <= N*(Ta+Tb)*b
+//   cold - warm       <= N*((Ta+Tb)*b - warm)
+//   cold - warm        = H*(w - r)                     <- the tail cancels
+//   (Ta+Tb)*b - warm   = H*(w - r) - Ta*(w - b)        <- and again
+//   N*                 = ceil( H(w-r) / ( H(w-r) - Ta(w-b) ) )
+// A non-positive denominator means it never repays, at any N.
+function breakEvenFormula(H, Ta, P) {
+  P = P || PRICE;
+  const num = H * (P.write - P.read);
+  const den = num - Ta * (P.write - P.base);
+  if (den <= 0) return Infinity;
+  return Math.max(1, Math.ceil(num / den - EPS));
+}
+
+// Set that denominator to zero and the prompt drops out entirely: the hit must
+// be at least this fraction of the cacheable prompt for caching to EVER repay.
+function minCachedFraction(P) { P = P || PRICE; return (P.write - P.base) / (P.write - P.read); }
+
+function usd(costUnits) { return (costUnits * USD_PER_MTOK) / 1e6; }
+
+// ---------------------------------------------------------------------------
+// The sweep: the volatile field at every insertion point, 0 .. stable.length.
+// The hit is MEASURED by running the matcher over two consecutive requests.
+// ---------------------------------------------------------------------------
+function sweep(opts) {
+  const o = opts || {};
+  const stable = o.stable || SYSTEM;
+  const P = o.price || PRICE;
+  const N = o.N === undefined ? 10 : o.N;
+  const cum = cumTokens(stable);
+  const rows = [];
+  for (let p = 0; p <= stable.length; p++) {
+    const conf = { stable: stable, pos: p, volatileTokens: o.volatileTokens, tailTokens: o.tailTokens };
+    const A = buildRequest(1, conf), B = buildRequest(2, conf);
+    const Ta = cacheableTokens(A), Tb = tokensOf(A) - Ta;
+    const hit = Math.min(lcpTokens(A, B), Ta);
+    const warm = priceCall(hit, Ta, Tb, P), cold = priceCall(0, Ta, Tb, P);
+    const plain = uncachedCost(Ta, Tb, P);
+    rows.push({
+      pos: p,
+      before: p < stable.length ? stable[p].name : null,
+      hit: hit, cumBefore: cum[p], Ta: Ta, Tb: Tb, total: Ta + Tb,
+      warmCost: warm.cost, coldCost: cold.cost, plainCost: plain,
+      readCost: warm.readCost, freshEquivalent: hit * P.base,
+      steadyMultiple: warm.cost / plain,
+      amortized: amortizedMultiple(hit, Ta, Tb, N, P),
+      breakEven: breakEvenFormula(hit, Ta, P),
+      breakEvenSim: breakEvenSim(hit, Ta, Tb, P),
+      hitFraction: Ta ? hit / Ta : 0,
+    });
+  }
+  return rows;
+}
+
+// A second, much finer fixture, so "every insertion point" means 49 of them
+// rather than 7. Deterministic sizes, no generator involved.
+function syntheticStable(n) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push({ name: "block " + i, tokens: 7 + ((i * i * 13) % 97) });
+  return out;
+}
+
+// Several volatile fields at once: the hit should be decided by the EARLIEST.
+function hitWithVolatiles(positions, opts) {
+  const o = opts || {};
+  const stable = o.stable || SYSTEM;
+  const conf = { stable: stable, pos: positions, volatileTokens: o.volatileTokens };
+  const A = buildRequest(1, conf), B = buildRequest(2, conf);
+  return Math.min(lcpTokens(A, B), cacheableTokens(A));
+}
+
+const ENGINE = {
+  PRICE, USD_PER_MTOK, SYSTEM, TAIL, VOLATILE_TOKENS,
+  buildRequest, tokensOf, cacheableTokens, lcpTokens, cumTokens,
+  priceCall, uncachedCost, totalOverN, amortizedMultiple,
+  breakEvenSim, breakEvenFormula, minCachedFraction, usd,
+  sweep, syntheticStable, hitWithVolatiles,
+};
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const mx = (x) => x.toFixed(4) + "×";
+const pc = (x) => (x * 100).toFixed(2) + "%";
+const nfmt = (x) => x.toLocaleString("en-US");
+const money = (x) => "$" + x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const bev = (x) => (x === Infinity ? "never" : nfmt(x));
+
+const BASE = ENGINE.sweep({});
+const FIRST = BASE[0], LAST = BASE[BASE.length - 1];
+const FRAC = ENGINE.minCachedFraction();
+
+el("hMulLast").textContent = mx(LAST.steadyMultiple);
+el("hMulFirst").textContent = mx(FIRST.steadyMultiple);
+el("hBeLast").textContent = bev(LAST.breakEven);
+el("hRatio").textContent = (FIRST.warmCost / LAST.warmCost).toFixed(2) + "×";
+el("hFrac").textContent = pc(FRAC);
+
+el("kFirst").textContent = mx(FIRST.steadyMultiple);
+el("kLast").textContent = mx(LAST.steadyMultiple);
+el("kBe").textContent = bev(LAST.breakEven);
+const DELTA_100K = ENGINE.usd((FIRST.warmCost - LAST.warmCost) * 100000);
+el("kUsd").textContent = money(DELTA_100K);
+el("kUsdNote").textContent = "at a stated $" + ENGINE.USD_PER_MTOK.toFixed(2) + " / Mtok input";
+
+const NS = [1, 2, 5, 10, 50, 500, 5000];
+const VS = [0, 1, 14, 40, 120, 300, 500, 800];
+
+function render() {
+  const N = NS[parseInt(el("nreq").value, 10)];
+  const v = VS[parseInt(el("vtok").value, 10)];
+  el("nv").textContent = nfmt(N);
+  el("vv").textContent = v;
+  const R = ENGINE.sweep({ N: N, volatileTokens: v });
+
+  table("tMain",
+    ["where the volatile field sits", "cache hit", "of the prompt", "steady bill", "over " + nfmt(N) + " requests", "break-even", ""],
+    R.map((r) => ({
+      cls: r.pos === 0 ? "" : (r.pos === R.length - 1 ? "here" : ""),
+      cells: [
+        r.pos === 0 ? "<b>first</b> &mdash; before " + R[0].before
+          : r.before ? "before &ldquo;" + r.before + "&rdquo;"
+          : "<b>last</b> &mdash; after everything stable",
+        nfmt(r.hit), pc(r.hitFraction), mx(r.steadyMultiple), mx(r.amortized), bev(r.breakEven),
+        r.steadyMultiple > 1 ? '<span class="pill bad">costs more than no cache</span>'
+          : r.steadyMultiple > 0.5 ? '<span class="pill stop">barely worth it</span>'
+          : '<span class="pill good">working</span>',
+      ],
+    })));
+
+  const worst = R[0], best = R[R.length - 1];
+  el("mainNote").innerHTML =
+    "With a <b>" + v + "-token</b> volatile field and <b>" + nfmt(N) + "</b> request" + (N === 1 ? "" : "s") +
+    " served from the entry, the same prompt bills <b>" + mx(worst.amortized) + "</b> with the field first and <b>" +
+    mx(best.amortized) + "</b> with it last &mdash; a factor of <b>" +
+    (best.amortized > 0 ? (worst.amortized / best.amortized).toFixed(2) : "∞") + "</b>. " +
+    (v === 0
+      ? "At zero tokens the field is not in the token stream at all, so every position is identical &mdash; which is the control."
+      : "The hit length is <b>" + nfmt(worst.hit) + "</b> and <b>" + nfmt(best.hit) +
+        "</b> tokens respectively, and neither number moves when you change the field's size.");
+}
+el("nreq").addEventListener("input", render);
+el("vtok").addEventListener("input", render);
+render();
+
+table("tCliff",
+  ["volatile field at index", "sits before", "measured cache hit", "tokens NOT hit", "cumulative sum of segments 0..p-1"],
+  BASE.map((r) => ({
+    cls: r.hit === 0 ? "dim" : (r.pos === BASE.length - 1 ? "here" : ""),
+    cells: [r.pos, r.before || "&mdash; (it is last)", "<b>" + nfmt(r.hit) + "</b>",
+      nfmt(r.total - r.hit), nfmt(r.cumBefore)],
+  })));
+
+el("preBe").textContent =
+  "cold = Ta*w + Tb*b                 first request writes everything\n" +
+  "warm = H*r + (Ta-H)*w + Tb*b       every request after it\n\n" +
+  "cold + (N-1)*warm  <=  N*(Ta+Tb)*b\n" +
+  "  cold - warm      =  H*(w - r)                  the tail cancels\n" +
+  "  (Ta+Tb)*b - warm =  H*(w - r) - Ta*(w - b)     and again\n\n" +
+  "  N* = ceil( H(w-r) / ( H(w-r) - Ta(w-b) ) )     denominator <= 0  =>  never\n\n" +
+  "at w=" + ENGINE.PRICE.write.toFixed(2) + "  r=" + ENGINE.PRICE.read.toFixed(2) +
+  "  b=" + ENGINE.PRICE.base.toFixed(2) + "  Ta=" + nfmt(LAST.Ta) + "\n" +
+  "  H=" + nfmt(LAST.hit) + "  ->  N* = " + bev(LAST.breakEven) +
+  "        H=" + nfmt(FIRST.hit) + "  ->  N* = " + bev(FIRST.breakEven);
+
+table("tBe",
+  ["volatile field at index", "cache hit", "derived N*", "simulated N*", "agree?", "bill at N*", "bill at 1,000"],
+  BASE.map((r) => ({
+    cls: r.breakEven === Infinity ? "dim" : "",
+    cells: [r.pos, nfmt(r.hit), bev(r.breakEven), bev(r.breakEvenSim),
+      r.breakEven === r.breakEvenSim ? '<span class="ok">yes</span>' : '<span class="warn">NO</span>',
+      r.breakEven === Infinity ? "&mdash;" : mx(ENGINE.amortizedMultiple(r.hit, r.Ta, r.Tb, r.breakEven)),
+      mx(ENGINE.amortizedMultiple(r.hit, r.Ta, r.Tb, 1000))],
+  })));
+el("beNote").innerHTML =
+  "Placed last the loan is repaid on request <b>" + bev(LAST.breakEven) +
+  "</b>. Placed first there is no loan and no repayment &mdash; the denominator is negative, so the cached run is behind the uncached one at every N, and stays <b>" +
+  mx(FIRST.steadyMultiple) + "</b> forever. The closed form and the request-by-request simulation agree at <b>" +
+  BASE.filter((r) => r.breakEven === r.breakEvenSim).length + " of " + BASE.length + "</b> positions.";
+
+(function () {
+  const Ta = LAST.Ta, Tb = LAST.Tb;
+  const rows = [0, 0.05, 0.1, 0.2, FRAC, 0.25, 0.4, 0.6, 0.8, 1].map((f) => {
+    const H = Math.round(Ta * f);
+    const be = ENGINE.breakEvenFormula(H, Ta);
+    return {
+      cls: Math.abs(f - FRAC) < 1e-9 ? "here" : (be === Infinity ? "dim" : ""),
+      cells: [pc(f), nfmt(H), bev(be),
+        mx(ENGINE.priceCall(H, Ta, Tb).cost / ENGINE.uncachedCost(Ta, Tb)),
+        be === Infinity ? '<span class="pill bad">never repays</span>'
+          : be <= 3 ? '<span class="pill good">repays almost at once</span>'
+          : '<span class="pill stop">needs ' + be + " requests</span>"],
+    };
+  });
+  table("tFrac", ["hit, as a fraction of the cacheable prompt", "tokens", "break-even N*", "steady bill", ""], rows);
+})();
+el("fracNote").innerHTML =
+  "The threshold is <b>" + pc(FRAC) + "</b> &mdash; <code>(1.25 &minus; 1.00) / (1.25 &minus; 0.10)</code> &mdash; and " +
+  "it contains no property of the prompt at all. Below it, caching is a tax you pay per request forever; " +
+  "at exactly it, caching and not caching are the same price at every N. The practical reading: " +
+  "<b>if your volatile field sits in the first fifth of the prompt, adding a cache makes the bill worse.</b>";
+
+(function () {
+  const sizes = [1, 14, 40, 120, 300, 800];
+  table("tShrink",
+    ["volatile field size", "hit, placed FIRST", "bill, placed FIRST", "hit, placed LAST", "bill, placed LAST", "what shrinking bought"],
+    sizes.map((v) => {
+      const R = ENGINE.sweep({ volatileTokens: v });
+      const f = R[0], l = R[R.length - 1];
+      return {
+        cls: v === 14 ? "here" : "",
+        cells: [v + " tok", "<b>" + nfmt(f.hit) + "</b>", mx(f.steadyMultiple),
+          nfmt(l.hit), mx(l.steadyMultiple),
+          '<span class="pill bad">nothing &mdash; hit is 0 either way</span>'],
+      };
+    }));
+})();
+
+(function () {
+  const cases = [
+    { p: [6], t: "one field, last" },
+    { p: [5, 6], t: "two, both late" },
+    { p: [3, 5, 6], t: "three, earliest at 3" },
+    { p: [1, 2, 3, 4, 5, 6], t: "six of them, earliest at 1" },
+    { p: [1], t: "one field, at index 1" },
+    { p: [0, 1, 2, 3, 4, 5, 6], t: "seven, one of them first" },
+  ];
+  const cum = ENGINE.cumTokens(ENGINE.SYSTEM);
+  table("tMulti",
+    ["volatile fields", "positions", "measured hit", "cumulative sum before the EARLIEST", "same?"],
+    cases.map((c) => {
+      const h = ENGINE.hitWithVolatiles(c.p);
+      const want = cum[Math.min.apply(null, c.p)];
+      return {
+        cls: c.t === "six of them, earliest at 1" ? "here" : "",
+        cells: [c.t, "[" + c.p.join(", ") + "]", "<b>" + nfmt(h) + "</b>", nfmt(want),
+          h === want ? '<span class="ok">yes</span>' : '<span class="warn">NO</span>'],
+      };
+    }));
+})();
+
+selfCheckPanel((t) => {
+  const stable = ENGINE.SYSTEM, cum = ENGINE.cumTokens(stable);
+  const FINE = ENGINE.syntheticStable(48), fineCum = ENGINE.cumTokens(FINE);
+  const fineSweep = ENGINE.sweep({ stable: FINE });
+
+  // -- identities ----------------------------------------------------------
+  t("IDENTITY: a request's prefix against itself is its whole length", (() => {
+    const A = ENGINE.buildRequest(1, {});
+    return ENGINE.lcpTokens(A, A) === ENGINE.tokensOf(A);
+  })(), ENGINE.tokensOf(ENGINE.buildRequest(1, {})) + " tokens");
+  t("IDENTITY: a volatile field of zero tokens is a no-op at every position", (() => {
+    const R = ENGINE.sweep({ volatileTokens: 0 });
+    return R.every((r) => r.hit === R[0].Ta) && new Set(R.map((r) => r.hit)).size === 1;
+  })(), "hit = the full cacheable prompt, all 7 positions");
+  t("IDENTITY: a volatile field at index 0 gives a hit of exactly 0",
+    BASE[0].hit === 0 && ENGINE.sweep({ stable: FINE })[0].hit === 0);
+
+  // -- the cliff, derived --------------------------------------------------
+  t("the hit at index p equals the cumulative tokens of segments 0..p-1, at every p",
+    BASE.every((r) => r.hit === cum[r.pos]) && fineSweep.every((r) => r.hit === fineCum[r.pos]),
+    "7 + 49 positions, both derived not typed");
+  t("THE CLIFF: last to first drops the hit by exactly the tokens that preceded it",
+    LAST.hit - FIRST.hit === cum[stable.length] - cum[0] && FIRST.hit === 0,
+    nfmt(LAST.hit) + " -> 0");
+
+  // -- monotonicity, exhaustive -------------------------------------------
+  t("MONOTONICITY: moving the field earlier never increases the hit (fixture)", (() => {
+    for (let i = 1; i < BASE.length; i++) if (BASE[i - 1].hit > BASE[i].hit) return false;
+    return true;
+  })(), BASE.length + " positions");
+  t("MONOTONICITY: same over every one of 49 positions of a 48-segment prompt", (() => {
+    for (let i = 1; i < fineSweep.length; i++) if (fineSweep[i - 1].hit > fineSweep[i].hit) return false;
+    return true;
+  })(), fineSweep.length + " positions");
+  t("...and the bill is monotone with it - never dearer for a later position", (() => {
+    for (let i = 1; i < BASE.length; i++) if (BASE[i - 1].warmCost < BASE[i].warmCost - 1e-9) return false;
+    return true;
+  })());
+
+  // -- break-even ----------------------------------------------------------
+  t("the derived break-even matches the simulated one at every position",
+    BASE.every((r) => r.breakEven === r.breakEvenSim) && fineSweep.every((r) => r.breakEven === r.breakEvenSim),
+    "closed form vs request-by-request, 56 positions");
+  t("at the break-even N the cached run really is no dearer", (() => {
+    return BASE.filter((r) => r.breakEven !== Infinity)
+      .every((r) => ENGINE.amortizedMultiple(r.hit, r.Ta, r.Tb, r.breakEven) <= 1 + 1e-9);
+  })());
+  t("...and one request earlier it really is dearer", (() => {
+    return BASE.filter((r) => r.breakEven !== Infinity && r.breakEven > 1)
+      .every((r) => ENGINE.amortizedMultiple(r.hit, r.Ta, r.Tb, r.breakEven - 1) > 1);
+  })(), "so N* is the smallest, not just some N");
+  t("CONTROL: placed first it never breaks even, checked to 20,000 requests",
+    FIRST.breakEven === Infinity && FIRST.breakEvenSim === Infinity &&
+    ENGINE.amortizedMultiple(FIRST.hit, FIRST.Ta, FIRST.Tb, 20000) > 1);
+
+  // -- the threshold -------------------------------------------------------
+  t("the minimum cached fraction is (w-b)/(w-r), derived not typed", (() => {
+    const f = ENGINE.minCachedFraction();
+    const Ta = LAST.Ta;
+    return ENGINE.breakEvenFormula(Math.ceil(Ta * f) + 1, Ta) !== Infinity &&
+           ENGINE.breakEvenFormula(Math.floor(Ta * f) - 1, Ta) === Infinity;
+  })(), pc(FRAC) + " of the cacheable prompt");
+  t("...and the figure printed in the prose is that derived one",
+    pc(FRAC) === "21.74%" && document.body.textContent.indexOf("21.74%") >= 0,
+    "prose and formula agree");
+
+  // -- the price inequality ------------------------------------------------
+  t("a cache read never costs more than fresh input of the same length",
+    ENGINE.PRICE.read <= ENGINE.PRICE.base &&
+    BASE.every((r) => r.readCost <= r.freshEquivalent + 1e-9) &&
+    fineSweep.every((r) => r.readCost <= r.freshEquivalent + 1e-9),
+    "asserted across the whole sweep");
+  t("...and a cache write always costs more, which is what has to be repaid",
+    ENGINE.PRICE.write > ENGINE.PRICE.base);
+
+  // -- size independence and the earliest-field rule -----------------------
+  t("hit length does not depend on the volatile field's size", (() => {
+    const ref = ENGINE.sweep({ volatileTokens: 14 }).map((r) => r.hit).join(",");
+    return [1, 40, 120, 300, 800].every((v) => ENGINE.sweep({ volatileTokens: v }).map((r) => r.hit).join(",") === ref);
+  })(), "1 to 800 tokens, identical at all 7 positions");
+  t("with several volatile fields the hit is set by the earliest one", (() => {
+    const cases = [[6], [5, 6], [3, 5, 6], [1, 2, 3, 4, 5, 6], [0, 6], [2]];
+    return cases.every((c) => ENGINE.hitWithVolatiles(c) === cum[Math.min.apply(null, c)]);
+  })());
+
+  // -- determinism ---------------------------------------------------------
+  t("the sweep is deterministic",
+    JSON.stringify(ENGINE.sweep({})) === JSON.stringify(ENGINE.sweep({})));
+});
+
+</script>
+</body>
+</html>

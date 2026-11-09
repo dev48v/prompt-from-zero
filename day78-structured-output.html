@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 78 &mdash; Structured output</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#0369a1; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 78</p>
+    <h1>
+      &#128209; Structured output &mdash; you ask for JSON, a constrained decoder gives you JSON, and a
+      validator says it is valid. <strong>Nothing here simulates language ability</strong>: there is no
+      model and nothing is sampled. What is real is a JSON Schema validator written out rather than
+      imported, a coercion layer, and a corpus of <strong>40 outputs that is DATA</strong>, each with
+      the correct answer beside it &mdash; so every rate is a count and a 0.00% is a zero.
+      <strong>THE CORPUS IS INVENTED</strong>, hand-written, and that is stated here rather than in a
+      footnote. &#128308; <strong>Schema-valid and correct are different properties, and only one of
+      them is measured</strong>: 26 of the 40 outputs validate and 18 are true, so the dashboard reads
+      <strong>65.00%</strong> while the thing anybody wanted is <strong>45.00%</strong> &mdash; and
+      <strong>8 of the 26 the validator waves through are untrue</strong>, a precision of 69.23%.
+      &#128308; Then the part that went against the build: a repair layer that never fails takes
+      validity to <strong>100%</strong>, genuinely raises correctness from 18 to 29 &mdash; and takes
+      the silently-wrong count <strong>up</strong>, from 8 to <strong>11</strong>. It is a real
+      improvement and a real increase in confident errors, in the same change.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>The corpus is invented.</strong> There is no public set of model outputs with the correct
+      extraction attached, so all 40 were written by hand: fourteen right, eight well-formed and untrue,
+      eight malformed but repairable, six malformed beyond repair, four more right. Every point estimate
+      would move on a real corpus. What transfers is the arithmetic &mdash; validity and correctness are
+      different sets, and the gap between them is countable.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">WHAT THE DASHBOARD READS</p><p class="big ok" id="kValid">&mdash;</p>
+      <p class="note">schema-valid</p></div>
+    <div class="card"><p class="lbl">WHAT ANYBODY WANTED</p><p class="big warn" id="kCorrect">&mdash;</p>
+      <p class="note">actually true</p></div>
+    <div class="card"><p class="lbl">VALID AND WRONG</p><p class="big warn" id="kVW">&mdash;</p>
+      <p class="note">passed the validator, untrue</p></div>
+    <div class="card"><p class="lbl">PRECISION OF &ldquo;VALID&rdquo;</p><p class="big" id="kPrec">&mdash;</p>
+      <p class="note">of what it waves through</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Every output, and what happened to it</h2>
+    <p class="note" style="margin-top:0">
+      Green means the validator accepted it. The column that matters is the one beside it.
+    </p>
+    <div class="tblwrap"><table class="num" id="tRows"></table></div>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. The validator is answering a different question</h3>
+    <p>
+      A schema constrains <em>shape</em>. It can say that <code>priority</code> is one of four strings
+      and that <code>refund_amount</code> is a non-negative number. It cannot say that this ticket was
+      urgent, or that the refund was &pound;4.99 rather than &pound;49.99. Both of those outputs are
+      perfectly valid, and both are wrong.
+    </p>
+    <div class="tblwrap"><table class="num" id="tGap"></table></div>
+    <p class="note">
+      Every one of the eight is a value a schema has no opinion about: a plausible email that belongs to
+      somebody else, an invented resolution date, a ticket id in exactly the right format for a ticket
+      that does not exist. <strong>Constrained decoding guarantees the format and says nothing about the
+      content</strong> &mdash; which is what it claims, and not what it gets read as.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. The gentle repair layer is worth more than it is given credit for</h3>
+    <p>
+      Eight outputs fail the schema for reasons a few lines of coercion handle: a number sent as a
+      string, <code>&quot;High&quot;</code> instead of <code>&quot;high&quot;</code>, slashes in a date,
+      one extra key, a currency symbol.
+    </p>
+    <div class="tblwrap"><table class="num" id="tRepair"></table></div>
+    <p class="note">
+      <strong>All eight become valid, and all eight become correct.</strong> Not a single one is coerced
+      into a valid-but-wrong answer. That is the honest good news on this page: a coercion step applied
+      only where it applies is nearly free.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. The repair layer that never fails is a trade, in both directions</h3>
+    <p>
+      Once a dashboard is watching the validity rate, the coercion layer grows: an unparseable email
+      becomes <code>unknown@example.com</code>, a priority outside the enum becomes
+      <code>medium</code>, a negative refund becomes its absolute value, a sixth tag is dropped. Each
+      rule is defensible on its own.
+    </p>
+    <div class="tblwrap"><table class="num" id="tForce"></table></div>
+    <p class="note">
+      &#128308; <strong>Validity goes to 100%.</strong> Correctness genuinely improves, 18 to 29 &mdash;
+      those rules are not useless. And the count of outputs that are <strong>valid and wrong</strong>
+      goes <strong>up</strong>, from 8 to 11, because six loud failures were converted into six quiet
+      answers and only three of them happened to be right. Both things are true at once, and reporting
+      only the first is what makes it dangerous.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What this measures and what it cannot</h3>
+    <p class="note" style="margin-top:0">
+      The validator, the coercion rules and every count are real code. <strong>The corpus is
+      invented</strong>, so the exact rates belong to this file. What does not depend on the fixture:
+      validity and correctness are different sets; a validator's precision is a property of the model's
+      failure modes and not of the schema; and any repair that cannot fail has, by construction, no way
+      to tell you it should have.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <p>
+      The schema is an ordinary support-ticket extraction. The validator implements exactly the subset
+      the schema uses &mdash; types, <code>required</code>, <code>enum</code>, <code>pattern</code>,
+      <code>maxItems</code>, <code>minimum</code>, and two formats &mdash; written out so the page is not
+      testing a library's opinion of what &ldquo;valid&rdquo; means.
+    </p>
+    <pre>// the whole finding, in two lines
+valid:   validate(out).length === 0
+correct: deepEqual(out, truth)      // and nothing in the schema knows `truth`</pre>
+    <h3>Self-check</h3>
+    <p class="note">
+      Runs on load. Several are <strong>controls</strong> &mdash; a claim that the validator misses
+      wrong values means nothing without showing it catches malformed ones.
+    </p>
+    <div class="sc" id="selfcheck"></div>
+    <p style="margin-top:20px"><a href="../promptfromzero.php">&larr; PromptFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Structured output. You ask for JSON, you get JSON, and a validator says the
+// JSON is valid. That is the whole pitch: constrained decoding turns a model
+// into something you can plug into code.
+//
+// Nothing here simulates language ability. There is no model and nothing is
+// sampled. What is real: a JSON parser, a JSON Schema validator, a coercion
+// layer, and a corpus of 40 outputs that is DATA. Every rate is a count over
+// that enumerated corpus, so a 0.00% is a zero rather than "none seen".
+//
+// DOM-free, clock-free, Math.random-free.
+// ---------------------------------------------------------------------------
+
+// --------------------------------------------------------------- the schema
+// A support-ticket extraction. Ordinary, and the kind of thing a schema is
+// reached for in the first place.
+const SCHEMA = {
+  type: "object",
+  required: ["ticket_id", "priority", "customer_email", "refund_amount", "tags", "resolved_at"],
+  additionalProperties: false,
+  properties: {
+    ticket_id: { type: "string", pattern: "^TK-[0-9]{6}$" },
+    priority: { type: "string", enum: ["low", "medium", "high", "urgent"] },
+    customer_email: { type: "string", format: "email" },
+    refund_amount: { type: "number", minimum: 0 },
+    tags: { type: "array", items: { type: "string" }, maxItems: 5 },
+    resolved_at: { type: ["string", "null"], format: "date" },
+  },
+};
+
+// -------------------------------------------------------- a real validator
+// Written out rather than imported, so the page is not testing a library's
+// opinion. It implements the subset the schema above uses, and nothing else.
+const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+function validate(value, schema = SCHEMA, path = "$") {
+  const errs = [];
+  const types = Array.isArray(schema.type) ? schema.type : [schema.type];
+  const actual = value === null ? "null" : Array.isArray(value) ? "array" : typeof value;
+  if (!types.includes(actual)) {
+    errs.push({ path, kind: "type", want: types.join("|"), got: actual });
+    return errs;
+  }
+  if (actual === "object") {
+    for (const r of schema.required || []) {
+      if (!(r in value)) errs.push({ path: path + "." + r, kind: "required" });
+    }
+    for (const k of Object.keys(value)) {
+      if (schema.properties && schema.properties[k]) {
+        errs.push(...validate(value[k], schema.properties[k], path + "." + k));
+      } else if (schema.additionalProperties === false) {
+        errs.push({ path: path + "." + k, kind: "additional" });
+      }
+    }
+  }
+  if (actual === "array") {
+    if (schema.maxItems !== undefined && value.length > schema.maxItems) {
+      errs.push({ path, kind: "maxItems", want: schema.maxItems, got: value.length });
+    }
+    value.forEach((v, i) => errs.push(...validate(v, schema.items, path + "[" + i + "]")));
+  }
+  if (actual === "string") {
+    if (schema.pattern && !new RegExp(schema.pattern).test(value)) errs.push({ path, kind: "pattern" });
+    if (schema.enum && !schema.enum.includes(value)) errs.push({ path, kind: "enum", got: value });
+    if (schema.format === "email" && !EMAIL.test(value)) errs.push({ path, kind: "format" });
+    if (schema.format === "date" && !DATE.test(value)) errs.push({ path, kind: "format" });
+  }
+  if (actual === "number") {
+    if (schema.minimum !== undefined && value < schema.minimum) errs.push({ path, kind: "minimum" });
+  }
+  return errs;
+}
+
+// -------------------------------------------------------------- the corpus
+// 40 outputs, hand-written, each with the TRUTH beside it. The truth is what a
+// person reading the ticket would have written down; the output is what came
+// back. This is the part that is invented, and it is declared on the page
+// above the first number.
+//
+// `out` is the returned object. `truth` is the correct answer. `note` says
+// what kind of thing is going on, so the page can group without guessing.
+function corpus() {
+  const T = (id, out, truth, note) => ({ id, out, truth, note });
+  const good = (n, over = {}) => ({
+    ticket_id: "TK-" + String(100000 + n),
+    priority: "medium",
+    customer_email: "a" + n + "@example.com",
+    refund_amount: 0,
+    tags: ["billing"],
+    resolved_at: null,
+    ...over,
+  });
+  const rows = [];
+  // 1-14: schema-valid AND correct
+  for (let n = 1; n <= 14; n++) {
+    const g = good(n, { priority: ["low", "medium", "high", "urgent"][n % 4], refund_amount: n * 1.5 });
+    rows.push(T("ok-" + n, g, g, "correct"));
+  }
+  // 15-22: schema-valid and WRONG - the value is well-formed and untrue
+  rows.push(T("wrong-priority", good(15, { priority: "low" }), good(15, { priority: "urgent" }), "wrong value"));
+  rows.push(T("wrong-amount-sign", good(16, { refund_amount: 49.99 }), good(16, { refund_amount: 4.99 }), "wrong value"));
+  rows.push(T("wrong-email-plausible", good(17, { customer_email: "support@example.com" }), good(17, { customer_email: "a17@example.com" }), "wrong value"));
+  rows.push(T("hallucinated-id", good(18, { ticket_id: "TK-999999" }), good(18, { ticket_id: "TK-100018" }), "wrong value"));
+  rows.push(T("date-invented", good(19, { resolved_at: "2026-01-01" }), good(19, { resolved_at: null }), "wrong value"));
+  rows.push(T("null-instead-of-date", good(20, { resolved_at: null }), good(20, { resolved_at: "2026-03-04" }), "wrong value"));
+  rows.push(T("tags-guessed", good(21, { tags: ["billing", "refund", "urgent"] }), good(21, { tags: ["billing"] }), "wrong value"));
+  rows.push(T("amount-string-coerced", good(22, { refund_amount: 0 }), good(22, { refund_amount: 12.5 }), "wrong value"));
+  // 23-30: schema-INVALID, and a repair exists
+  rows.push(T("amount-as-string", { ...good(23), refund_amount: "12.50" }, good(23, { refund_amount: 12.5 }), "repairable"));
+  rows.push(T("priority-capitalised", { ...good(24), priority: "High" }, good(24, { priority: "high" }), "repairable"));
+  rows.push(T("extra-key", { ...good(25), confidence: 0.9 }, good(25), "repairable"));
+  rows.push(T("date-slashes", { ...good(26), resolved_at: "2026/03/04" }, good(26, { resolved_at: "2026-03-04" }), "repairable"));
+  rows.push(T("tags-as-string", { ...good(27), tags: "billing" }, good(27, { tags: ["billing"] }), "repairable"));
+  rows.push(T("amount-with-symbol", { ...good(28), refund_amount: "$12.50" }, good(28, { refund_amount: 12.5 }), "repairable"));
+  rows.push(T("null-string", { ...good(29), resolved_at: "null" }, good(29, { resolved_at: null }), "repairable"));
+  rows.push(T("bool-as-string", { ...good(30), priority: "urgent " }, good(30, { priority: "urgent" }), "repairable"));
+  // 31-36: schema-INVALID and NOT repairable without inventing something
+  rows.push(T("missing-required", (() => { const g = good(31); delete g.customer_email; return g; })(), good(31), "unrepairable"));
+  rows.push(T("id-wrong-shape", { ...good(32), ticket_id: "100032" }, good(32), "unrepairable"));
+  rows.push(T("priority-not-in-enum", { ...good(33), priority: "critical" }, good(33, { priority: "urgent" }), "unrepairable"));
+  rows.push(T("email-garbled", { ...good(34), customer_email: "a34 at example dot com" }, good(34), "unrepairable"));
+  rows.push(T("too-many-tags", { ...good(35), tags: ["a", "b", "c", "d", "e", "f"] }, good(35, { tags: ["a", "b", "c", "d", "e"] }), "unrepairable"));
+  rows.push(T("negative-amount", { ...good(36), refund_amount: -5 }, good(36, { refund_amount: 5 }), "unrepairable"));
+  // 37-40: valid, correct, and the schema had nothing to say about the thing
+  // that was actually wrong upstream
+  for (let n = 37; n <= 40; n++) rows.push(T("ok-" + n, good(n), good(n), "correct"));
+  return rows;
+}
+
+// ---------------------------------------------------------- the repair layer
+// What a "just coerce it" step does. Every rule here is one somebody has
+// written in anger, and each is applied only where it applies.
+function repair(out) {
+  const v = JSON.parse(JSON.stringify(out));
+  if (typeof v.refund_amount === "string") {
+    const n = Number(String(v.refund_amount).replace(/[^0-9.\-]/g, ""));
+    if (!Number.isNaN(n)) v.refund_amount = n;
+  }
+  if (typeof v.priority === "string") v.priority = v.priority.trim().toLowerCase();
+  if (typeof v.tags === "string") v.tags = [v.tags];
+  if (v.resolved_at === "null") v.resolved_at = null;
+  if (typeof v.resolved_at === "string") v.resolved_at = v.resolved_at.replace(/\//g, "-");
+  for (const k of Object.keys(v)) if (!(k in SCHEMA.properties)) delete v[k];
+  return v;
+}
+
+// The repair layer people ACTUALLY ship once a dashboard is watching the
+// validity rate: it never fails. Anything that cannot be coerced is replaced
+// with something the schema accepts. Every rule below is defensible on its own
+// and the combination turns a loud failure into a silent one.
+function aggressiveRepair(out) {
+  const v = repair(out);
+  if (typeof v.ticket_id !== "string" || !/^TK-[0-9]{6}$/.test(v.ticket_id)) {
+    const digits = String(v.ticket_id || "").replace(/[^0-9]/g, "").padStart(6, "0").slice(-6);
+    v.ticket_id = "TK-" + digits;
+  }
+  if (!SCHEMA.properties.priority.enum.includes(v.priority)) v.priority = "medium";
+  if (typeof v.customer_email !== "string" || !EMAIL.test(v.customer_email)) v.customer_email = "unknown@example.com";
+  if (typeof v.refund_amount !== "number" || Number.isNaN(v.refund_amount)) v.refund_amount = 0;
+  if (v.refund_amount < 0) v.refund_amount = Math.abs(v.refund_amount);
+  if (!Array.isArray(v.tags)) v.tags = [];
+  if (v.tags.length > 5) v.tags = v.tags.slice(0, 5);
+  if (v.resolved_at !== null && !DATE.test(String(v.resolved_at))) v.resolved_at = null;
+  return v;
+}
+
+function deepEqual(a, b) {
+  return JSON.stringify(sortKeys(a)) === JSON.stringify(sortKeys(b));
+}
+function sortKeys(x) {
+  if (Array.isArray(x)) return x.map(sortKeys);
+  if (x && typeof x === "object") {
+    const o = {};
+    for (const k of Object.keys(x).sort()) o[k] = sortKeys(x[k]);
+    return o;
+  }
+  return x;
+}
+
+// ------------------------------------------------------------- the measurement
+function report() {
+  const rows = corpus().map((r) => {
+    const errsRaw = validate(r.out);
+    const fixed = repair(r.out);
+    const errsFixed = validate(fixed);
+    const forced = aggressiveRepair(r.out);
+    const errsForced = validate(forced);
+    return {
+      ...r,
+      valid: errsRaw.length === 0,
+      correct: deepEqual(r.out, r.truth),
+      validAfterRepair: errsFixed.length === 0,
+      correctAfterRepair: deepEqual(fixed, r.truth),
+      validAfterForce: errsForced.length === 0,
+      correctAfterForce: deepEqual(forced, r.truth),
+      errs: errsRaw,
+    };
+  });
+  const n = rows.length;
+  const valid = rows.filter((r) => r.valid);
+  const correct = rows.filter((r) => r.correct);
+  return {
+    n,
+    rows,
+    valid: valid.length,
+    correct: correct.length,
+    validAndWrong: rows.filter((r) => r.valid && !r.correct).length,
+    invalidAndCorrectable: rows.filter((r) => !r.valid && r.correctAfterRepair).length,
+    repairedToValid: rows.filter((r) => !r.valid && r.validAfterRepair).length,
+    repairedToValidButWrong: rows.filter((r) => !r.valid && r.validAfterRepair && !r.correctAfterRepair).length,
+    // the number a dashboard reports
+    validityRate: valid.length / n,
+    // the number anybody actually wanted
+    correctnessRate: correct.length / n,
+    // of everything the validator waves through, how much is true
+    precisionOfValid: valid.filter((r) => r.correct).length / valid.length,
+    // and the same three numbers once the repair layer is set to never fail
+    forcedValid: rows.filter((r) => r.validAfterForce).length,
+    forcedCorrect: rows.filter((r) => r.correctAfterForce).length,
+    forcedValidAndWrong: rows.filter((r) => r.validAfterForce && !r.correctAfterForce).length,
+    forcedPrecision: rows.filter((r) => r.validAfterForce && r.correctAfterForce).length /
+      Math.max(1, rows.filter((r) => r.validAfterForce).length),
+  };
+}
+
+const ENGINE = { SCHEMA, validate, corpus, repair, aggressiveRepair, deepEqual, sortKeys, report, EMAIL, DATE };
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selfcheck").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const R = ENGINE.report();
+const pct = (x) => (x * 100).toFixed(2) + "%";
+const yes = '<span class="ok">yes</span>';
+const no = '<span class="warn">no</span>';
+
+el("kValid").textContent = pct(R.validityRate);
+el("kCorrect").textContent = pct(R.correctnessRate);
+el("kVW").textContent = R.validAndWrong + " of " + R.valid;
+el("kPrec").textContent = pct(R.precisionOfValid);
+
+table("tRows", ["output", "kind", "schema says", "true?", "after gentle repair", "after never-fail repair"],
+  R.rows.map((r) => ({
+    cls: r.valid && !r.correct ? "here" : r.correct ? "" : "dim",
+    cells: [
+      r.id,
+      r.note,
+      r.valid ? '<span class="pill good">VALID</span>' : '<span class="pill bad">INVALID</span>',
+      r.correct ? yes : no,
+      r.validAfterRepair ? (r.correctAfterRepair ? '<span class="ok">valid + true</span>' : '<span class="warn">valid, untrue</span>') : "still invalid",
+      r.validAfterForce ? (r.correctAfterForce ? '<span class="ok">valid + true</span>' : '<span class="warn">valid, untrue</span>') : "still invalid",
+    ],
+  })));
+
+table("tGap", ["what came back", "the schema's verdict", "the truth", "why the schema cannot see it"],
+  R.rows.filter((r) => r.valid && !r.correct).map((r) => ({
+    cls: "here",
+    cells: [r.id, '<span class="pill good">VALID</span>', '<span class="warn">wrong</span>',
+      "the value is the right shape and the wrong content"],
+  })));
+
+table("tRepair", ["", "count", "of which valid afterwards", "of which TRUE afterwards"],
+  [
+    { cells: ["invalid, and a coercion applies", R.rows.filter((r) => !r.valid && r.note === "repairable").length,
+      R.rows.filter((r) => !r.valid && r.note === "repairable" && r.validAfterRepair).length,
+      "<b>" + R.rows.filter((r) => !r.valid && r.note === "repairable" && r.correctAfterRepair).length + "</b>"] },
+    { cls: "dim", cells: ["invalid, and nothing short of inventing a value helps",
+      R.rows.filter((r) => !r.valid && r.note === "unrepairable").length,
+      R.rows.filter((r) => !r.valid && r.note === "unrepairable" && r.validAfterRepair).length,
+      R.rows.filter((r) => !r.valid && r.note === "unrepairable" && r.correctAfterRepair).length] },
+  ]);
+
+table("tForce", ["", "schema-valid", "true", "valid AND wrong", "precision of &ldquo;valid&rdquo;"],
+  [
+    { cells: ["as returned", R.valid + " / " + R.n + " (" + pct(R.validityRate) + ")", R.correct + " / " + R.n,
+      "<b>" + R.validAndWrong + "</b>", pct(R.precisionOfValid)] },
+    { cells: ["+ gentle repair", (R.valid + R.repairedToValid) + " / " + R.n,
+      (R.correct + R.rows.filter((r) => !r.valid && r.correctAfterRepair).length) + " / " + R.n,
+      "<b>" + R.validAndWrong + "</b>", "&mdash;"] },
+    { cls: "here", cells: ["+ never-fail repair", "<b>" + R.forcedValid + " / " + R.n + " (100.00%)</b>",
+      R.forcedCorrect + " / " + R.n, '<b class="warn">' + R.forcedValidAndWrong + "</b>", pct(R.forcedPrecision)] },
+  ]);
+
+selfCheckPanel((t) => {
+  t("the validator accepts a correct object", ENGINE.validate(R.rows[0].out).length === 0);
+  t("CONTROL: it rejects a missing required field",
+    ENGINE.validate({ priority: "low" }).length > 0);
+  t("CONTROL: it rejects a value outside the enum",
+    ENGINE.validate({ ...R.rows[0].out, priority: "critical" }).length === 1);
+  t("CONTROL: it rejects a number sent as a string",
+    ENGINE.validate({ ...R.rows[0].out, refund_amount: "12.50" }).length === 1);
+  t("CONTROL: it rejects an unknown key",
+    ENGINE.validate({ ...R.rows[0].out, confidence: 0.9 }).length === 1);
+  t("CONTROL: it rejects a sixth tag",
+    ENGINE.validate({ ...R.rows[0].out, tags: ["a", "b", "c", "d", "e", "f"] }).length === 1);
+  t("it accepts null for a nullable date",
+    ENGINE.validate({ ...R.rows[0].out, resolved_at: null }).length === 0);
+
+  t("validity and correctness are different numbers", R.valid !== R.correct, R.valid + " vs " + R.correct);
+  t("8 outputs are valid and untrue", R.validAndWrong === 8);
+  t("...so the validator's precision is under 70%", R.precisionOfValid < 0.7, pct(R.precisionOfValid));
+  t("every valid-and-wrong output really does validate",
+    R.rows.filter((x) => x.valid && !x.correct).every((x) => ENGINE.validate(x.out).length === 0));
+
+  t("gentle repair fixes all eight repairable outputs",
+    R.repairedToValid === 8 && R.repairedToValidButWrong === 0);
+  t("CONTROL: gentle repair leaves the unrepairable ones invalid",
+    R.rows.filter((x) => x.note === "unrepairable").every((x) => !x.validAfterRepair));
+
+  t("never-fail repair reaches 100% validity", R.forcedValid === R.n);
+  t("...and genuinely improves correctness", R.forcedCorrect > R.correct, R.correct + " -> " + R.forcedCorrect);
+  t("...while INCREASING the valid-and-wrong count",
+    R.forcedValidAndWrong > R.validAndWrong, R.validAndWrong + " -> " + R.forcedValidAndWrong);
+  t("the corpus is 40 rows with a truth for each",
+    R.n === 40 && R.rows.every((x) => x.truth && typeof x.truth === "object"));
+});
+
+</script>
+</body>
+</html>

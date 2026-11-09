@@ -1,0 +1,784 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 81 &mdash; Metacognitive Prompting</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#b45309; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre-wrap; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:560px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num td.txt { text-align:left; }
+  tr.here td { background:#fffbeb; font-weight:700; }
+  tr.dim td { color:#94a3b8; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:999px; font-size:11px; font-weight:800; }
+  .pill.good { background:#dcfce7; color:#166534; }
+  .pill.bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  #selftest div { display:grid; grid-template-columns:52px 1fr; gap:8px; font-size:12.5px; padding:3px 0; border-top:1px solid var(--line); align-items:start; }
+  #selftest div span.m { grid-column:2; font-size:11.5px; color:#64748b; }
+  .stage { border-left:3px solid var(--accent); padding:8px 0 8px 12px; margin:0 0 10px; }
+  .stage b { display:block; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); margin:0 0 3px; }
+  .stage p { margin:0; font-size:13px; }
+  .bar { height:8px; border-radius:4px; background:#e2e8f0; overflow:hidden; }
+  .bar i { display:block; height:100%; background:var(--accent); }
+  .ctl { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:0 0 12px; }
+  .ctl input[type=range] { flex:1; min-width:160px; }
+  .ctl input[type=number] { width:74px; font:inherit; padding:5px 7px; border:1px solid var(--line); border-radius:7px; }
+  footer { border-top:1px solid var(--line); margin-top:28px; padding:18px 0 40px; font-size:13px; color:#475569; }
+  footer a { color:var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 81</p>
+    <h1>
+      Metacognitive Prompting &mdash; five stages that make a model check its own
+      work, and the one stage that is worth less than it looks.
+    </h1>
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">Look</button>
+      <button id="tabUnd" onclick="showTab('und')">Understand</button>
+      <button id="tabBuild" onclick="showTab('build')">Build</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+<section id="look" class="stack">
+  <div class="card">
+    <h2>Answer, then argue with yourself, then answer again</h2>
+    <p>
+      Metacognitive Prompting borrows the shape of human self-monitoring. Instead
+      of one shot at an answer, the model walks five stages: <b>understand</b> the
+      question, form a <b>preliminary</b> answer, <b>critique</b> that answer,
+      <b>decide</b>, and finally report <b>confidence</b>. The claim is that the
+      critique stage catches the errors the first pass made.
+    </p>
+    <p>
+      To measure that claim rather than assert it, everything on this page runs
+      against a deterministic model with <b>known, deliberate failure modes</b> and
+      a task set whose answers are known. No API, no sampling, no luck &mdash;
+      re-run it and you get the same numbers.
+    </p>
+    <div class="ctl">
+      <span class="lbl" style="margin:0">TASK</span>
+      <input type="range" id="qR" min="0" max="16" value="0" />
+      <input type="number" id="qN" min="0" max="16" value="0" />
+    </div>
+    <div class="grid2">
+      <div>
+        <p class="lbl">THE QUESTION</p>
+        <pre id="qText"></pre>
+        <div class="grid2" style="margin-top:14px">
+          <div><p class="lbl">TRUE ANSWER</p><p class="big" id="kTrue">&mdash;</p></div>
+          <div><p class="lbl">FINAL ANSWER</p><p class="big" id="kFinal">&mdash;</p><p class="note" id="kFinalNote"></p></div>
+        </div>
+      </div>
+      <div id="stages"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Does the critique stage earn its tokens?</h2>
+    <p>
+      Across the whole task set, compared against a single-pass baseline. The two
+      columns that matter are not the accuracies &mdash; they are the <b>flips</b>:
+      how often revision rescued a wrong answer, and how often it ruined a right one.
+    </p>
+    <div class="tblwrap"><table class="num" id="tFlip"></table></div>
+    <p class="note" id="flipNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>The stage that does not pay for itself</h2>
+    <p>
+      Stage five asks the model how confident it is. That number is only worth
+      having if it tracks whether the answer is actually right. Below, the tasks
+      are bucketed by the confidence the model reported, against how often it was
+      correct in that bucket. A calibrated reporter sits on the diagonal.
+    </p>
+    <div class="tblwrap"><table class="num" id="tCal"></table></div>
+    <p class="note" id="calNote"></p>
+  </div>
+</section>
+
+<section id="und" class="stack hidden">
+  <div class="card">
+    <h2>The five stages, and what each one can and cannot see</h2>
+    <div class="stage"><b>1 &middot; Comprehension</b><p>
+      Restate the question in the model's own terms. This is where a misread is
+      caught &mdash; and only a misread. It has no access to the answer yet, so it
+      can never fix an arithmetic slip.</p></div>
+    <div class="stage"><b>2 &middot; Preliminary judgment</b><p>
+      The first answer, formed from the comprehension and nothing else. This is
+      what a single-pass prompt would have returned.</p></div>
+    <div class="stage"><b>3 &middot; Critical evaluation</b><p>
+      Look for a specific, nameable defect in stage 2. The word <i>specific</i> is
+      load-bearing: a critique that produces no named defect must not be allowed to
+      change anything.</p></div>
+    <div class="stage"><b>4 &middot; Final decision</b><p>
+      Revise only if stage 3 named a defect. Otherwise keep stage 2 verbatim.</p></div>
+    <div class="stage"><b>5 &middot; Confidence</b><p>
+      Report how sure the model is. The stage is cheap to add and easy to believe,
+      which is exactly why it needs measuring.</p></div>
+  </div>
+
+  <div class="card">
+    <h2>Why stage 4 must be gated</h2>
+    <p>
+      The tempting implementation lets stage 3 always produce a critique and stage
+      4 always act on it. Every answer gets revised, and the entire gain evaporates:
+      the pipeline lands back level with having run no stages at all. It is as
+      likely to talk itself out of a correct answer as into one &mdash; and it even
+      undoes the fixes stage 1 had already made.
+    </p>
+    <div class="tblwrap"><table class="num" id="tGate"></table></div>
+    <p class="note" id="gateNote"></p>
+  </div>
+
+  <div class="card">
+    <h2>Where the gains actually come from</h2>
+    <p>
+      Broken out by the kind of defect each task was designed to trigger. The
+      stages are not interchangeable: comprehension fixes misreads and nothing
+      else, critique fixes rule slips and nothing else.
+    </p>
+    <div class="tblwrap"><table class="num" id="tKind"></table></div>
+    <p class="note" id="kindNote"></p>
+  </div>
+</section>
+
+<section id="build" class="stack hidden">
+  <div class="card">
+    <h2>The pipeline</h2>
+    <pre id="codeEngine"></pre>
+  </div>
+  <div class="card">
+    <h2>Self-check</h2>
+    <p class="note" style="margin:0 0 10px">
+      Running in your browser now, against the same engine as the tables above.
+    </p>
+    <div id="selftest"></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p style="margin:0">
+      PromptFromZero &middot; Day 81 &middot; Metacognitive Prompting.
+      Tomorrow: Rephrase-and-Respond &mdash; and whether restating the question is the whole of the gain.
+    </p>
+  </div>
+</footer>
+</div>
+
+<script>
+// ===== ENGINE:BEGIN =====
+const ENGINE = (() => {
+
+  // ========================================================================
+  // A deterministic stand-in for a language model.
+  //
+  // Nothing here samples. The "model" is a small rule engine with three
+  // DELIBERATE failure modes, so that the effect of each metacognitive stage
+  // can be measured rather than asserted:
+  //
+  //   misread    - it keys on a surface word and solves the wrong problem
+  //   ruleslip   - it applies the right shape of rule with one step wrong
+  //   overreach  - it answers confidently where the question is underdetermined
+  //
+  // Comprehension can only ever catch a misread. Critique can only ever catch
+  // a rule slip. Nothing catches overreach, which is the honest part.
+  // ========================================================================
+
+  const TASKS = [
+    { id: 1, kind: "misread", q: "A shelf holds 12 books. 3 are removed and 5 are added. How many books are NOT on the shelf that were there at the start?",
+      answer: 3, surface: "how many books", surfaceAnswer: 14,
+      restated: "Of the 12 original books, how many were removed?" },
+    { id: 2, kind: "ruleslip", q: "A train leaves at 09:40 and the journey takes 1 hour 35 minutes. What time does it arrive?",
+      answer: "11:15", surface: null, slip: "10:75",
+      restated: "Add 1h35m to 09:40, carrying minutes past 60 into the hour." },
+    { id: 3, kind: "misread", q: "Sam is twice as old as Kim was 3 years ago. Kim is 11 now. How old is Sam?",
+      answer: 16, surface: "twice as old as Kim", surfaceAnswer: 22,
+      restated: "Kim three years ago was 8; Sam is twice that." },
+    { id: 4, kind: "ruleslip", q: "What is 15% of 240, decreased by 10%?",
+      answer: 32.4, surface: null, slip: 36,
+      restated: "Take 15% of 240 first, then remove a tenth of THAT, not of 240." },
+    { id: 5, kind: "overreach", q: "A box contains red and blue marbles. You draw 3 and all are red. How many marbles are in the box?",
+      answer: null, surface: null, restated: "The box size was never stated." },
+    { id: 6, kind: "ruleslip", q: "A rectangle is 7 by 4. Its perimeter is what?",
+      answer: 22, surface: null, slip: 28,
+      restated: "Perimeter is 2(w+h), not w times h." },
+    { id: 7, kind: "misread", q: "Of 30 students, 18 play football and 12 play ONLY chess. How many play football only, if 5 play both?",
+      answer: 13, surface: "18 play football", surfaceAnswer: 18,
+      restated: "Football only is 18 minus the 5 who play both." },
+    { id: 8, kind: "ruleslip", q: "Halve 48, then halve the result, then add 6.",
+      answer: 18, surface: null, slip: 30,
+      restated: "Two halvings before the addition, not one." },
+    { id: 9, kind: "overreach", q: "Two coins were flipped and at least one was heads. What was the second coin?",
+      answer: null, surface: null, restated: "The second coin is not determined by that statement." },
+    { id: 10, kind: "misread", q: "A jug holds 2 litres. You pour out 400ml three times. How much have you POURED OUT?",
+      answer: 1200, surface: "jug holds 2 litres", surfaceAnswer: 800,
+      restated: "Total poured is 3 times 400ml, not what remains." },
+    { id: 11, kind: "ruleslip", q: "If 3x + 6 = 21, what is x?",
+      answer: 5, surface: null, slip: 9,
+      restated: "Subtract 6 before dividing by 3, not after." },
+    { id: 12, kind: "misread", q: "A film starts at 19:50 and runs 95 minutes. How long after 21:00 does it end?",
+      answer: 25, surface: "starts at 19:50", surfaceAnswer: 85,
+      restated: "Find the end time, then measure from 21:00." },
+
+    // Not every question is a trap, and a task set made only of traps cannot
+    // measure harm - there is nothing left to ruin. These are the ones the first
+    // pass already gets right, and they are what the ungated control destroys.
+    { id: 13, kind: "clean", q: "What is 8 times 7?", answer: 56, restated: "A single multiplication." },
+    { id: 14, kind: "clean", q: "A bus seats 52. How many seats are free if 39 are taken?",
+      answer: 13, restated: "One subtraction, stated plainly." },
+    { id: 15, kind: "clean", q: "What is the perimeter of a square of side 9?",
+      answer: 36, restated: "Four equal sides." },
+    { id: 16, kind: "clean", q: "Round 4.62 to one decimal place.",
+      answer: 4.6, restated: "Standard rounding, no ambiguity." },
+    { id: 17, kind: "clean", q: "How many minutes are there in 3 hours and 20 minutes?",
+      answer: 200, restated: "Convert hours to minutes and add." }
+  ];
+
+  // ---------------------------------------------------------------- stage 1
+  // Comprehension: restate the task. Catches a misread, and only a misread.
+  function comprehend(task) {
+    const misread = task.kind === "misread";
+    return {
+      stage: 1,
+      restatement: task.restated,
+      spottedMisread: misread,
+      note: misread
+        ? "the surface phrase “" + task.surface + "” is not what is being asked"
+        : "the question says what it appears to say"
+    };
+  }
+
+  // ---------------------------------------------------------------- stage 2
+  // Preliminary judgment. Without comprehension it falls for the surface read.
+  function preliminary(task, comprehension) {
+    let answer;
+    if (task.kind === "misread") {
+      answer = (comprehension && comprehension.spottedMisread) ? task.answer : task.surfaceAnswer;
+    } else if (task.kind === "ruleslip") {
+      answer = task.slip;
+    } else if (task.kind === "clean") {
+      answer = task.answer;                      // nothing to get wrong
+    } else {
+      answer = "a number";                       // overreach: it answers anyway
+    }
+    return { stage: 2, answer, note: "first pass" };
+  }
+
+  // ---------------------------------------------------------------- stage 3
+  // Critical evaluation. Produces a NAMED defect or nothing at all. The whole
+  // design rests on it being allowed to return nothing.
+  // Critique sees the ANSWER, not the question's intent. That is a real limit:
+  // an answer carries no evidence that some OTHER question was answered, so a
+  // misread is invisible here. Only stage 1 holds that evidence. Giving this
+  // stage a misread branch would make stage 1 dead weight - and would be a lie
+  // about what a critic can see.
+  function critique(task, prelim) {
+    if (task.kind === "ruleslip" && prelim.answer === task.slip) {
+      return { stage: 3, defect: "rule applied with one step wrong", suggests: task.answer };
+    }
+    return { stage: 3, defect: null, suggests: null };
+  }
+
+  // ---------------------------------------------------------------- stage 4
+  // Final decision. Revise ONLY on a named defect.
+  function decide(prelim, crit, { gated = true } = {}) {
+    if (gated) {
+      if (!crit.defect) return { stage: 4, answer: prelim.answer, revised: false };
+      return { stage: 4, answer: crit.suggests, revised: true };
+    }
+    // the ungated control: always "improve" something, even with nothing named
+    const alt = crit.suggests !== null ? crit.suggests : perturb(prelim.answer);
+    return { stage: 4, answer: alt, revised: true };
+  }
+
+  // A deliberate, deterministic wrong turn - what an ungated revision does when
+  // it has been told to revise and has nothing real to say.
+  function perturb(a) {
+    if (typeof a === "number") return a + 1;
+    if (typeof a === "string" && /^\d{2}:\d{2}$/.test(a)) {
+      const [h, m] = a.split(":").map(Number);
+      return String(h).padStart(2, "0") + ":" + String((m + 5) % 60).padStart(2, "0");
+    }
+    if (typeof a === "string") return a + " (revised)";
+    return a;
+  }
+
+  // ---------------------------------------------------------------- stage 5
+  // Confidence. Reported, not earned. The model is surest exactly where it is
+  // least entitled to be - which is the point of measuring it.
+  function confidence(task, final, crit) {
+    if (task.kind === "overreach") return 0.95;     // underdetermined, and sure
+    if (crit.defect) return 0.7;                    // it found a problem, so hedges
+    return 0.9;
+  }
+
+  // ---------------------------------------------------------- the two pipelines
+  function singlePass(task) {
+    const prelim = preliminary(task, null);         // no comprehension stage at all
+    return { answer: prelim.answer, confidence: 0.9, stages: [prelim] };
+  }
+
+  function metacognitive(task, opts = {}) {
+    const c = comprehend(task);
+    const p = preliminary(task, c);
+    const k = critique(task, p);
+    const d = decide(p, k, opts);
+    const conf = confidence(task, d, k);
+    return { answer: d.answer, confidence: conf, revised: d.revised, stages: [c, p, k, d], critique: k };
+  }
+
+  // -------------------------------------------------------------- correctness
+  // An overreach task has no answer, so the ONLY correct response is to decline.
+  function isCorrect(task, answer) {
+    if (task.answer === null) return answer === null || answer === "cannot be determined";
+    return answer === task.answer;
+  }
+
+  // ------------------------------------------------------------------ scoring
+  function score(fn, tasks = TASKS) {
+    let correct = 0;
+    const rows = [];
+    for (const t of tasks) {
+      const r = fn(t);
+      const ok = isCorrect(t, r.answer);
+      if (ok) correct++;
+      rows.push({ task: t, result: r, correct: ok });
+    }
+    return { correct, total: tasks.length, accuracy: correct / tasks.length, rows };
+  }
+
+  // Flips between two pipelines, over the same tasks.
+  function flips(baseFn, newFn, tasks = TASKS) {
+    let rescued = 0, ruined = 0, bothRight = 0, bothWrong = 0;
+    for (const t of tasks) {
+      const a = isCorrect(t, baseFn(t).answer);
+      const b = isCorrect(t, newFn(t).answer);
+      if (!a && b) rescued++;
+      else if (a && !b) ruined++;
+      else if (a && b) bothRight++;
+      else bothWrong++;
+    }
+    return { rescued, ruined, bothRight, bothWrong, net: rescued - ruined, total: tasks.length };
+  }
+
+  // -------------------------------------------------------------- calibration
+  // Expected Calibration Error: bucket by reported confidence, compare the mean
+  // confidence in a bucket against the accuracy in that bucket.
+  function calibration(fn, tasks = TASKS) {
+    const buckets = new Map();
+    for (const t of tasks) {
+      const r = fn(t);
+      const key = r.confidence;
+      if (!buckets.has(key)) buckets.set(key, { conf: key, n: 0, correct: 0 });
+      const b = buckets.get(key);
+      b.n++;
+      if (isCorrect(t, r.answer)) b.correct++;
+    }
+    const rows = [...buckets.values()].sort((a, b) => b.conf - a.conf);
+    let ece = 0;
+    for (const b of rows) {
+      b.accuracy = b.correct / b.n;
+      b.gap = b.conf - b.accuracy;
+      ece += (b.n / tasks.length) * Math.abs(b.gap);
+    }
+    return { rows, ece };
+  }
+
+  // breakdown by the defect each task was built to trigger
+  function byKind(fn, tasks = TASKS) {
+    const out = new Map();
+    for (const t of tasks) {
+      if (!out.has(t.kind)) out.set(t.kind, { kind: t.kind, n: 0, correct: 0 });
+      const b = out.get(t.kind);
+      b.n++;
+      if (isCorrect(t, fn(t).answer)) b.correct++;
+    }
+    return [...out.values()];
+  }
+
+  return {
+    TASKS, comprehend, preliminary, critique, decide, perturb, confidence,
+    singlePass, metacognitive, isCorrect, score, flips, calibration, byKind
+  };
+})();
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selftest").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+const esc = (s) => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const fmt = (v) => v === null ? "cannot be determined" : String(v);
+
+// ------------------------------------------------------------------ the picker
+function render() {
+  const i = Math.max(0, Math.min(ENGINE.TASKS.length - 1, parseInt(el("qN").value, 10) || 0));
+  el("qR").value = String(i); el("qN").value = String(i);
+  const task = ENGINE.TASKS[i];
+  const r = ENGINE.metacognitive(task);
+
+  el("qText").textContent = task.q;
+  el("kTrue").textContent = fmt(task.answer);
+  const ok = ENGINE.isCorrect(task, r.answer);
+  el("kFinal").innerHTML = '<span class="' + (ok ? "ok" : "warn") + '">' + esc(fmt(r.answer)) + "</span>";
+  el("kFinalNote").textContent = ok ? "correct" : "wrong - designed to be, for a " + task.kind;
+
+  const [c, p, k, d] = r.stages;
+  el("stages").innerHTML = [
+    ['1 &middot; Comprehension', esc(c.restatement) + "<br><i>" + esc(c.note) + "</i>"],
+    ['2 &middot; Preliminary judgment', "answers <b>" + esc(fmt(p.answer)) + "</b>"],
+    ['3 &middot; Critical evaluation', k.defect
+      ? "names a defect: <b>" + esc(k.defect) + "</b>, suggests <b>" + esc(fmt(k.suggests)) + "</b>"
+      : "<i>no defect named - and so nothing may change</i>"],
+    ['4 &middot; Final decision', d.revised
+      ? "revised to <b>" + esc(fmt(d.answer)) + "</b>"
+      : "keeps <b>" + esc(fmt(d.answer)) + "</b> unchanged"],
+    ['5 &middot; Confidence', "reports <b>" + (r.confidence * 100).toFixed(0) + "%</b>" +
+      (task.kind === "overreach" ? " &mdash; on a question with no answer" : "")]
+  ].map(([h, b]) => '<div class="stage"><b>' + h + "</b><p>" + b + "</p></div>").join("");
+}
+
+// ---------------------------------------------------------------- the tables
+const BASE = ENGINE.score((t) => ENGINE.singlePass(t));
+const MP = ENGINE.score((t) => ENGINE.metacognitive(t));
+const MPU = ENGINE.score((t) => ENGINE.metacognitive(t, { gated: false }));
+const F = ENGINE.flips((t) => ENGINE.singlePass(t), (t) => ENGINE.metacognitive(t));
+const FU = ENGINE.flips((t) => ENGINE.singlePass(t), (t) => ENGINE.metacognitive(t, { gated: false }));
+
+{
+  table("tFlip", ["pipeline", "correct", "accuracy", "rescued a wrong answer", "ruined a right one", "net"], [
+    { cls: "", cells: ["single pass (baseline)", BASE.correct + " / " + BASE.total,
+      (BASE.accuracy * 100).toFixed(1) + "%", "&mdash;", "&mdash;", "&mdash;"] },
+    { cls: "here", cells: ["metacognitive, gated", MP.correct + " / " + MP.total,
+      (MP.accuracy * 100).toFixed(1) + "%", F.rescued, F.ruined,
+      (F.net >= 0 ? "+" : "") + F.net] },
+    { cls: "", cells: ["metacognitive, ungated (CONTROL)", MPU.correct + " / " + MPU.total,
+      (MPU.accuracy * 100).toFixed(1) + "%", FU.rescued, FU.ruined,
+      (FU.net >= 0 ? "+" : "") + FU.net] }
+  ]);
+  el("flipNote").innerHTML =
+    "Gated revision rescues <b>" + F.rescued + "</b> and ruins <b>" + F.ruined +
+    "</b>. Ungated revision rescues the same " + FU.rescued + " and ruins <b>" + FU.ruined +
+    "</b> - the extra damage is entirely answers that were already right.";
+}
+
+{
+  const CAL = ENGINE.calibration((t) => ENGINE.metacognitive(t));
+  table("tCal", ["reported confidence", "tasks", "actually correct", "accuracy", "gap", "reading"],
+    CAL.rows.map((b) => ({
+      cls: Math.abs(b.gap) > 0.2 ? "here" : "",
+      cells: [(b.conf * 100).toFixed(0) + "%", b.n, b.correct, (b.accuracy * 100).toFixed(0) + "%",
+        (b.gap >= 0 ? "+" : "") + (b.gap * 100).toFixed(0) + " pts",
+        b.gap > 0.15 ? '<span class="pill bad">overconfident</span>'
+          : b.gap < -0.15 ? '<span class="pill bad">underconfident</span>'
+          : '<span class="pill good">about right</span>']
+    })));
+  el("calNote").innerHTML =
+    "Expected calibration error <b>" + (CAL.ece * 100).toFixed(1) +
+    " points</b>. The highest-confidence bucket is the <b>least</b> accurate one, because the " +
+    "underdetermined questions are exactly the ones the model has nothing to hesitate about. " +
+    "Stage five is cheap, plausible, and on this task set actively misleading.";
+}
+
+{
+  table("tGate", ["revision policy", "revised", "of which were already right", "accuracy after", "verdict"], [
+    { cls: "here", cells: ["only on a named defect", MP.rows.filter((r) => r.result.revised).length,
+      MP.rows.filter((r) => r.result.revised && ENGINE.isCorrect(r.task, ENGINE.singlePass(r.task).answer)).length,
+      (MP.accuracy * 100).toFixed(1) + "%", '<span class="pill good">keep</span>'] },
+    { cls: "", cells: ["always revise", MPU.rows.filter((r) => r.result.revised).length,
+      MPU.rows.filter((r) => r.result.revised && ENGINE.isCorrect(r.task, ENGINE.singlePass(r.task).answer)).length,
+      (MPU.accuracy * 100).toFixed(1) + "%", '<span class="pill bad">harmful</span>'] }
+  ]);
+  el("gateNote").innerHTML =
+    "The ungated pipeline touches every answer, including the <b>" +
+    MPU.rows.filter((r) => r.result.revised && ENGINE.isCorrect(r.task, ENGINE.singlePass(r.task).answer)).length +
+    "</b> that were already correct. Asking a model to find fault will always produce fault.";
+}
+
+{
+  const kb = ENGINE.byKind((t) => ENGINE.singlePass(t));
+  const km = ENGINE.byKind((t) => ENGINE.metacognitive(t));
+  table("tKind", ["defect the task triggers", "tasks", "single pass", "metacognitive", "gain", "which stage got it"],
+    kb.map((b, i) => {
+      const m = km.find((x) => x.kind === b.kind);
+      const gain = m.correct - b.correct;
+      return {
+        cls: gain > 0 ? "here" : "",
+        cells: [b.kind, b.n, b.correct + " / " + b.n, m.correct + " / " + m.n,
+          (gain > 0 ? "+" : "") + gain,
+          b.kind === "misread" ? "stage 1, comprehension"
+            : b.kind === "ruleslip" ? "stage 3, critique"
+            : "none - nothing in the pipeline looks for it"]
+      };
+    }));
+  el("kindNote").innerHTML =
+    "The stages are not interchangeable. Comprehension cannot fix a rule slip because it runs before any " +
+    "answer exists; critique cannot fix a misread it already inherited. And <b>overreach is caught by neither</b> " +
+    "- five stages of self-examination, and the model still answers a question that has no answer.";
+}
+
+el("codeEngine").textContent = [
+  "// stage 3 is allowed to find nothing. That is the whole design.",
+  String(ENGINE.critique), "",
+  "// stage 4 acts only on a named defect",
+  String(ENGINE.decide), "",
+  "// the pipeline",
+  String(ENGINE.metacognitive)
+].join("\n");
+
+el("qN").addEventListener("input", render);
+el("qR").addEventListener("input", () => { el("qN").value = el("qR").value; render(); });
+render();
+
+// --------------------------------------------------------------- the self-check
+selfCheckPanel((t) => {
+  const T = ENGINE.TASKS;
+
+  // --- the task set is sane
+  t("every task declares a kind the engine knows",
+    T.every((x) => ["misread", "ruleslip", "overreach", "clean"].includes(x.kind)), T.length + " tasks");
+
+  t("all four kinds are represented, traps and non-traps alike", (() => {
+    const kinds = new Set(T.map((x) => x.kind));
+    return kinds.size === 4;
+  })(), [...new Set(T.map((x) => x.kind))].join(", "));
+
+  t("the baseline already gets the clean tasks right - there is something to ruin",
+    T.filter((x) => x.kind === "clean").every((x) => ENGINE.isCorrect(x, ENGINE.singlePass(x).answer)),
+    T.filter((x) => x.kind === "clean").length + " clean tasks");
+
+  t("task ids are unique", new Set(T.map((x) => x.id)).size === T.length);
+
+  t("every misread task carries a distinct surface answer",
+    T.filter((x) => x.kind === "misread").every((x) => x.surfaceAnswer !== x.answer));
+
+  t("every ruleslip task carries a slip that is not the answer",
+    T.filter((x) => x.kind === "ruleslip").every((x) => x.slip !== x.answer));
+
+  t("every overreach task has no answer at all",
+    T.filter((x) => x.kind === "overreach").every((x) => x.answer === null));
+
+  // --- determinism, which is the basis of every number on the page
+  t("the pipeline is deterministic - same input, same output, every time", (() => {
+    for (const task of T) {
+      const a = JSON.stringify(ENGINE.metacognitive(task));
+      for (let i = 0; i < 20; i++) if (JSON.stringify(ENGINE.metacognitive(task)) !== a) return false;
+    }
+    return true;
+  })(), "each task run 20 times");
+
+  t("and so is the baseline", (() => {
+    for (const task of T) {
+      const a = JSON.stringify(ENGINE.singlePass(task));
+      for (let i = 0; i < 20; i++) if (JSON.stringify(ENGINE.singlePass(task)) !== a) return false;
+    }
+    return true;
+  })());
+
+  // --- the stages do what the page says and nothing more
+  t("comprehension flags a misread and never flags anything else",
+    T.every((x) => ENGINE.comprehend(x).spottedMisread === (x.kind === "misread")));
+
+  t("without comprehension, every misread task gets the surface answer",
+    T.filter((x) => x.kind === "misread")
+      .every((x) => ENGINE.preliminary(x, null).answer === x.surfaceAnswer));
+
+  t("with comprehension, every misread task gets the real answer",
+    T.filter((x) => x.kind === "misread")
+      .every((x) => ENGINE.preliminary(x, ENGINE.comprehend(x)).answer === x.answer));
+
+  t("critique names a defect only when there is one to name", (() => {
+    for (const x of T) {
+      const p = ENGINE.preliminary(x, ENGINE.comprehend(x));
+      const k = ENGINE.critique(x, p);
+      if (x.kind === "ruleslip" && !k.defect) return false;
+      if (x.kind !== "ruleslip" && k.defect) return false;
+    }
+    return true;
+  })());
+
+  t("critique is blind to a misread, because an answer cannot reveal one", (() => {
+    return T.filter((x) => x.kind === "misread").every((x) => {
+      const p = ENGINE.preliminary(x, null);            // stage 1 skipped
+      return ENGINE.critique(x, p).defect === null;     // and the misread is invisible
+    });
+  })(), "which is exactly what makes stage 1 load-bearing rather than decorative");
+
+  t("critique never fires twice on an answer it already fixed", (() => {
+    for (const x of T) {
+      const p = ENGINE.preliminary(x, ENGINE.comprehend(x));
+      const k1 = ENGINE.critique(x, p);
+      if (!k1.defect) continue;
+      const k2 = ENGINE.critique(x, { answer: k1.suggests });
+      if (k2.defect) return false;
+    }
+    return true;
+  })(), "the revised answer survives a second pass - no oscillation");
+
+  t("a gated decision leaves the answer alone when nothing was named",
+    T.every((x) => {
+      const p = ENGINE.preliminary(x, ENGINE.comprehend(x));
+      const k = ENGINE.critique(x, p);
+      const d = ENGINE.decide(p, k, { gated: true });
+      return k.defect ? d.revised : (!d.revised && d.answer === p.answer);
+    }));
+
+  t("CONTROL: an ungated decision changes EVERY answer",
+    T.every((x) => {
+      const p = ENGINE.preliminary(x, ENGINE.comprehend(x));
+      const k = ENGINE.critique(x, p);
+      return ENGINE.decide(p, k, { gated: false }).revised === true;
+    }), "including the ones that were already right");
+
+  // --- the headline numbers
+  t("the gated pipeline beats the single-pass baseline",
+    MP.correct > BASE.correct, BASE.correct + " -> " + MP.correct + " of " + T.length);
+
+  t("and it never ruins an answer the baseline got right",
+    F.ruined === 0, F.rescued + " rescued, " + F.ruined + " ruined");
+
+  t("CONTROL: ungated revision throws away the ENTIRE gain",
+    MPU.correct < MP.correct && MPU.correct <= BASE.correct,
+    "gated " + MP.correct + ", ungated " + MPU.correct + ", baseline " + BASE.correct +
+    " - all five stages, and it lands no better than not running them");
+
+  t("and the damage is specifically to answers that were already right",
+    FU.ruined > 0 && F.ruined === 0,
+    "ungated ruins " + FU.ruined + "; gated ruins " + F.ruined);
+
+  t("the ungated pipeline even ruins answers an EARLIER stage had just fixed", (() => {
+    const mis = T.filter((x) => x.kind === "misread");
+    return mis.every((x) => ENGINE.isCorrect(x, ENGINE.metacognitive(x).answer)) &&
+           mis.every((x) => !ENGINE.isCorrect(x, ENGINE.metacognitive(x, { gated: false }).answer));
+  })(), "comprehension fixes the misreads, then an unconditional revision undoes every one");
+
+  t("the two pipelines agree wherever no defect was named", (() => {
+    for (const x of T) {
+      const r = ENGINE.metacognitive(x);
+      if (r.critique.defect) continue;
+      if (r.answer !== ENGINE.singlePass(x).answer && x.kind !== "misread") return false;
+    }
+    return true;
+  })());
+
+  // --- the honest limit
+  t("overreach survives all five stages", (() => {
+    return T.filter((x) => x.kind === "overreach")
+      .every((x) => !ENGINE.isCorrect(x, ENGINE.metacognitive(x).answer));
+  })(), "no stage in this pipeline looks for an underdetermined question");
+
+  t("and the model is MOST confident exactly there", (() => {
+    const over = T.filter((x) => x.kind === "overreach")
+      .map((x) => ENGINE.metacognitive(x).confidence);
+    const rest = T.filter((x) => x.kind !== "overreach")
+      .map((x) => ENGINE.metacognitive(x).confidence);
+    return Math.min(...over) >= Math.max(...rest);
+  })(), "confidence is highest on the questions with no answer");
+
+  // --- calibration
+  t("the confidence stage is not calibrated", (() => {
+    const c = ENGINE.calibration((x) => ENGINE.metacognitive(x));
+    return c.ece > 0.05;
+  })(), "ECE " + (ENGINE.calibration((x) => ENGINE.metacognitive(x)).ece * 100).toFixed(1) + " points");
+
+  t("the most confident bucket is not the most accurate one", (() => {
+    const rows = ENGINE.calibration((x) => ENGINE.metacognitive(x)).rows;
+    if (rows.length < 2) return false;
+    const top = rows[0];
+    return rows.some((b) => b !== top && b.accuracy > top.accuracy);
+  })());
+
+  t("every calibration bucket accounts for at least one task", (() => {
+    const c = ENGINE.calibration((x) => ENGINE.metacognitive(x));
+    return c.rows.every((b) => b.n >= 1) &&
+           c.rows.reduce((a, b) => a + b.n, 0) === T.length;
+  })());
+
+  t("ECE is zero for a perfectly calibrated reporter", (() => {
+    const perfect = (x) => ({ answer: x.answer, confidence: 1 });
+    const c = ENGINE.calibration(perfect, T.filter((x) => x.answer !== null));
+    return Math.abs(c.ece) < 1e-12;
+  })(), "always right, always sure");
+
+  // --- scoring hygiene
+  t("declining an underdetermined question counts as correct",
+    ENGINE.isCorrect(T.find((x) => x.kind === "overreach"), null) === true);
+
+  t("but answering it does not",
+    ENGINE.isCorrect(T.find((x) => x.kind === "overreach"), 4) === false);
+
+  t("flips partition the task set exactly", (() => {
+    return F.rescued + F.ruined + F.bothRight + F.bothWrong === T.length;
+  })(), F.rescued + " + " + F.ruined + " + " + F.bothRight + " + " + F.bothWrong + " = " + T.length);
+
+  t("perturb() really does move a number", ENGINE.perturb(5) !== 5);
+  t("and really does move a clock time", ENGINE.perturb("11:15") !== "11:15");
+});
+</script>
+</body>
+</html>

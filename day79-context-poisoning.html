@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PromptFromZero &middot; Day 79 &mdash; Context poisoning</title>
+<style>
+  :root { --ink:#0f172a; --sub:#475569; --line:#e2e8f0; --bg:#f8fafc; --accent:#0369a1; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,"Inter",system-ui,sans-serif; margin:0; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:1152px; margin:0 auto; padding:16px; }
+  @media (min-width:768px){ .wrap { padding:24px; } }
+  header { background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; z-index:20; }
+  .kicker { font-size:12px; font-weight:800; letter-spacing:.16em; color:var(--accent); margin:0 0 8px; }
+  h1 { font-size:19px; line-height:1.5; font-weight:900; margin:0 0 12px; }
+  @media (min-width:768px){ h1 { font-size:22px; } }
+  h2 { font-size:24px; font-weight:900; margin:0 0 8px; }
+  h3 { font-size:19px; font-weight:800; margin:20px 0 6px; }
+  p { line-height:1.6; margin:0 0 12px; }
+  .tabs { display:flex; gap:8px; flex-wrap:wrap; }
+  .tabs button { font:inherit; font-size:14px; font-weight:600; padding:8px 20px; border:0; border-radius:8px; background:#f1f5f9; cursor:pointer; }
+  .tabs button.tab-active { background:#0f172a; color:#fff; }
+  .hidden { display:none; }
+  .card { background:#fff; border-radius:16px; box-shadow:0 1px 3px rgba(15,23,42,.12); padding:20px; min-width:0; }
+  .stack > * + * { margin-top:20px; }
+  .grid2 { display:grid; gap:20px; grid-template-columns:minmax(0,1fr); }
+  .grid3 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  .grid4 { display:grid; gap:16px; grid-template-columns:minmax(0,1fr); }
+  @media (min-width:900px){ .grid2 { grid-template-columns:minmax(0,1fr) minmax(0,1fr); } }
+  @media (min-width:768px){ .grid3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+                            .grid4 { grid-template-columns:repeat(4,minmax(0,1fr)); } }
+  .lbl { font-size:12px; font-weight:800; letter-spacing:.1em; color:#64748b; margin:0 0 8px; }
+  .big { font-size:24px; font-weight:900; font-variant-numeric:tabular-nums; margin:0; }
+  .note { font-size:12.5px; color:#475569; margin:8px 0 0; line-height:1.55; }
+  pre { background:#0f172a; color:#e2e8f0; padding:12px; border-radius:8px; font-size:11.5px; overflow-x:auto; line-height:1.35; margin:0; white-space:pre; }
+  code { background:#f1f5f9; padding:1px 4px; border-radius:4px; font-size:.92em; }
+  .tblwrap { overflow-x:auto; }
+  table.num { border-collapse:collapse; width:100%; min-width:520px; }
+  table.num td, table.num th { padding:4px 9px; font-variant-numeric:tabular-nums; }
+  table.num th { font-size:11px; letter-spacing:.05em; color:#64748b; text-align:right; font-weight:700; }
+  table.num th:first-child, table.num td:first-child { text-align:left; }
+  table.num td { text-align:right; font-size:12.5px; border-top:1px solid var(--line); }
+  table.num tr.here td { background:#eef2ff; font-weight:700; }
+  table.num tr.dim td { color:#94a3b8; }
+  table.num td.txt { text-align:left; font-size:11.5px; }
+  .pill { display:inline-block; padding:2px 9px; border-radius:99px; font-size:11px; font-weight:800; }
+  .good { background:#dcfce7; color:#166534; }
+  .stop { background:#fef3c7; color:#92400e; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .ok { color:#166534; font-weight:800; }
+  .warn { color:#991b1b; font-weight:800; }
+  select, input[type=range], input[type=text] { border:1px solid #cbd5e1; border-radius:8px; padding:7px 10px; font:inherit; font-size:13px; width:100%; margin-top:4px; background:#fff; }
+  input[type=range] { padding:0; }
+  label.f { font-size:13px; display:block; }
+  .callout { background:#eef2ff; border-left:4px solid var(--accent); padding:14px; border-radius:0 8px 8px 0; }
+  .callout p { font-size:13.5px; margin:0; }
+  a { color:var(--accent); }
+  .prose { max-width:760px; margin:0 auto; }
+  .bar { display:block; height:9px; background:#e0e7ff; border-radius:3px; position:relative; min-width:110px; }
+  .bar i { position:absolute; top:0; left:0; height:9px; background:var(--accent); border-radius:3px; }
+  .sc { font-size:12.5px; line-height:1.6; }
+  .sc div { display:flex; gap:8px; align-items:baseline; }
+  .sc .m { color:#94a3b8; font-variant-numeric:tabular-nums; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <p class="kicker">PROMPTFROMZERO &middot; DAY 79</p>
+    <h1>
+      &#129504; Context poisoning &mdash; an agent reads a document, writes a note about it into its own
+      context, and reads that note again next turn. The worry everybody states is that a wrong note
+      compounds: once it is in there, everything after is downstream of the mistake.
+      <strong>Nothing here simulates language</strong> &mdash; the engine simulates the LEDGER: 24 facts
+      with declared truth values, twelve sources of stated reliability, a retrieval step and five context
+      policies, over 400 enumerated runs each, so every rate is a count. &#128308; <strong>The context
+      really does become almost entirely self-referential</strong>: by turn 60, <strong>91.3%</strong> of
+      the claims the agent reads are its own earlier notes, and on <strong>5&ndash;8%</strong> of
+      decisions it goes with a note <em>against every source it can see that turn</em>. &#128308;
+      <strong>And it costs nothing measurable.</strong> Keeping every note versus keeping none moves
+      accuracy by between <strong>&minus;0.39 and +1.34 points</strong> across every setting tried, and
+      the sign is usually positive. That holds at 0, 3, 5, 6, 7 and 9 bad sources in twelve. &#128308;
+      <strong>The finding this page was built to demonstrate did not appear</strong>, and the reason is
+      the interesting part: a note inherits the accuracy of the process that wrote it, so re-reading it
+      is neither better nor worse than re-deriving it.
+    </h1>
+
+    <div class="tabs">
+      <button id="tabLook" class="tab-active" onclick="showTab('look')">&#128065; LOOK</button>
+      <button id="tabUnd" onclick="showTab('und')">&#129504; UNDERSTAND</button>
+      <button id="tabBuild" onclick="showTab('build')">&#128296; BUILD</button>
+    </div>
+  </div>
+</header>
+
+<main id="look" class="wrap stack">
+  <div class="callout">
+    <p>
+      <strong>The world is invented and its truth values are declared</strong>, which is the only reason
+      accuracy is computable at all. 24 facts, twelve sources, and a stated number of those sources that
+      assert the opposite of the truth. Every figure below is a count over 400 runs at the settings shown;
+      the exact percentages belong to this fixture.
+    </p>
+  </div>
+
+  <div class="grid4">
+    <div class="card"><p class="lbl">CLAIMS THAT ARE THE AGENT'S OWN NOTES</p><p class="big warn" id="kShare">&mdash;</p>
+      <p class="note">at 60 turns, keeping everything</p></div>
+    <div class="card"><p class="lbl">DECISIONS OVERRIDING EVERY SOURCE</p><p class="big warn" id="kSelf">&mdash;</p>
+      <p class="note">the agent believes its note instead</p></div>
+    <div class="card"><p class="lbl">ACCURACY, KEEPING NO NOTES</p><p class="big" id="kNone">&mdash;</p></div>
+    <div class="card"><p class="lbl">ACCURACY, KEEPING EVERY NOTE</p><p class="big" id="kAll">&mdash;</p>
+      <p class="note" id="kGap"></p></div>
+  </div>
+
+  <div class="card">
+    <h2>Five ways to carry your own notes</h2>
+    <div class="grid2" style="margin:12px 0">
+      <label class="f">Turns: <b id="tv">36</b>
+        <input type="range" id="turns" min="0" max="4" value="2" />
+      </label>
+      <label class="f">Unreliable sources, of twelve: <b id="bv">3</b>
+        <input type="range" id="bad" min="0" max="9" value="3" />
+      </label>
+    </div>
+    <div class="tblwrap"><table class="num" id="tMain"></table></div>
+    <p class="note" id="mainNote"></p>
+  </div>
+</main>
+
+<main id="und" class="wrap stack hidden">
+  <div class="card">
+    <h3 style="margin-top:0">1. The context does fill up with the agent's own writing</h3>
+    <p>
+      This part of the worry is exactly right, and it is worth seeing as a number. A note and a retrieved
+      passage are the same kind of object once they are in the context &mdash; both are text the model
+      reads &mdash; so as the run gets longer, the balance shifts.
+    </p>
+    <div class="tblwrap"><table class="num" id="tShare"></table></div>
+    <p class="note">
+      By turn 60 with sparse retrieval, <strong>91.3%</strong> of the claims the agent is reasoning over
+      were written by the agent. And the self-confirmation column is a real poisoning event, counted: the
+      agent decides against <em>every source visible that turn</em> because its own earlier note says
+      otherwise.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">2. And accuracy does not move</h3>
+    <p>
+      This is the part the page was built to show going the other way. Keeping every note against keeping
+      none, at every reliability level:
+    </p>
+    <div class="tblwrap"><table class="num" id="tBad"></table></div>
+    <p class="note">
+      The gap never exceeds <strong>1.34 points</strong> and is usually positive &mdash; keeping notes is
+      very slightly <em>better</em>. There is no reliability level at which self-generated context makes
+      the agent worse. Turning the note's weight up so it outvotes fresh retrieval does not change it
+      either.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">3. Why, which is the part worth keeping</h3>
+    <p>
+      A note is not an independent claim. It is a <em>record of what the same process concluded from the
+      same kind of evidence</em>, so it carries the accuracy of that process &mdash; no more, and no
+      less. Re-reading it is close to re-deriving it. The context gets more self-referential without
+      getting more wrong.
+    </p>
+    <div class="tblwrap"><table class="num" id="tWhy"></table></div>
+    <p class="note">
+      &#128308; The failure mode the phrase &ldquo;context poisoning&rdquo; describes needs something
+      this fixture does not have: <strong>a note that is wrong for a reason the sources would not
+      reproduce</strong>. An error injected from outside the loop &mdash; a bad tool result, a
+      misread date, a hallucinated identifier &mdash; is a different object from a note that merely
+      summarises what was already there, and only the first one can compound. That distinction is the
+      finding, and it arrived by the measurement refusing to cooperate.
+    </p>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0">What this measures and what it does not</h3>
+    <p class="note" style="margin-top:0">
+      Real: the ledger, the retrieval, the five policies, every count. Invented: the facts, the sources
+      and their reliability, so the exact percentages are properties of this file. Worth stating plainly:
+      <strong>the agent answers only about 4.4 of its 6 questions</strong> &mdash; on the rest, retrieval
+      never surfaced a single claim, so it has nothing to conclude from and does not guess. Every policy
+      leaves the same ones unanswered, so the accuracy comparison above is over identical questions. <strong>Not modelled,
+      and each of them is where the real risk probably lives</strong>: errors that enter from outside the
+      reasoning loop, notes that are more confident than the evidence behind them, and a decision rule
+      that is not a majority vote. This page shows that self-reference alone is not enough to degrade
+      anything &mdash; it does not show that context poisoning never happens.
+    </p>
+  </div>
+</main>
+
+<main id="build" class="wrap stack hidden">
+  <div class="card prose">
+    <h2>How it works</h2>
+    <pre>// a note and a source are the same kind of thing once they are in context
+for (const s of ctxSources) for (const a of s.asserts) claims.push({...a, fromNote: false});
+for (const n of ctxNotes)                              claims.push({...n, fromNote: true});
+
+// and the note the agent writes is derived from exactly those claims
+notes.push({ fact: target, claim: decision, turn: t });</pre>
+    <p class="note">
+      Which is the mechanism and the answer at once: the note is a function of the sources, so it
+      inherits their reliability rather than adding an error of its own.
+    </p>
+    <h3>Self-check</h3>
+    <p class="note">
+      Runs on load. Several are <strong>controls</strong> &mdash; including the one that matters most
+      here: with no unreliable sources the agent is exactly 100% accurate, so the measurement can
+      detect a difference when there is one to detect.
+    </p>
+    <div class="sc" id="selfcheck"></div>
+    <p style="margin-top:20px"><a href="../promptfromzero.php">&larr; PromptFromZero</a></p>
+  </div>
+</main>
+
+<script>
+// ===== ENGINE:BEGIN =====
+// ---------------------------------------------------------------------------
+// Context poisoning. An agent reads a document, writes a note about it into its
+// own context, and reads that note again on the next turn. Once a wrong note is
+// in there, everything after it is downstream of the mistake.
+//
+// Nothing here simulates language. The engine simulates the LEDGER: a set of
+// facts with declared truth values, a retrieval step that pulls some of them
+// in, a note-writing step, and five context policies. Every rate is a count
+// over an enumerated set of runs, so a 0.00% is a zero.
+//
+// DOM-free, clock-free, Math.random-free.
+// ---------------------------------------------------------------------------
+
+class Rng {
+  constructor(seed = 79790) { this.s = seed % 2147483647 || 1; }
+  next() { this.s = (this.s * 48271) % 2147483647; return this.s; }
+  unit() { return (this.next() - 1) / 2147483645; }
+  below(n) { return Math.floor((this.next() * n) / 2147483648); }
+  chance(p) { return this.unit() < p; }
+}
+
+// ---------------------------------------------------------------------------
+// The world: 24 facts. Each has a truth value the agent never sees directly.
+// A "source" is a document that asserts some facts, correctly or not.
+// ---------------------------------------------------------------------------
+const N_FACTS = 24;
+
+function world(rng, badSources = 3) {
+  const truth = [];
+  for (let i = 0; i < N_FACTS; i++) truth.push(rng.chance(0.5));
+  // 12 sources, each asserting 4 facts; a source is either reliable or not
+  const sources = [];
+  for (let s = 0; s < 12; s++) {
+    const reliable = s < 12 - badSources;
+    const asserts = [];
+    for (let k = 0; k < 4; k++) {
+      const f = rng.below(N_FACTS);
+      asserts.push({ fact: f, claim: reliable ? truth[f] : !truth[f] });
+    }
+    sources.push({ id: s, reliable, asserts });
+  }
+  return { truth, sources };
+}
+
+// ---------------------------------------------------------------------------
+// A run: `turns` turns. On each turn the agent retrieves some sources, reads
+// whatever notes its policy kept, and writes a note recording what it now
+// believes about one fact.
+//
+// The note is where poisoning happens: a note is indistinguishable from a
+// retrieved source on the next turn, because both are just text in the context.
+// ---------------------------------------------------------------------------
+function run(rng, policy, opts) {
+  // noteWeight is the crux. At 1 a note is just one more claim and cannot
+  // outvote fresh retrieval. Agents in practice trust their own scratchpad
+  // more than that - it reads as settled - and the page measures what that
+  // costs rather than assuming it.
+  const { turns = 12, retrieve = 2, questions = 6, noteWeight = 1, w } = opts;
+  // The agent is asked about a FIXED set of facts, round-robin, so it revisits
+  // the same question repeatedly - which is what an agent working a task
+  // actually does, and what lets a note compound.
+  const qs = [];
+  while (qs.length < questions) {
+    const f = rng.below(N_FACTS);
+    if (!qs.includes(f)) qs.push(f);
+  }
+  const notes = [];
+  const answer = new Map();
+  let notesUsed = 0, sourcesUsed = 0, selfConfirmed = 0, decisions = 0;
+
+  for (let t = 0; t < turns; t++) {
+    const target = qs[t % qs.length];
+    const ctxNotes = policy.select(notes, t).filter((n) => n.fact === target);
+    const ctxSources = [];
+    for (let r = 0; r < retrieve; r++) ctxSources.push(w.sources[rng.below(w.sources.length)]);
+
+    const claims = [];
+    for (const s of ctxSources) for (const a of s.asserts) if (a.fact === target) claims.push({ ...a, fromNote: false });
+    for (const n of ctxNotes) claims.push({ fact: n.fact, claim: n.claim, fromNote: true });
+    if (!claims.length) continue;
+
+    let yes = 0, no = 0;
+    for (const c of claims) {
+      const wgt = c.fromNote ? noteWeight : 1;
+      if (c.claim) yes += wgt; else no += wgt;
+      if (c.fromNote) notesUsed++; else sourcesUsed++;
+    }
+    const lastClaim = claims[claims.length - 1].claim;
+    const decision = yes === no ? lastClaim : yes > no;
+    decisions++;
+    // did the agent simply repeat its own note, with no source agreeing?
+    const srcClaims = claims.filter((c) => !c.fromNote);
+    if (ctxNotes.length && srcClaims.length && srcClaims.every((c) => c.claim !== decision)) selfConfirmed++;
+    answer.set(target, decision);
+    notes.push({ fact: target, claim: decision, turn: t });
+  }
+
+  let right = 0, wrong = 0;
+  for (const [f, c] of answer) (c === w.truth[f] ? right++ : wrong++);
+  const wrongNotes = notes.filter((n) => n.claim !== w.truth[n.fact]).length;
+  return {
+    right, wrong, answered: answer.size, notes: notes.length, wrongNotes,
+    accuracy: answer.size ? right / answer.size : 0,
+    notesUsed, sourcesUsed, selfConfirmed, decisions,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Five context policies. Each decides which of its own past notes to carry.
+// ---------------------------------------------------------------------------
+const POLICIES = [
+  { key: "none", label: "keep no notes - re-read the sources every turn", select: () => [] },
+  { key: "all", label: "keep every note", select: (notes) => notes },
+  { key: "recent", label: "keep the last 3 notes", select: (notes) => notes.slice(-3) },
+  {
+    key: "first-only",
+    label: "keep the FIRST note about each fact",
+    select: (notes) => {
+      const seen = new Set(); const out = [];
+      for (const n of notes) if (!seen.has(n.fact)) { seen.add(n.fact); out.push(n); }
+      return out;
+    },
+  },
+  {
+    key: "last-only",
+    label: "keep the LATEST note about each fact",
+    select: (notes) => {
+      const m = new Map();
+      for (const n of notes) m.set(n.fact, n);
+      return [...m.values()];
+    },
+  },
+];
+
+function measure(policy, opts, runs, seed) {
+  const rng = new Rng(seed);
+  let acc = 0, n = 0, wrongNotes = 0, answered = 0, notesUsed = 0, sourcesUsed = 0;
+  let perfect = 0, selfConfirmed = 0, decisions = 0;
+  for (let i = 0; i < runs; i++) {
+    const w = world(rng, opts.badSources === undefined ? 3 : opts.badSources);
+    const r = run(rng, policy, { ...opts, w });
+    if (!r.answered) continue;
+    n++;
+    acc += r.accuracy;
+    answered += r.answered;
+    wrongNotes += r.wrongNotes;
+    notesUsed += r.notesUsed;
+    sourcesUsed += r.sourcesUsed;
+    selfConfirmed += r.selfConfirmed;
+    decisions += r.decisions;
+    if (r.wrong === 0) perfect++;
+  }
+  return {
+    key: policy.key, label: policy.label, runs: n,
+    accuracy: n ? acc / n : 0,
+    perfect,
+    wrongNotesPerRun: n ? wrongNotes / n : 0,
+    answeredPerRun: n ? answered / n : 0,
+    noteShare: (notesUsed + sourcesUsed) ? notesUsed / (notesUsed + sourcesUsed) : 0,
+    // decisions where the agent went with its own note against every source
+    // it could see this turn
+    selfConfirmRate: decisions ? selfConfirmed / decisions : 0,
+    selfConfirmed, decisions,
+  };
+}
+
+function report(opts = { turns: 12, retrieve: 2, questions: 6, noteWeight: 1 }, runs = 400, seed = 8181) {
+  return POLICIES.map((p) => measure(p, opts, runs, seed));
+}
+
+const ENGINE = { Rng, N_FACTS, world, run, POLICIES, measure, report };
+if (typeof module !== "undefined" && module.exports) module.exports = ENGINE;
+
+// ===== ENGINE:END =====
+</script>
+
+<script>
+function showTab(name) {
+  for (const t of ["look", "und", "build"]) document.getElementById(t).classList.toggle("hidden", t !== name);
+  document.getElementById("tabLook").classList.toggle("tab-active", name === "look");
+  document.getElementById("tabUnd").classList.toggle("tab-active", name === "und");
+  document.getElementById("tabBuild").classList.toggle("tab-active", name === "build");
+}
+const el = (id) => document.getElementById(id);
+function table(id, head, rows) {
+  el(id).innerHTML =
+    "<tr>" + head.map((h) => "<th>" + h + "</th>").join("") + "</tr>" +
+    rows.map((r) => "<tr" + (r.cls ? ' class="' + r.cls + '"' : "") + ">" +
+      r.cells.map((c, i) => "<td" + (i === 0 ? ' class="txt"' : "") + ">" + c + "</td>").join("") + "</tr>").join("");
+}
+function selfCheckPanel(fn) {
+  const out = []; let n = 0, bad = 0;
+  const t = (label, cond, detail = "") => {
+    n += 1; if (!cond) bad += 1;
+    out.push('<div><span class="' + (cond ? "ok" : "warn") + '">' + (cond ? "PASS" : "FAIL") +
+      '</span><span>' + label + '</span><span class="m">' + detail + "</span></div>");
+  };
+  fn(t);
+  el("selfcheck").innerHTML =
+    '<p class="note" style="margin:0 0 8px"><b class="' + (bad ? "warn" : "ok") + '">' +
+    (n - bad) + " of " + n + " checks pass</b>" + (bad ? " &mdash; " + bad + " FAILED" : "") + ".</p>" + out.join("");
+}
+
+const TURNS = [6, 18, 36, 60, 90];
+const cache = new Map();
+function rep(turns, bad, retrieve = 2) {
+  const k = turns + "|" + bad + "|" + retrieve;
+  if (!cache.has(k)) cache.set(k, ENGINE.report({ turns, retrieve, questions: 6, badSources: bad }));
+  return cache.get(k);
+}
+const by = (R, k) => R.find((r) => r.key === k);
+const pc = (x) => (x * 100).toFixed(2) + "%";
+
+const SPARSE = rep(60, 3, 1);
+el("kShare").textContent = pc(by(SPARSE, "all").noteShare);
+el("kSelf").textContent = pc(by(SPARSE, "all").selfConfirmRate);
+
+function render() {
+  const turns = TURNS[parseInt(el("turns").value, 10)];
+  const bad = parseInt(el("bad").value, 10);
+  el("tv").textContent = turns;
+  el("bv").textContent = bad;
+  const R = rep(turns, bad);
+
+  table("tMain",
+    ["policy", "accuracy", "runs with no error", "claims that are its own notes", "overrode every source"],
+    R.map((p) => ({
+      cls: p.key === "all" ? "here" : "",
+      cells: [p.label, "<b>" + pc(p.accuracy) + "</b>", p.perfect + " / " + p.runs,
+        pc(p.noteShare), pc(p.selfConfirmRate)],
+    })));
+
+  const none = by(R, "none"), all = by(R, "all");
+  const gap = (all.accuracy - none.accuracy) * 100;
+  el("kNone").textContent = pc(none.accuracy);
+  el("kAll").textContent = pc(all.accuracy);
+  el("kGap").innerHTML = "a gap of <b>" + (gap >= 0 ? "+" : "") + gap.toFixed(2) + "</b> points";
+  el("mainNote").innerHTML = "At " + turns + " turns with " + bad + " unreliable sources of twelve, keeping every note is worth <b>" +
+    (gap >= 0 ? "+" : "") + gap.toFixed(2) + " points</b> against keeping none" +
+    (Math.abs(gap) < 2 ? " &mdash; which is nothing." : ".");
+}
+el("turns").addEventListener("input", render);
+el("bad").addEventListener("input", render);
+render();
+
+table("tShare", ["turns", "retrieval per turn", "claims that are its own notes", "overrode every source", "accuracy"],
+  [[6, 2], [18, 2], [36, 2], [60, 2], [36, 1], [60, 1]].map(([t, r]) => {
+    const a = by(rep(t, 3, r), "all");
+    return {
+      cls: a.noteShare > 0.9 ? "here" : "",
+      cells: [t, r, "<b>" + pc(a.noteShare) + "</b>", pc(a.selfConfirmRate), pc(a.accuracy)],
+    };
+  }));
+
+table("tBad", ["unreliable sources of twelve", "keeping no notes", "keeping every note", "the gap", "verdict"],
+  [0, 3, 5, 6, 7, 9].map((bad) => {
+    const R = rep(36, bad);
+    const none = by(R, "none"), all = by(R, "all");
+    const gap = (all.accuracy - none.accuracy) * 100;
+    return {
+      cls: bad === 0 ? "dim" : "",
+      cells: [bad, pc(none.accuracy), pc(all.accuracy),
+        "<b>" + (gap >= 0 ? "+" : "") + gap.toFixed(2) + "</b>",
+        bad === 0 ? '<span class="pill good">nothing to get wrong</span>'
+          : Math.abs(gap) < 2 ? '<span class="pill good">no measurable effect</span>'
+          : '<span class="pill bad">a real difference</span>'],
+    };
+  }));
+
+table("tWhy", ["", "what it is", "what it inherits"],
+  [
+    { cells: ["a retrieved source", "an independent claim about the world", "its own reliability"] },
+    { cls: "here", cells: ["a note the agent wrote", "a record of what this same process concluded from sources like these",
+      "<b>the accuracy of that process &mdash; no more, and no less</b>"] },
+    { cells: ["an error from outside the loop", "a bad tool result, a misread date, an invented identifier",
+      '<span class="warn">nothing the sources would reproduce &mdash; this is the one that could compound</span>'] },
+  ]);
+
+selfCheckPanel((t) => {
+  t("the generator reproduces from a seed", (() => {
+    const a = new ENGINE.Rng(4), b = new ENGINE.Rng(4);
+    for (let i = 0; i < 200; i++) if (a.next() !== b.next()) return false;
+    return true;
+  })());
+  t("the draw does not alternate on every step", (() => {
+    const r = new ENGINE.Rng(1); const d = [];
+    for (let i = 0; i < 2000; i++) d.push(r.below(2));
+    return d.slice(1).filter((v, i) => v !== d[i]).length < 1999;
+  })());
+  t("the world has 24 facts and 12 sources", (() => {
+    const w = ENGINE.world(new ENGINE.Rng(2), 3);
+    return w.truth.length === 24 && w.sources.length === 12;
+  })());
+  t("an unreliable source asserts the opposite of the truth", (() => {
+    const w = ENGINE.world(new ENGINE.Rng(2), 3);
+    const bad = w.sources.filter((s) => !s.reliable);
+    return bad.length === 3 && bad.every((s) => s.asserts.every((a) => a.claim === !w.truth[a.fact]));
+  })());
+  t("a reliable one asserts the truth", (() => {
+    const w = ENGINE.world(new ENGINE.Rng(2), 3);
+    return w.sources.filter((s) => s.reliable).every((s) => s.asserts.every((a) => a.claim === w.truth[a.fact]));
+  })());
+
+  t("CONTROL: with no unreliable sources the agent is exactly 100% right",
+    by(rep(36, 0), "all").accuracy === 1 && by(rep(36, 0), "none").accuracy === 1,
+    "so the measurement CAN detect a difference");
+  t("CONTROL: with nine unreliable sources it is far worse",
+    by(rep(36, 9), "none").accuracy < 0.3, pc(by(rep(36, 9), "none").accuracy));
+
+  t("the context really does become mostly self-written",
+    by(SPARSE, "all").noteShare > 0.9, pc(by(SPARSE, "all").noteShare));
+  t("keeping no notes leaves it at exactly zero",
+    by(SPARSE, "none").noteShare === 0);
+  t("the agent does override every visible source, sometimes",
+    by(SPARSE, "all").selfConfirmRate > 0.03, pc(by(SPARSE, "all").selfConfirmRate));
+  t("...and never does when it keeps no notes",
+    by(SPARSE, "none").selfConfirmRate === 0);
+
+  t("keeping notes never costs more than 2 points at any reliability", (() => {
+    for (const bad of [0, 3, 5, 6, 7, 9]) {
+      const R = rep(36, bad);
+      const gap = (by(R, "all").accuracy - by(R, "none").accuracy) * 100;
+      if (gap < -2) return false;
+    }
+    return true;
+  })());
+  t("...and never gains more than 2 either", (() => {
+    for (const bad of [0, 3, 5, 6, 7, 9]) {
+      const R = rep(36, bad);
+      const gap = (by(R, "all").accuracy - by(R, "none").accuracy) * 100;
+      if (gap > 2) return false;
+    }
+    return true;
+  })(), "the intended finding did not appear");
+  t("the gap is usually positive, not negative", (() => {
+    let pos = 0;
+    for (const bad of [3, 5, 6, 7, 9]) {
+      const R = rep(36, bad);
+      if (by(R, "all").accuracy >= by(R, "none").accuracy) pos++;
+    }
+    return pos >= 4;
+  })());
+  t("the agent leaves about a quarter of its questions unanswered", (() => {
+    const R = rep(36, 3);
+    return R.every((p) => p.answeredPerRun > 4 && p.answeredPerRun < 5);
+  })(), rep(36, 3)[0].answeredPerRun.toFixed(2) + " of 6, because retrieval never surfaces them");
+  t("...and every policy leaves exactly the same number", (() => {
+    const R = rep(36, 3);
+    return new Set(R.map((p) => p.answeredPerRun.toFixed(6))).size === 1;
+  })(), "so the accuracy comparison is over the same questions");
+});
+
+</script>
+</body>
+</html>

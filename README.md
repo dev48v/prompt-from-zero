@@ -79,7 +79,13 @@ Every lesson is a single, self-contained HTML file with three tabs — 👁 **LO
 - [PromptFromZero · Day 74 — Token healing](https://dev48.infy.uk/prompt/day74-token-healing.html) — `day74-token-healing.html`
 - [PromptFromZero · Day 75 — Edit formats](https://dev48.infy.uk/prompt/day75-edit-formats.html) — `day75-edit-formats.html`
 - [PromptFromZero · Day 76 — Sampler order](https://dev48.infy.uk/prompt/day76-sampler-order.html) — `day76-sampler-order.html`
-- [PromptFromZero · Day 77 — Logit bias](https://dev48.infy.uk/prompt/day77-logit-bias.html) — `day77-logit-bias.html`
+- [PromptFromZero · Day 77 — Logit bias](https://dev48.in/prompt/day77-logit-bias.html) — `day77-logit-bias.html`
+- [PromptFromZero · Day 78 — Structured output](https://dev48.in/prompt/day78-structured-output.html) — `day78-structured-output.html`
+- [PromptFromZero · Day 79 — Context poisoning](https://dev48.in/prompt/day79-context-poisoning.html) — `day79-context-poisoning.html`
+- [PromptFromZero · Day 80 — Prefix caching](https://dev48.in/prompt/day80-prefix-caching.html) — `day80-prefix-caching.html`
+- [PromptFromZero · Day 81 — Metacognitive Prompting](https://dev48.in/prompt/day81-metacognitive-prompting.html) — `day81-metacognitive-prompting.html`
+- [PromptFromZero · Day 82 — Multi-persona prompting](https://dev48.in/prompt/day82-multi-persona.html) — `day82-multi-persona.html`
+- [PromptFromZero · Day 83 — Prompt Ensembling](https://dev48.in/prompt/day83-prompt-ensembling.html) — `day83-prompt-ensembling.html`
 
 ---
 Part of **Zero to Hero** — build something real from scratch, every day: https://dev48v.infy.uk
